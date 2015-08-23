@@ -18,6 +18,7 @@
 package org.apache.spark.blaze
 
 import java.io._
+import java.util.LinkedList
 import java.util.ArrayList     
 import java.nio.ByteBuffer     
 import java.nio.ByteOrder      
@@ -30,6 +31,18 @@ import org.apache.spark.{Partition, TaskContext}
 import org.apache.spark.rdd._
 import org.apache.spark.storage._
 import org.apache.spark.scheduler._
+
+import com.amd.aparapi.internal.model.ClassModel
+import com.amd.aparapi.internal.model.Tuple2ClassModel
+import com.amd.aparapi.internal.model.HardCodedClassModels
+import com.amd.aparapi.internal.model.HardCodedClassModels.ShouldNotCallMatcher
+import com.amd.aparapi.internal.model.Entrypoint
+import com.amd.aparapi.internal.writer.KernelWriter
+import com.amd.aparapi.internal.writer.KernelWriter.WriterAndKernel
+import com.amd.aparapi.internal.writer.HostWriter
+import com.amd.aparapi.internal.writer.HostWriter.WriterAndHost
+import com.amd.aparapi.internal.writer.BlockWriter.ScalaArrayParameter
+import com.amd.aparapi.internal.writer.BlockWriter.ScalaParameter.DIRECTION
 
 /**
   * A RDD that uses accelerator to accelerate the computation. The behavior of AccRDD is 
@@ -49,6 +62,39 @@ class AccRDD[U: ClassTag, T: ClassTag](appId: Int, prev: RDD[T], acc: Accelerato
   override def getPartitions: Array[Partition] = firstParent[T].partitions
 
   override def compute(split: Partition, context: TaskContext) = {
+
+    // ========= testing code for kernel generation ==========
+    val fun: T => U = acc.call
+    System.setProperty("com.amd.aparapi.enable.NEW", "true")
+    val classModel : ClassModel = ClassModel.createClassModel(acc.getClass, null, new ShouldNotCallMatcher())
+    val hardCodedClassModels : HardCodedClassModels = new HardCodedClassModels()
+    val method = classModel.getPrimitiveCallMethod
+    val descriptor : String = method.getDescriptor
+
+    // Expect 1 input argument for map function.
+    val paramsWithDim = CodeGenUtil.getParamObjsFromMethodDescriptor(descriptor, 1)
+    if (paramsWithDim._2 == 1)
+      logWarning("Input argument is 1-D array. This may cause huge overhead since" +
+        " Data will be serialized during the runtime.")
+    else if (paramsWithDim._2 > 1) {
+      logWarning("Multi-dimensional array cannot be an input argument." +
+        " Stop generating OpenCL kernel.")
+      // TODO: Run on JTP.
+    }
+    val params : LinkedList[ScalaArrayParameter] = paramsWithDim._1
+
+    val returnWithDim = CodeGenUtil.getReturnObjsFromMethodDescriptor(descriptor)
+    if (returnWithDim._2 == 1)
+      logWarning("Output argument is 1-D array. This may cause huge overhead since" +
+        " Data will be deserialized during the runtime.")
+    else if (returnWithDim._2 > 1) {
+      logWarning("Multi-dimensional array cannot be an output argument." +
+        " Stop generating OpenCL kernel.")
+      // TODO: Run on JTP.
+    }
+    params.add(returnWithDim._1)
+    // ========= testing code for kernel generation ==========
+
     val numBlock: Int = 1 // Now we just use 1 block for an input partition.
 
     val blockId = new Array[Long](numBlock)
