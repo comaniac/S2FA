@@ -122,10 +122,10 @@ class AccRDD[U: ClassTag, T: ClassTag](appId: Int, prev: RDD[T], acc: Accelerato
         val dataMsg = DataTransmitter.buildMessage(AccMessage.MsgType.ACCDATA)
 
         // Prepare input data blocks
-        val requireData = Array(false)
+        var requireData: Boolean = false
         for (i <- 0 until numBlock) {
           if (!revMsg.getData(i).getCached()) { // Send data block if Blaze manager hasn't cached it.
-            requireData(0) = true
+            requireData = true
 
             // The data has been read and cached by Spark, serialize it and send memory mapped file path.
             if (isCached == true || !split.isInstanceOf[HadoopPartition]) {
@@ -158,7 +158,7 @@ class AccRDD[U: ClassTag, T: ClassTag](appId: Int, prev: RDD[T], acc: Accelerato
         // Prepare broadcast blocks
         for (i <- 0 until brdcstId.length) {
           if (!revMsg.getData(i + numBlock).getCached()) {
-            requireData(0) = true
+            requireData = true
             val bcData = acc.getArg(i).get.data
             if (bcData.getClass.isArray) { // Serialize array and use memory mapped file to send the data.
               val arrayData = bcData.asInstanceOf[Array[_]]
@@ -185,7 +185,7 @@ class AccRDD[U: ClassTag, T: ClassTag](appId: Int, prev: RDD[T], acc: Accelerato
         logInfo("Partition " + split.index + " preprocesses time: " + elapseTime + " ns");
 
         // Send ACCDATA message only when it is required.
-        if (requireData(0) == true) {
+        if (requireData == true) {
           logInfo(Util.logMsg(dataMsg))
           transmitter.send(dataMsg)
         }

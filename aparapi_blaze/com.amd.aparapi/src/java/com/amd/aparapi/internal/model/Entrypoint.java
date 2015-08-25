@@ -751,7 +751,6 @@ public class Entrypoint implements Cloneable {
                   String arrayName = childField.getConstantPoolFieldEntry()
 											.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
                   arrayFieldArrayLengthUsed.add(arrayName);
-									System.out.println("Noted arraylength in " + methodModel.getName() + " on " + arrayName);
                   if (logger.isLoggable(Level.FINE)) {
                      logger.fine("Noted arraylength in " + methodModel.getName() + " on " + arrayName);
                   }

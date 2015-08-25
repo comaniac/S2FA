@@ -638,7 +638,7 @@ public abstract class BlockWriter{
 
          final MethodEntry methodEntry = methodCall.getConstantPoolMethodEntry();
 
-				 // Issue #34: Ignore broadcast.data. This should be an argument.
+				 // Issue #34: Ignore broadcast.data method. This should be an argument.
 				 if (!methodEntry.toString().contains("BlazeBroadcast.data"))
 					 writeCheck = writeMethod(methodCall, methodEntry);
 				 else {

@@ -1102,7 +1102,7 @@ public abstract class KernelWriter extends BlockWriter{
            if (p.getDir() == ScalaParameter.DIRECTION.IN) {
              if (p.getClazz() == null) {
 							 if (p.getName().contains("ary")) // Deserialized access
-								 write(", " + p.getName() + "[i * " + p.getName() + "_item_length]");
+								 write(", &" + p.getName() + "[i * " + p.getName() + "_item_length]");
 							 else
 	               write(", " + p.getName() + "[i]");
              } else if (p.getClazz().getName().equals("scala.Tuple2")) {
