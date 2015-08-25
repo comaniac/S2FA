@@ -732,7 +732,6 @@ public class Entrypoint implements Cloneable {
                      arrayFieldAccesses.add(accessedArrayFieldName);
                      addToReferencedFieldNames(accessedArrayFieldName, null);
                      arrayFieldArrayLengthUsed.add(accessedArrayFieldName);
-
                   }
                } else if (instruction instanceof I_ARRAYLENGTH) {
                   Instruction child = instruction.getFirstChild();
@@ -767,9 +766,38 @@ public class Entrypoint implements Cloneable {
                     addToReferencedFieldNames(accessedFieldName, "L" + signature);
                   } else {
                     signature = field.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
-                    addToReferencedFieldNames(accessedFieldName, null);
-                  }
 
+										// Issue #34: Find type hint of broadcast fields.
+										if (signature.contains("BlazeBroadcast")) {
+											Instruction parent = instruction.getParentExpr();
+											String typeHint = null;
+
+											while (parent instanceof I_INVOKEVIRTUAL) {
+												parent = parent.getParentExpr();
+											}
+											if (parent instanceof I_CHECKCAST) { // Array type
+												I_CHECKCAST cast = (I_CHECKCAST) parent;
+												typeHint = cast.getConstantPoolClassEntry().getNameUTF8Entry().getUTF8();
+											}
+											else if (parent instanceof I_INVOKESTATIC) { // Scalar type (boxed)
+												I_INVOKESTATIC unbox = (I_INVOKESTATIC) parent;
+												typeHint = unbox.getConstantPoolMethodEntry().getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+												if (typeHint.contains("Int"))
+													typeHint = "I";
+												else if (typeHint.contains("Double"))
+													typeHint = "D";
+												else if (typeHint.contains("Float"))
+													typeHint = "F";
+												else if (typeHint.contains("Long"))
+													typeHint = "J";
+												else
+													typeHint = "null";
+											}
+											addToReferencedFieldNames(accessedFieldName, typeHint);
+										}
+										else
+	                    addToReferencedFieldNames(accessedFieldName, null);
+                  }
                   if (logger.isLoggable(Level.FINE)) {
                      logger.fine("AccessField field type= " + signature + " in " + methodModel.getName());
                   }

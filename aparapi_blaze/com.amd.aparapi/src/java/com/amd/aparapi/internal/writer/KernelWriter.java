@@ -676,21 +676,6 @@ public abstract class KernelWriter extends BlockWriter{
 
          String signature = field.getDescriptor();
 
-				 // Issue #34: Reference value must be broadcast value.
-				 // Currently we use explicit naming to realize type (FIXME)
-				 if (signature.contains("BlazeBroadcast")) {
-					 String fieldNameWithType = field.getName();
-					 signature = "";
-					 if (fieldNameWithType.contains("Array"))
-						 signature += "[";
-					 if (fieldNameWithType.contains("Int"))
-						 signature += "I";
-					 else if (fieldNameWithType.contains("Float"))
-						 signature += "F";
-					 else if (fieldNameWithType.contains("Double"))
-						 signature += "D";
-				 }
-
          ScalaParameter param = null;
          if (signature.startsWith("[")) {
              param = new ScalaArrayParameter(signature,
