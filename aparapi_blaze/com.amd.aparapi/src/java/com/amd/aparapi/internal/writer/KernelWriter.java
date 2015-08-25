@@ -263,6 +263,26 @@ public abstract class KernelWriter extends BlockWriter{
      write(")");
    }
 
+	 @Override public void writeBroadcast(MethodCall _methodCall, MethodEntry _methodEntry) throws CodeGenException {
+		 assert(_methodCall instanceof I_INVOKEVIRTUAL);
+
+		 // Issue #34: Instead of writing method "data", we traverse its child instruction,
+		 // which should be getField, to know the broadcast variable name.
+
+		 Instruction c = ((I_INVOKEVIRTUAL) _methodCall).getFirstChild();
+		 while (!(c instanceof AccessField)) {
+			 c = c.getFirstChild();
+		 }
+
+		 String fieldName = ((AccessField) c)
+			 .getConstantPoolFieldEntry()
+			 .getNameAndTypeEntry()
+			 .getNameUTF8Entry().getUTF8();
+
+		 write("this->" + fieldName);
+		 return ;
+	 }
+
    @Override public boolean writeMethod(MethodCall _methodCall, MethodEntry _methodEntry) throws CodeGenException {
       final int argc = _methodEntry.getStackConsumeCount();
       final String methodName =
@@ -286,6 +306,8 @@ public abstract class KernelWriter extends BlockWriter{
           ignorableMethods.add("boxToInteger");
           ignorableMethods.add("boxToFloat");
           ignorableMethods.add("unboxToFloat");
+					ignorableMethods.add("unboxToInt");
+					ignorableMethods.add("unboxToDouble");
 
           if (ignorableMethods.contains(methodName)) {
               writeInstruction(_methodCall.getArg(0));
@@ -300,7 +322,7 @@ public abstract class KernelWriter extends BlockWriter{
 
       boolean writeAllocCheck = false;
       if (barrierAndGetterMappings != null) {
-					write("/* WARNING: method call with barrier hasn't adapted for FPGA (Issue #1). */");
+					write("/* WARNING: method call with barrier cannot be adapted for FPGA (Issue #1). */");
          // this is one of the OpenCL barrier or size getter methods
          // write the mapping and exit
          if (argc > 0) {
@@ -327,7 +349,7 @@ public abstract class KernelWriter extends BlockWriter{
             getterFieldName = m.getGetterField();
          }
 
-         if (getterFieldName != null) {
+         if (getterFieldName != null) { 
            boolean isObjectField = m.getReturnType().startsWith("L");
 
            if (isThis(_methodCall.getArg(0))) {
@@ -654,6 +676,21 @@ public abstract class KernelWriter extends BlockWriter{
 
          String signature = field.getDescriptor();
 
+				 // Issue #34: Reference value must be broadcast value.
+				 // Currently we use explicit naming to realize type (FIXME)
+				 if (signature.contains("BlazeBroadcast")) {
+					 String fieldNameWithType = field.getName();
+					 signature = "";
+					 if (fieldNameWithType.contains("Array"))
+						 signature += "[";
+					 if (fieldNameWithType.contains("Int"))
+						 signature += "I";
+					 else if (fieldNameWithType.contains("Float"))
+						 signature += "F";
+					 else if (fieldNameWithType.contains("Double"))
+						 signature += "D";
+				 }
+
          ScalaParameter param = null;
          if (signature.startsWith("[")) {
              param = new ScalaArrayParameter(signature,
@@ -958,25 +995,38 @@ public abstract class KernelWriter extends BlockWriter{
          for (ScalaArrayParameter p : params) {
             if (first) {
                first = false;
-            } else {
-               write(", ");
-               newLine();
-            }
+							 write("int N");
+						}
+            write(", ");
+            newLine();
 
+						String paramString = null;
             if (p.getDir() == ScalaArrayParameter.DIRECTION.OUT) {
-               assert(outParam == null);
+               assert(outParam == null); // Expect only one output parameter.
                outParam = p;
-               write(p.getOutputParameterString(this));
+							 paramString = p.getOutputParameterString(this);
             } else {
-               write(p.getInputParameterString(this));
+							 paramString = p.getInputParameterString(this);
             }
+						write(paramString);
+
+						// comaniac: Add length and item number for 1-D array I/O.
+						if (paramString.contains("ary")) {
+							 write(", ");
+							 newLine();
+
+							// Currently only support one-to-one mapping so output item # is same as N.
+							// if (p.getDir() == ScalaArrayParameter.DIRECTION.OUT) {
+							//	 write("int " + p.getName() + "_item_num, ");
+							//	 newLine();
+							// }
+							 write("int " + p.getName() + "_item_length");
+						}
          }
 
          for (final String line : argLines) {
            write(", "); write(line);
          }
-
-         write(", int N");
       }
       write(") {");
       out();
@@ -987,7 +1037,7 @@ public abstract class KernelWriter extends BlockWriter{
       writeln("int nthreads = get_global_size(0);");
 
       writeln("This thisStruct;");
-      writeln("This* this=&thisStruct;");
+      writeln("This* this = &thisStruct;");
       for (final String line : assigns) {
          write(line);
          writeln(";");
@@ -1051,7 +1101,10 @@ public abstract class KernelWriter extends BlockWriter{
          for (ScalaArrayParameter p : params) {
            if (p.getDir() == ScalaParameter.DIRECTION.IN) {
              if (p.getClazz() == null) {
-               write(", " + p.getName() + "[i]");
+							 if (p.getName().contains("ary")) // Deserialized access
+								 write(", " + p.getName() + "[i * " + p.getName() + "_item_length]");
+							 else
+	               write(", " + p.getName() + "[i]");
              } else if (p.getClazz().getName().equals("scala.Tuple2")) {
                write(", my_" + p.getName());
              } else {

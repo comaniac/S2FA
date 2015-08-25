@@ -736,15 +736,22 @@ public class Entrypoint implements Cloneable {
                   }
                } else if (instruction instanceof I_ARRAYLENGTH) {
                   Instruction child = instruction.getFirstChild();
-                  while(child instanceof I_AALOAD) {
+
+									// Issue #33: We may have an invokevirtual before getField.
+                  while (child instanceof I_AALOAD || child instanceof I_INVOKEVIRTUAL || child instanceof I_CHECKCAST) {
                      child = child.getFirstChild();
                   }
+
                   if (!(child instanceof AccessField)) {
+										 System.out.println("Illegal child: " + child.toString());
                      throw new ClassParseException(ClassParseException.TYPE.LOCALARRAYLENGTHACCESS);
                   }
-                  final AccessField childField = (AccessField) child;
-                  final String arrayName = childField.getConstantPoolFieldEntry().getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+
+	                final AccessField childField = (AccessField) child;
+                  String arrayName = childField.getConstantPoolFieldEntry()
+											.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
                   arrayFieldArrayLengthUsed.add(arrayName);
+									System.out.println("Noted arraylength in " + methodModel.getName() + " on " + arrayName);
                   if (logger.isLoggable(Level.FINE)) {
                      logger.fine("Noted arraylength in " + methodModel.getName() + " on " + arrayName);
                   }

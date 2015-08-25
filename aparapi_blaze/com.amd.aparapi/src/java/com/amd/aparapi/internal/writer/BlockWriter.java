@@ -492,11 +492,13 @@ public abstract class BlockWriter{
          //we're looking at
          int dim = 0;
          Instruction load = _instruction.getFirstChild();
-         while (load instanceof I_AALOAD) {
+
+				 // Issue #33: Sometimes we may have invokevirtual or checkcast before getField.
+         while (load instanceof I_AALOAD || load instanceof I_INVOKEVIRTUAL || load instanceof I_CHECKCAST) {
             load = load.getFirstChild();
             dim++;
          }
-         NameAndTypeEntry nameAndTypeEntry = ((AccessInstanceField) load).getConstantPoolFieldEntry().getNameAndTypeEntry();
+	       NameAndTypeEntry nameAndTypeEntry = ((AccessInstanceField) load).getConstantPoolFieldEntry().getNameAndTypeEntry();
          final String arrayName = nameAndTypeEntry.getNameUTF8Entry().getUTF8();
          String dimSuffix = isMultiDimensionalArray(nameAndTypeEntry) ? Integer.toString(dim) : "";
          write("this->" + arrayName + arrayLengthMangleSuffix + dimSuffix);
@@ -636,7 +638,13 @@ public abstract class BlockWriter{
 
          final MethodEntry methodEntry = methodCall.getConstantPoolMethodEntry();
 
-         writeCheck = writeMethod(methodCall, methodEntry);
+				 // Issue #34: Ignore broadcast.data. This should be an argument.
+				 if (!methodEntry.toString().contains("BlazeBroadcast.data"))
+					 writeCheck = writeMethod(methodCall, methodEntry);
+				 else {
+					 writeBroadcast(methodCall, methodEntry);
+					 writeCheck = false;
+				 }
       } else if (_instruction.getByteCode().equals(ByteCode.CLONE)) {
 //					write("/* clone */");
          final CloneInstruction cloneInstruction = (CloneInstruction) _instruction;
@@ -796,6 +804,11 @@ public abstract class BlockWriter{
 
       return (AccessInstanceField) load;
    }
+
+	 public void writeBroadcast(MethodCall _methodCall, MethodEntry _methodEntry) throws CodeGenException {
+		 // This method should be inherited by KernelWriter.
+		 return ;
+	 }
 
    public boolean writeMethod(MethodCall _methodCall, MethodEntry _methodEntry) throws CodeGenException {
       boolean noCL = _methodEntry.getOwnerClassModel().getNoCLMethods()

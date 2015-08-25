@@ -2734,6 +2734,24 @@ public abstract class ClassModel {
        return result;
    }
 
+   public ClassModelMethod getPrimitiveApplyMethod() {
+       ClassModelMethod result = null;
+       for (ClassModelMethod method : methods) {
+           String name = method.getName();
+           String descriptor = method.getDescriptor();
+           String returnType = descriptor.substring(descriptor.lastIndexOf(')') + 1);
+
+           if (name.equals("apply") && !returnType.equals("Ljava/lang/Object;")) {
+              if (result != null) {
+                  // We expect only one match per Function in Scala
+                  throw new RuntimeException("Multiple matches");
+              }
+              result = method;
+           }
+       }
+       return result;
+   }
+
    public Iterator<ClassModelMethod> methodIter() {
       return methods.iterator();
    }

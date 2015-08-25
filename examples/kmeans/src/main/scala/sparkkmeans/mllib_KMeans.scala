@@ -177,9 +177,10 @@ object KMeans {
 }
 
 class KMeansClassified(
-  b_centers: BlazeBroadcast[Array[Double]], 
-  b_D: BlazeBroadcast[Int]
+  b_centers_ArrayDouble: BlazeBroadcast[Array[Double]], 
+  b_D_Int: BlazeBroadcast[Int]
   ) extends Accelerator[Array[Double], Int] {
+  // Blaze CodeGen: Currently we have to explicit type.
   
   val id: String = "KMeans"
 
@@ -187,31 +188,41 @@ class KMeansClassified(
 
   def getArg(idx: Int): Option[BlazeBroadcast[_]] = {
     if (idx == 0)
-      Some(b_centers)
+      Some(b_centers_ArrayDouble)
     else if (idx == 1)
-      Some(b_D)
+      Some(b_D_Int)
     else
       None
   }
 
-  def call(in: Array[Double]): Int = {
-    val centers = b_centers.data
-    val D: Int = b_D.data
-    val K: Int = centers.length / D
+  def call(in: Array[Double]): Int = { 
+    val centers = b_centers_ArrayDouble.data
+    val D: Int = b_D_Int.data
+
+    // Blaze CodeGen: Cannot access array length of local array.
+    val K: Int = (b_centers_ArrayDouble.data).length / D
 
     var closest_center = -1
     var closest_center_dist = -1.0
 
-    for (i <- 0 until K) {
+    // Blaze CodeGen: foreach and for loop are forbidden.
+    var i: Int = 0
+    while (i < K) {
       var allDiff = 0.0
-      for (j <- 0 until D)
-        allDiff = allDiff + pow(centers(i * D + j) - in(j), 2)
+
+      var j: Int = 0
+      while (j < D) {
+        allDiff = allDiff + 
+          (centers(i * D + j) - in(j)) * (centers(i * D + j) - in(j))
+        j += 1
+      }
       val dist = sqrt(allDiff)
       
       if (closest_center == -1 || dist < closest_center_dist) {
         closest_center = i
         closest_center_dist = dist
       }
+      i += 1
     }
 
     closest_center
