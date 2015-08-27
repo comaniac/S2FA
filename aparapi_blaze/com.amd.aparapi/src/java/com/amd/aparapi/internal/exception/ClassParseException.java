@@ -84,7 +84,8 @@ import com.amd.aparapi.internal.instruction.Instruction;
       MULTIDIMENSIONARRAYASSIGN("Can't assign to two dimension array"), //
       MULTIDIMENSIONARRAYACCESS("Can't access through a two dimensional array"), //
       MISSINGLOCALVARIABLETABLE("Method does not contain a local variable table (recompile with -g?)"), //
-      IMPROPERPRIVATENAMEMANGLING("Could not parse private array size from field name");
+      IMPROPERPRIVATENAMEMANGLING("Could not parse private array size from field name"),
+			NEWDYNAMICARRAY("Can't create a array without constant size");
 
       private String description;
 

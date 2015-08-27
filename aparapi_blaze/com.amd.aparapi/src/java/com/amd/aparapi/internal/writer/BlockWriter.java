@@ -61,6 +61,8 @@ import java.util.*;
 
 public abstract class BlockWriter{
 
+	 private int countNewArray = 0;
+
    public final static String arrayLengthMangleSuffix = "__javaArrayLength";
 
    public final static String arrayDimMangleSuffix = "__javaArrayDimension";
@@ -68,6 +70,8 @@ public abstract class BlockWriter{
    public abstract void write(String _string);
 
    public abstract void writeBeforeCurrentLine(String _string);
+
+	 public void deleteCurrentLine() { ; }
 
    public abstract String getAllocCheck();
 
@@ -327,6 +331,50 @@ public abstract class BlockWriter{
       write(_invert ? logicalExpression : logicalExpression.cloneInverted());
       return (_branchSet.getLast().getNextExpr());
    }
+
+	 public void writeNewFixedSizeArray(Instruction _instruction) throws CodeGenException {
+
+			// Get type from newarray (this instruction)
+			int typeCode = ((I_NEWARRAY) _instruction).getType();
+			String typeName = null;
+			switch (typeCode) {
+				case 5:
+					typeName = "char";
+					break;
+				case 6:
+					typeName = "float";
+					break;
+				case 7:
+					typeName = "double";
+					break;
+				case 9:
+					typeName = "short";
+					break;
+				case 10:
+					typeName = "int";
+					break;
+				case 11:
+					typeName = "long";
+					break;
+				default:
+					typeName = "/* Unsupported type " + typeCode + "*/";
+			}
+
+			// Get variable name from astore (parent instruction)
+			Instruction parent = _instruction.getParentExpr();
+			assert(parent instanceof LocalVariableTableIndexAccessor);
+			LocalVariableTableIndexAccessor var = (LocalVariableTableIndexAccessor) parent;
+			String varName = var.getLocalVariableInfo().getVariableName();
+
+			// Get array length from i_const (child instruction)
+			Instruction child = _instruction.getFirstChild();
+			assert(child instanceof BytecodeEncodedConstant);
+			int length = ((BytecodeEncodedConstant<Integer>) child).getValue();
+
+			deleteCurrentLine();
+			write(typeName + " " + varName + "[" + length + "]");
+			return ;
+	 }
 
    public void write(LogicalExpressionNode _node) throws CodeGenException {
       if (_node instanceof SimpleLogicalExpressionNode) {
@@ -765,6 +813,8 @@ public abstract class BlockWriter{
         // Do nothing
         I_CHECKCAST checkCast = (I_CHECKCAST)_instruction;
         writeInstruction(checkCast.getPrevPC());
+			} else if (_instruction instanceof I_NEWARRAY) {
+				writeNewFixedSizeArray(_instruction);	
       } else if (_instruction instanceof New) {
         // Skip it?
       } else {
@@ -806,7 +856,22 @@ public abstract class BlockWriter{
    }
 
 	 public void writeBroadcast(MethodCall _methodCall, MethodEntry _methodEntry) throws CodeGenException {
-		 // This method should be inherited by KernelWriter.
+		 assert(_methodCall instanceof I_INVOKEVIRTUAL);
+
+		 // Issue #34: Instead of writing method "data", we traverse its child instruction,
+		 // which should be getField, to know the broadcast variable name.
+
+		 Instruction c = ((I_INVOKEVIRTUAL) _methodCall).getFirstChild();
+		 while (!(c instanceof AccessField)) {
+			 c = c.getFirstChild();
+		 }
+
+		 String fieldName = ((AccessField) c)
+			 .getConstantPoolFieldEntry()
+			 .getNameAndTypeEntry()
+			 .getNameUTF8Entry().getUTF8();
+
+		 write("this->" + fieldName);
 		 return ;
 	 }
 

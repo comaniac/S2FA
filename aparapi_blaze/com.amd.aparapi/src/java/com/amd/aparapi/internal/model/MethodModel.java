@@ -134,7 +134,7 @@ public abstract class MethodModel {
          }
       }
 
-      if (instruction instanceof New) {
+      if ((instruction instanceof New) && !(instruction instanceof I_NEWARRAY)) {
         usesNew = true;
       }
    }

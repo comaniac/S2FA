@@ -263,26 +263,6 @@ public abstract class KernelWriter extends BlockWriter{
      write(")");
    }
 
-	 @Override public void writeBroadcast(MethodCall _methodCall, MethodEntry _methodEntry) throws CodeGenException {
-		 assert(_methodCall instanceof I_INVOKEVIRTUAL);
-
-		 // Issue #34: Instead of writing method "data", we traverse its child instruction,
-		 // which should be getField, to know the broadcast variable name.
-
-		 Instruction c = ((I_INVOKEVIRTUAL) _methodCall).getFirstChild();
-		 while (!(c instanceof AccessField)) {
-			 c = c.getFirstChild();
-		 }
-
-		 String fieldName = ((AccessField) c)
-			 .getConstantPoolFieldEntry()
-			 .getNameAndTypeEntry()
-			 .getNameUTF8Entry().getUTF8();
-
-		 write("this->" + fieldName);
-		 return ;
-	 }
-
    @Override public boolean writeMethod(MethodCall _methodCall, MethodEntry _methodEntry) throws CodeGenException {
       final int argc = _methodEntry.getStackConsumeCount();
       final String methodName =
@@ -1267,6 +1247,12 @@ public abstract class KernelWriter extends BlockWriter{
       final StringBuilder openCLStringBuilder = new StringBuilder();
       final KernelWriter openCLWriter = new KernelWriter(){
          private int writtenSinceLastNewLine = 0;
+
+				 @Override public void deleteCurrentLine() {
+					 openCLStringBuilder.delete(openCLStringBuilder.length() - writtenSinceLastNewLine - 1, 
+						 openCLStringBuilder.length());
+					 newLine();
+				 }
 
          @Override public void writeBeforeCurrentLine(String _string) {
            openCLStringBuilder.insert(openCLStringBuilder.length() -
