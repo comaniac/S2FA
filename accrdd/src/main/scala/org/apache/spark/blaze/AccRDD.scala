@@ -89,9 +89,6 @@ class AccRDD[U: ClassTag, T: ClassTag](appId: Int, prev: RDD[T], acc: Accelerato
         if (typeSize == -1)
           throw new RuntimeException("Cannot recognize RDD data type")
 
-        // FIXME: Temporary put here to test code generation.
-        genOpenCLKernel()
-
         // Get broadcast block IDs
         for (j <- 0 until brdcstId.length) {
           val arg = acc.getArg(j)
@@ -113,7 +110,9 @@ class AccRDD[U: ClassTag, T: ClassTag](appId: Int, prev: RDD[T], acc: Accelerato
         logInfo("Partition " + split.index + " communication latency: " + elapseTime + " ns")
 
         if (revMsg.getType() != AccMessage.MsgType.ACCGRANT) {
-          // FIXME: Should generate kernel here if acc_id is not matched.
+          // TODO: Manager should return an error code
+          if (split.index == 0) // Only let one worker to generate the kernel
+            genOpenCLKernel(acc.id)
           throw new RuntimeException("Request reject.")
         }
 
@@ -306,8 +305,12 @@ class AccRDD[U: ClassTag, T: ClassTag](appId: Int, prev: RDD[T], acc: Accelerato
     outputAry
   }
 
-  def genOpenCLKernel() = {
+  def genOpenCLKernel(id: String) = {
     System.setProperty("com.amd.aparapi.enable.NEW", "true")
+    val kernelPath : String = "/tmp/blaze_kernel_" + id + ".cl" 
+    // TODO:  1. Should be a shared path e.g. HDFS
+    //        2. Should check if the kernel is existed in advance
+
     val classModel : ClassModel = ClassModel.createClassModel(acc.getClass, null, new ShouldNotCallMatcher())
     val hardCodedClassModels : HardCodedClassModels = new HardCodedClassModels()
     val method = classModel.getPrimitiveCallMethod
@@ -344,7 +347,7 @@ class AccRDD[U: ClassTag, T: ClassTag](appId: Int, prev: RDD[T], acc: Accelerato
         entryPoint = classModel.getEntrypoint("call", descriptor, fun, params, hardCodedClassModels)
         val writerAndKernel = KernelWriter.writeToString(entryPoint, params)
         val openCL = writerAndKernel.kernel
-        val kernelFile = new PrintWriter(new File("/tmp/kernel.cl"))
+        val kernelFile = new PrintWriter(new File(kernelPath))
         kernelFile.write(KernelWriter.applyXilinxPatch(openCL))
         kernelFile.close
       }
