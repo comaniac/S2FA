@@ -4,6 +4,7 @@ PROTO_DIR=./proto
 
 PP=g++
 CC=gcc
+AR=ar
 
 CFLAGS= -c -fPIC -std=c++0x -g
 COMPILE= $(CFLAGS) \
@@ -19,26 +20,20 @@ LINK= -L$(BOOST_DIR)/lib \
 			-L$(JAVA_HOME)/jre/lib/amd64/server -ljvm \
 			-lpthread -lm -ldl
 
-DEPS= Comm.o \
-			Context.o \
+DEPS= CommManager.o \
+			PlatformManager.o \
 			Block.o \
 			BlockManager.o \
 			QueueManager.o \
 			Task.o \
 			TaskManager.o \
 			Task_msg.o \
-			Acc_conf.o \
+			Acc_conf.o 
 
-ifneq (,$(USE_OPENCL))
-PP=$(XILINX_OPENCL_DIR)/lnx64/tools/gcc/bin/g++
-CC=$(XILINX_OPENCL_DIR)/lnx64/tools/gcc/bin/gcc
+all: ../bin/acc_manager ../lib/libblaze.a
 
-LINK += -L$(XILINX_OPENCL_DIR)/runtime/lib/x86_64 -lxilinxopencl
-COMPILE += -I$(XILINX_OPENCL_DIR)/runtime/include/1_2
-DEPS += OpenCLBlock.o 
-endif
-
-all: ../bin/acc_manager
+../lib/libblaze.a: Block.o Task.o
+	$(AR) rvs $@ Block.o Task.o
 
 ../bin/acc_manager: $(DEPS) main.o
 	$(PP) -o $@ $(DEPS) main.o $(LINK) 
@@ -49,7 +44,7 @@ Task_msg.o: $(PROTO_DIR)/task.pb.cc
 Acc_conf.o: $(PROTO_DIR)/acc_conf.pb.cc
 	$(PP) $(COMPILE) $< -o $@ 
 
-%.o: %.cpp *.h
+%.o: %.cpp *.h Makefile
 	$(PP) $(COMPILE) $< -o $@
 
 clean:

@@ -1,20 +1,3 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 #include <stdio.h>
 #include <sys/time.h>
 #include <time.h>
@@ -26,17 +9,17 @@
 #include <stdexcept>
 #include <cstdint>
 
-#include "Comm.h"
+#include "CommManager.h"
 
 #define MAX_MSGSIZE 4096
-#define LOG_HEADER  std::string("Comm::") + \
+#define LOG_HEADER  std::string("CommManager::") + \
                     std::string(__func__) +\
                     std::string("(): ")
 
 namespace blaze {
 
 // receive one message, bytesize first
-void Comm::recv(
+void CommManager::recv(
     TaskMsg &task_msg, 
     ip::tcp::iostream &socket_stream) 
 {
@@ -62,7 +45,7 @@ void Comm::recv(
 }
 
 // send one message, bytesize first
-void Comm::send(
+void CommManager::send(
     TaskMsg &task_msg, 
     ip::tcp::iostream &socket_stream) 
 {
@@ -74,9 +57,9 @@ void Comm::send(
   task_msg.SerializeToOstream(&socket_stream);
 }
 
-void Comm::addTask(std::string id) {
+void CommManager::addTask(std::string id) {
   // guarantee exclusive access
-  boost::lock_guard<Comm> guard(*this);
+  boost::lock_guard<CommManager> guard(*this);
   if (num_tasks.find(id) == num_tasks.end()) {
     num_tasks.insert(std::make_pair(id, 0));
   }
@@ -85,15 +68,15 @@ void Comm::addTask(std::string id) {
   }
 }
 
-void Comm::removeTask(std::string id) {
+void CommManager::removeTask(std::string id) {
   // guarantee exclusive access
-  boost::lock_guard<Comm> guard(*this);
+  boost::lock_guard<CommManager> guard(*this);
   if (num_tasks.find(id) != num_tasks.end()) {
     num_tasks[id] -= 1;
   }
 }
 
-void Comm::process(socket_ptr sock) {
+void CommManager::process(socket_ptr sock) {
 
   // This may not be the best available method
   boost::system::error_code err;
@@ -139,7 +122,7 @@ void Comm::process(socket_ptr sock) {
 
       // query the queue manager to find matching acc
       TaskManager_ptr task_manager = 
-        queue_manager->get(task_msg.acc_id());
+        platform_manager->getTaskManager(task_msg.acc_id());
 
       if (task_manager == NULL_TASK_MANAGER) { 
         // if there is no matching acc
@@ -148,35 +131,15 @@ void Comm::process(socket_ptr sock) {
       else { 
         // Calculating scheduling decisions
         // TODO: use a separate class for this part
-
-        AccWorker acc_conf = context->getConfig(task_msg.acc_id());
-
-        // Simple scheduling decision: using speedup to balance workloads
-        // - assuming speedup is X, then the optimal distribution is:
-        //   1 CPU task : X ACC task
-        //   so 1 out of 1+X requests the request is rejected 
-
-        BlockManager* block_manager = context->
-          getBlockManager(task_msg.acc_id());
-
-        if (acc_conf.has_speedup() &&
-            num_tasks[task_msg.acc_id()] > acc_conf.speedup() &&
-            !block_manager->contains(
-              task_msg.data(0).partition_id())
-           ) 
-        {
-          throw AccReject("Reject request to balance workload"); 
-        }
-
-        // TODO: balance workload among different accelerators
-        // TODO: consider current queue length
       }
+
+      // keep track of a new active task
       addTask(task_msg.acc_id());
       do_task = true;
       task_id = task_msg.acc_id();
 
-      // get correponding block manager based on platform context
-      BlockManager* block_manager = context->
+      // get correponding block manager based on platform 
+      BlockManager* block_manager = platform_manager->
         getBlockManager(task_msg.acc_id());
 
       // create a task, which will be automatically enqueued
@@ -388,7 +351,7 @@ void Comm::process(socket_ptr sock) {
         int64_t blockId = blockInfo.partition_id();
 
         // deleting an existing blocks from all block manager
-        context->removeShared(blockId);
+        platform_manager->removeShared(blockId);
       }
 
       finish_msg.set_type(ACCFINISH);
@@ -449,7 +412,7 @@ void Comm::process(socket_ptr sock) {
       "thread exiting.");
 }
 
-void Comm::listen() {
+void CommManager::listen() {
 
   io_service ios;
 
@@ -474,7 +437,7 @@ void Comm::listen() {
       acceptor.accept(*sock);
 
       //acceptor.accept(*socket_stream.rdbuf());
-      boost::thread t(boost::bind(&Comm::process, this, sock));
+      boost::thread t(boost::bind(&CommManager::process, this, sock));
     }
     catch (boost::system::system_error const &e) {
       logger->logErr(LOG_HEADER+e.what());
