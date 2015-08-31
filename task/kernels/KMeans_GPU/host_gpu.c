@@ -32,7 +32,7 @@ int main(int argc, char *argv[]) {
 
 	int dims = 784;
 	float *data;
-	int data_length = 60000 * 784;
+	int data_length = 10000 * 784;
 	int num_data = data_length / dims;
 
 	float *centers;

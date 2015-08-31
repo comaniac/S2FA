@@ -61,7 +61,7 @@ import java.util.*;
 
 public abstract class BlockWriter{
 
-	 private int countNewArray = 0;
+	 protected final boolean useFPGAStyle = true;
 
    public final static String arrayLengthMangleSuffix = "__javaArrayLength";
 
@@ -417,6 +417,7 @@ public abstract class BlockWriter{
 
    public boolean writeInstruction(Instruction _instruction) throws CodeGenException {
       boolean writeCheck = false;
+//			write("/*" + _instruction.toString() + "*/");
 
       if (_instruction instanceof CompositeIfElseInstruction) {
          write("(");
@@ -434,33 +435,78 @@ public abstract class BlockWriter{
          final AssignToLocalVariable assignToLocalVariable = (AssignToLocalVariable) _instruction;
 
          final LocalVariableInfo localVariableInfo = assignToLocalVariable.getLocalVariableInfo();
+				 final String varName = localVariableInfo.getVariableName();
+				 boolean promoteLocal = false;
+				 int maxLength = 0;
+
          if (assignToLocalVariable.isDeclaration()) {
             final String descriptor = localVariableInfo.getVariableDescriptor();
-            // Arrays always map to __global arrays
+ 				    Instruction child = _instruction.getFirstChild();
+
+						if (useFPGAStyle && varName.contains("blazeLocal")) {
+							 maxLength = Integer.parseInt(varName.substring(varName.indexOf("blazeLocal") + 10));
+					  	 while (!(child instanceof I_INVOKEVIRTUAL))
+						      child = child.getFirstChild();
+
+							 if (maxLength > 0 && child instanceof I_INVOKEVIRTUAL)
+								  promoteLocal = true;
+							 else {
+								  System.err.print("Local variable with length " + maxLength);
+									System.err.print(" , has invalid child " + _instruction.getFirstChild().toString());
+									System.err.println(", skip promotion.");
+							 }
+						}
+
             if (descriptor.startsWith("[") || descriptor.startsWith("L")) {
-               write(" __global ");
+							 if (!promoteLocal)
+               	  write(" __global ");
+							 else
+									write(" __local ");
             }
 
             String localType = convertType(descriptor, true);
             if (descriptor.startsWith("L")) {
               localType = localType.replace('.', '_');
             }
+
+						// Remove * for local array due to static array declaration
+						if (promoteLocal && descriptor.startsWith("["))
+							 localType = localType.replace("*", "");
             write(localType);
 
             if (descriptor.startsWith("L")) {
-              write("*"); // All local assigns to object-typed variables should be a constructor
+            	 write("*"); // All local assigns to object-typed variables should be a constructor
             }
+
+						// Promote local variable support. Only support blaze broadcast variables
+						if (promoteLocal) {
+	             final MethodCall methodCall = (MethodCall) child;
+  	           final MethodEntry methodEntry = methodCall.getConstantPoolMethodEntry();
+				 	     assert (methodEntry.toString().contains("BlazeBroadcast.data"));
+
+							 write(varName + "[" + maxLength + "];");
+							 newLine();
+							 write("for (int localAryCpy = 0; localAryCpy < ");
+					     writeBroadcast(methodCall, methodEntry);
+							 write(arrayLengthMangleSuffix + "; localAryCpy++)");
+							 in();
+							 newLine();
+							 write(varName + "[localAryCpy] = ");
+					     writeBroadcast(methodCall, methodEntry);
+				       write("[localAryCpy]");
+						   out();
+						}
          }
          if (localVariableInfo == null) {
             throw new CodeGenException("outOfScope" + _instruction.getThisPC() + " = ");
-         } else {
-            write(localVariableInfo.getVariableName() + " = ");
+         } else if (!promoteLocal) {
+            write(varName + " = ");
          }
 
-         for (Instruction operand = _instruction.getFirstChild(); operand != null; operand = operand.getNextExpr()) {
-            writeInstruction(operand);
-         }
-
+				 if (!promoteLocal) {
+            for (Instruction operand = _instruction.getFirstChild(); operand != null; operand = operand.getNextExpr())
+               writeInstruction(operand);
+				 }
       } else if (_instruction instanceof AssignToArrayElement) {
 //					write("/* assign to array ele */");
          final AssignToArrayElement arrayAssignmentInstruction = (AssignToArrayElement) _instruction;

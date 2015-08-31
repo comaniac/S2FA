@@ -1,4 +1,4 @@
-MANAGER_DIR=$(BLAZE_HOME)/../manager
+MANAGER_DIR=$(BLAZE_HOME)/manager
 BOOST_DIR=/curr/diwu/tools/boost_1_55_0/install
 PROTOBUF_DIR=/curr/diwu/tools/protobuf-2.5.0/build/install
 MKL_DIR=/curr/diwu/intel_mkl

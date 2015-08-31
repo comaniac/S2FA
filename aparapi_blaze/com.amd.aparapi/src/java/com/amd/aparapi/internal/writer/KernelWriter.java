@@ -952,7 +952,9 @@ public abstract class KernelWriter extends BlockWriter{
       }
 
       ScalaArrayParameter outParam = null;
-      write("__kernel void run(");
+      write("__kernel ");
+			newLine();
+			write("void run(");
       in(); in();
       newLine();
       {
@@ -998,8 +1000,16 @@ public abstract class KernelWriter extends BlockWriter{
       newLine();
       assert(outParam != null);
 
-      writeln("int i = get_global_id(0);");
       writeln("int nthreads = get_global_size(0);");
+
+			if (!useFPGAStyle) {
+	       writeln("int idx = get_global_id(0);");
+			}
+			else {
+				 writeln("int part = (N / nthreads) + 1;");
+				 writeln("int idx = get_global_id(0) * part;");
+				 writeln("int end = (idx + part > N)? N: idx + part;");
+			}
 
       writeln("This thisStruct;");
       writeln("This* this = &thisStruct;");
@@ -1017,12 +1027,15 @@ public abstract class KernelWriter extends BlockWriter{
         }
       }
 
-      write("for (; i < N; i += nthreads) {");
+			if (!useFPGAStyle)
+	       write("for (; idx < N; idx += nthreads) {");
+			else
+				 write("for (; idx < end; idx++) {");
       in();
       newLine();
       {
          if (_entryPoint.requiresHeap()) {
-           write("if (processing_succeeded[i]) continue;");
+           write("if (processing_succeeded[idx]) continue;");
            newLine();
            newLine();
 
@@ -1037,19 +1050,19 @@ public abstract class KernelWriter extends BlockWriter{
 								// It means that we cannot use pointer assignment.
 								// Restriction: Tuple2 doesn't allow Array type.
 								// TODO: Recognize the platform and generate different kernels.
-								writeln("my_" + p.getName() + "->_1 = " + p.getName() + "_1[i];");
-								writeln("my_" + p.getName() + "->_2 = " + p.getName() + "_2[i];");
+								writeln("my_" + p.getName() + "->_1 = " + p.getName() + "_1[idx];");
+								writeln("my_" + p.getName() + "->_2 = " + p.getName() + "_2[idx];");
 /*
                if (p.typeParameterIsObject(0)) {
                    writeln("my_" + p.getName() + "->_1 = " + p.getName() + "_1 + i;");
                } else {
-                   writeln("my_" + p.getName() + "->_1 = " + p.getName() + "_1[i];");
+                   writeln("my_" + p.getName() + "->_1 = " + p.getName() + "_1[idx];");
                }
 
                if (p.typeParameterIsObject(1)) {
                    writeln("my_" + p.getName() + "->_2 = " + p.getName() + "_2 + i;");
                } else {
-                   writeln("my_" + p.getName() + "->_2 = " + p.getName() + "_2[i];");
+                   writeln("my_" + p.getName() + "->_2 = " + p.getName() + "_2[idx];");
                }
 */
              }
@@ -1060,16 +1073,16 @@ public abstract class KernelWriter extends BlockWriter{
            write("__global " + outParam.getType() + "* result = " +
                _entryPoint.getMethodModel().getName() + "(this");
          } else {
-           write(outParam.getName() + "[i] = " + _entryPoint.getMethodModel().getName() + "(this");
+           write(outParam.getName() + "[idx] = " + _entryPoint.getMethodModel().getName() + "(this");
          }
 
          for (ScalaArrayParameter p : params) {
            if (p.getDir() == ScalaParameter.DIRECTION.IN) {
              if (p.getClazz() == null) {
 							 if (p.getName().contains("ary")) // Deserialized access
-								 write(", &" + p.getName() + "[i * " + p.getName() + "_item_length]");
+								 write(", &" + p.getName() + "[idx * " + p.getName() + "_item_length]");
 							 else
-	               write(", " + p.getName() + "[i]");
+	               write(", " + p.getName() + "[idx]");
              } else if (p.getClazz().getName().equals("scala.Tuple2")) {
                write(", my_" + p.getName());
              } else {
@@ -1085,7 +1098,7 @@ public abstract class KernelWriter extends BlockWriter{
            in();
            newLine();
            {
-             write("processing_succeeded[i] = 0;");
+             write("processing_succeeded[idx] = 0;");
              newLine();
              write("*any_failed = 1;");
            }
@@ -1095,7 +1108,7 @@ public abstract class KernelWriter extends BlockWriter{
            in();
            newLine();
            {
-             write("processing_succeeded[i] = 1;");
+             write("processing_succeeded[idx] = 1;");
              newLine();
              if (outParam.getClazz() != null) {
                  if (outParam.getClazz().getName().equals("scala.Tuple2")) {
@@ -1103,28 +1116,28 @@ public abstract class KernelWriter extends BlockWriter{
 										// It means that we cannot use pointer assignment.
 										// Restriction: Tuple2 doesn't allow Array type.
 										// TODO: Recognize the platform and generate different kernels.
-										write(outParam.getName() + "_1[i] = result->_1;");
-										write(outParam.getName() + "_2[i] = result->_2;");
+										write(outParam.getName() + "_1[idx] = result->_1;");
+										write(outParam.getName() + "_2[idx] = result->_2;");
 /*
                      if (outParam.typeParameterIsObject(0)) {
-                         write(outParam.getName() + "_1[i] = *(result->_1);");
+                         write(outParam.getName() + "_1[idx] = *(result->_1);");
                      } else {
-                         write(outParam.getName() + "_1[i] = result->_1;");
+                         write(outParam.getName() + "_1[idx] = result->_1;");
                      }
 
                      newLine();
 
                      if (outParam.typeParameterIsObject(1)) {
-                         write(outParam.getName() + "_2[i] = *(result->_2);");
+                         write(outParam.getName() + "_2[idx] = *(result->_2);");
                      } else {
-                         write(outParam.getName() + "_2[i] = result->_2;");
+                         write(outParam.getName() + "_2[idx] = result->_2;");
                      }
 */
                  } else {
-                     write(outParam.getName() + "[i] = *result;");
+                     write(outParam.getName() + "[idx] = *result;");
                  }
              } else {
-                 write(outParam.getName() + "[i] = result;");
+                 write(outParam.getName() + "[idx] = result;");
              }
            }
            out();
@@ -1139,45 +1152,6 @@ public abstract class KernelWriter extends BlockWriter{
       out();
       newLine();
       writeln("}");
-
-      // final String returnTypeName;
-      // if (_entryPoint.getMethodModel().getReturnType().equals("I")) {
-      //   returnTypeName = "int";
-      // } else {
-      //   throw new RuntimeException("Unsupported entry point return type \"" +
-      //       _entryPoint.getMethodModel() + "\"");
-      // }
-
-      // write(returnTypeName + " " +
-      //     _entryPoint.getMethodModel().getSimpleName() + "(");
-
-      // in();
-
-      // write("int x");
-
-      // for (final String line : argLines) {
-      //    write(", ");
-      //    newLine();
-      //    write(line);
-      // }
-
-      // newLine();
-      // out();
-      // write("){");
-      // in();
-      // newLine();
-      // writeln("This thisStruct;");
-      // writeln("This* this=&thisStruct;");
-      // for (final String line : assigns) {
-      //    write(line);
-      //    writeln(";");
-      // }
-
-      // writeMethodBody(_entryPoint.getMethodModel());
-      // out();
-      // newLine();
-      // writeln("}");
-      // out();
    }
 
    @Override public void writeThisRef() {
@@ -1236,8 +1210,16 @@ public abstract class KernelWriter extends BlockWriter{
 
    public static String applyXilinxPatch(String kernel) {
       String xKernel = kernel.replace("$", "___");
-			// TODO			
 
+			// Add specified work group number
+			xKernel = xKernel.replace("__kernel", "__kernel __attribute__((reqd_work_group_size(512, 1, 1)))");
+
+			// Add loop pipeline to each for-loop
+			xKernel = xKernel.replace("for (", "__attribute__((xcl_pipeline_loop)) for (");
+
+			// Add loop pipeline to each while-loop
+			xKernel = xKernel.replace("while (", "__attribute__((xcl_pipeline_loop)) while (");
+			
 			return xKernel;
    }
 

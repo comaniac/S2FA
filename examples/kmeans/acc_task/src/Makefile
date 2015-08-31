@@ -22,7 +22,8 @@ LINK= -L${MKL_DIR}/lib/intel64 \
 			-lmkl_intel_lp64 -lmkl_core -lmkl_sequential \
 			-lpthread -lm
 
-ACC = KMeans
+ACC = KMeans \
+			KMeans_ocl
 
 OBJS= $(addsuffix .so, $(addprefix ../lib/, $(ACC)))
 

@@ -52,7 +52,7 @@ class KMeans private (
     def runAlgorithm(data: RDD[Array[Double]]): Double = {
       val sc = data.sparkContext
 
-      val initStartTime = System.nanoTime()
+      var initStartTime = System.nanoTime()
       val acc = new BlazeRuntime(sc)
 
       val points: ShellRDD[Array[Double]] = acc.wrap(data)
@@ -69,7 +69,7 @@ class KMeans private (
         }
       }
 
-      val initTimeInSeconds = (System.nanoTime() - initStartTime) / 1e9
+      var initTimeInSeconds = (System.nanoTime() - initStartTime) / 1e9
       logInfo(s"Initialization with $initializationMode took " + "%.3f".format(initTimeInSeconds) +
         " seconds.")
 
@@ -79,7 +79,10 @@ class KMeans private (
       val bcDim = acc.wrap(sc.broadcast(dims))
       while (iteration < maxIterations) {
         val bcCenters = acc.wrap(sc.broadcast(centers))
+        val startTime = System.nanoTime()
         val classifiedCenters = points.map_acc(new KMeansClassified(bcCenters, bcDim))
+        val elapsedTime = (System.nanoTime() - initStartTime) / 1e9
+        println("Execution time " + "%.3f".format(initTimeInSeconds) + " s.")
         val classified = classifiedCenters.zip(points)
 
         val counts = classified.countByKey()
@@ -195,7 +198,7 @@ class KMeansClassified(
   }
 
   def call(in: Array[Double]): Int = { 
-    val centers = b_centers.data
+    val centers_blazeLocal4096 = b_centers.data
     val D: Int = b_D.data
 
     // Blaze CodeGen: Cannot access array length of local array.
@@ -212,8 +215,8 @@ class KMeansClassified(
 
       var j: Int = 0
       while (j < D) {
-        dist(i) = dist(i) + 
-          (centers(i * D + j) - in(j)) * (centers(i * D + j) - in(j))
+        val dist_root = centers_blazeLocal4096(i * D + j) - in(j)
+        dist(i) = dist(i) + dist_root * dist_root
         j += 1
       }      
       i += 1
