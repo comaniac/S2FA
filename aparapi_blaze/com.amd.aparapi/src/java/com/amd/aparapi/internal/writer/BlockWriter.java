@@ -366,10 +366,13 @@ public abstract class BlockWriter{
 			LocalVariableTableIndexAccessor var = (LocalVariableTableIndexAccessor) parent;
 			String varName = var.getLocalVariableInfo().getVariableName();
 
-			// Get array length from i_const (child instruction)
+			// Get array length from i_const/push (child instruction)
 			Instruction child = _instruction.getFirstChild();
-			assert(child instanceof BytecodeEncodedConstant);
-			int length = ((BytecodeEncodedConstant<Integer>) child).getValue();
+			int length = 0;
+			if (child instanceof BytecodeEncodedConstant)
+				length = ((BytecodeEncodedConstant<Integer>) child).getValue();
+			else if (child instanceof ImmediateConstant)
+				length = ((ImmediateConstant<Integer>) child).getValue();
 
 			deleteCurrentLine();
 			write(typeName + " " + varName + "[" + length + "]");
@@ -438,13 +441,20 @@ public abstract class BlockWriter{
 				 final String varName = localVariableInfo.getVariableName();
 				 boolean promoteLocal = false;
 				 int maxLength = 0;
+				 boolean fixedLength = false;
 
          if (assignToLocalVariable.isDeclaration()) {
             final String descriptor = localVariableInfo.getVariableDescriptor();
  				    Instruction child = _instruction.getFirstChild();
 
+						// Use local variable based on user hint
 						if (useFPGAStyle && varName.contains("blazeLocal")) {
-							 maxLength = Integer.parseInt(varName.substring(varName.indexOf("blazeLocal") + 10));
+							 if (varName.contains("Max"))
+								  maxLength = Integer.parseInt(varName.substring(varName.indexOf("Max") + 3));
+							 else {
+							 	  maxLength = Integer.parseInt(varName.substring(varName.indexOf("blazeLocal") + 10));
+									fixedLength = true;
+							 }
 					  	 while (!(child instanceof I_INVOKEVIRTUAL))
 						      child = child.getFirstChild();
 
@@ -487,8 +497,13 @@ public abstract class BlockWriter{
 							 write(varName + "[" + maxLength + "];");
 							 newLine();
 							 write("for (int localAryCpy = 0; localAryCpy < ");
-					     writeBroadcast(methodCall, methodEntry);
-							 write(arrayLengthMangleSuffix + "; localAryCpy++)");
+							 if (!fixedLength) {
+					     	  writeBroadcast(methodCall, methodEntry);
+							 	  write(arrayLengthMangleSuffix);
+							 }
+							 else
+								  write("" + maxLength);
+							 write("; localAryCpy++)");
 							 in();
 							 newLine();
 							 write(varName + "[localAryCpy] = ");

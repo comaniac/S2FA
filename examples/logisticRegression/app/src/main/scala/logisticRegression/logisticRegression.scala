@@ -45,19 +45,27 @@ class LogisticRegression(b_w: BlazeBroadcast[Array[Float]])
     val _L: Int = 10
     val _D: Int = 784
 
-    val grad = new Array[Float](_L * _D)
-    val dot = new Array[Float](1)
-    val w = b_w.data
+//    val grad = new Array[Float](_L * (_D + 1))
+    val grad = new Array[Float](7850)
+    val w_blazeLocal7850 = b_w.data
 
-    for (i <- 0 until _L) {
-      dot(0) = 0.0f
-      for (j <- 0 until _D)
-        dot(0) = dot(0) + w(i * _D + j) * data(j + _L)
+    var i = 0
+    while (i < _L) {
+      var dot = 0.0f
+      var j = 0
+      while (j < _D) {
+        dot = dot + w_blazeLocal7850(i * _D + j) * data(j + _L)
+        j += 1
+      }
       
-      val c: Float = (1.0f / (1.0f + Math.exp(-data(i) * dot(0)).toFloat) - 1.0f) * data(i)
+      val c: Float = (1.0f / (1.0f + exp(-data(i) * dot).toFloat) - 1.0f) * data(i)
 
-      for (j <- 0 until _D)
+      j = 0
+      while (j < _D) {
         grad(i * _D + j) = grad(i * _D + j) + c * data(j + _L)
+        j += 1
+      }
+      i += 1
     }
     grad
   }

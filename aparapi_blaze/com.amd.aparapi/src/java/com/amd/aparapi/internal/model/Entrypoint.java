@@ -931,7 +931,8 @@ public class Entrypoint implements Cloneable {
                }
 							 else if (instruction instanceof I_NEWARRAY) {
 									Instruction child = instruction.getFirstChild();
-									if (!(child instanceof BytecodeEncodedConstant))
+									if (!(child instanceof BytecodeEncodedConstant) && // i_const
+											!(child instanceof ImmediateConstant)) // push
 										throw new ClassParseException(ClassParseException.TYPE.NEWDYNAMICARRAY);
 							 }
             }

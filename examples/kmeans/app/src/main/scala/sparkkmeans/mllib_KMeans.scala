@@ -198,7 +198,7 @@ class KMeansClassified(
   }
 
   def call(in: Array[Double]): Int = { 
-    val centers_blazeLocal4096 = b_centers.data
+    val centers_blazeLocalMax4096 = b_centers.data
     val D: Int = b_D.data
 
     // Blaze CodeGen: Cannot access array length of local array.
@@ -215,7 +215,7 @@ class KMeansClassified(
 
       var j: Int = 0
       while (j < D) {
-        val dist_root = centers_blazeLocal4096(i * D + j) - in(j)
+        val dist_root = centers_blazeLocalMax4096(i * D + j) - in(j)
         dist(i) = dist(i) + dist_root * dist_root
         j += 1
       }      

@@ -92,9 +92,19 @@ public abstract class KernelWriter extends BlockWriter{
 
    private Set<MethodModel> mayFailHeapAllocation = null;
 
+	 public final static Set<String> scalaMapped = new HashSet<String>();
+	 {
+      scalaMapped.add("scala/math/package$.sqrt(D)D");
+			scalaMapped.add("scala/math/package$.pow(D)D");
+			scalaMapped.add("scala/math/package$.exp(D)D");
+	 }
+
+
 	 public final static Map<String, String[]> XilinxMethodMap = new HashMap<String, String[]>();
 	 {
 			XilinxMethodMap.put("sqrt", new String[]{"float"});
+			XilinxMethodMap.put("pow", new String[]{"float", "float"});
+			XilinxMethodMap.put("exp", new String[]{"float"});
 	 }
 
    public final static Map<String, String> javaToCLIdentifierMap = new HashMap<String, String>();
@@ -413,10 +423,6 @@ public abstract class KernelWriter extends BlockWriter{
          if (intrinsicMapping == null) {
             assert entryPoint != null : "entryPoint should not be null";
             boolean isMapped = Kernel.isMappedMethod(_methodEntry);
-
-            Set<String> scalaMapped = new HashSet<String>();
-            scalaMapped.add("scala/math/package$.sqrt(D)D");
-
             boolean isScalaMapped = scalaMapped.contains(_methodEntry.toString());
 
             if (m != null) {
@@ -763,22 +769,25 @@ public abstract class KernelWriter extends BlockWriter{
       }
 
       // Heap allocation
-      write("static __global void *alloc(__global void *heap, volatile __global uint *free_index, unsigned int heap_size, int nbytes, int *alloc_failed) {");
-      in();
-      newLine();
-      {
-        write("__global unsigned char *cheap = (__global unsigned char *)heap;");
-        newLine();
-        write("uint offset = atomic_add(free_index, nbytes);");
-        newLine();
-        write("if (offset + nbytes > heap_size) { *alloc_failed = 1; return 0x0; }");
-        newLine();
-        write("else return (__global void *)(cheap + offset);");
-      }
-      out();
-      newLine();
-      write("}");
-      newLine();
+			if (!useFPGAStyle) {
+	       write("static __global void *alloc(__global void *heap,");
+				 write(" volatile __global uint *free_index, unsigned int heap_size, int nbytes, int *alloc_failed) {");
+      	 in();
+      	 newLine();
+
+         write("__global unsigned char *cheap = (__global unsigned char *)heap;");
+         newLine();
+         write("uint offset = atomic_add(free_index, nbytes);");
+         newLine();
+         write("if (offset + nbytes > heap_size) { *alloc_failed = 1; return 0x0; }");
+         newLine();
+         write("else return (__global void *)(cheap + offset);");
+
+	       out();
+   	     newLine();
+      	 write("}");
+      	 newLine();
+			}
 
       // Emit structs for oop transformation accessors
       List<String> lexicalOrdering = _entryPoint.getLexicalOrderingOfObjectClasses();
@@ -1073,7 +1082,11 @@ public abstract class KernelWriter extends BlockWriter{
            write("__global " + outParam.getType() + "* result = " +
                _entryPoint.getMethodModel().getName() + "(this");
          } else {
-           write(outParam.getName() + "[idx] = " + _entryPoint.getMethodModel().getName() + "(this");
+					 if (outParam.getName().contains("ary"))
+						  write(outParam.getName() + "[idx * " + outParam.getName() + "_item_length] = ");
+					 else
+              write(outParam.getName() + "[idx] = ");
+					 write(_entryPoint.getMethodModel().getName() + "(this");
          }
 
          for (ScalaArrayParameter p : params) {
