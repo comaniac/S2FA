@@ -492,7 +492,7 @@ public abstract class BlockWriter{
 						if (promoteLocal) {
 	             final MethodCall methodCall = (MethodCall) child;
   	           final MethodEntry methodEntry = methodCall.getConstantPoolMethodEntry();
-				 	     assert (methodEntry.toString().contains("BlazeBroadcast.data"));
+				 	     assert (methodEntry.toString().contains("BlazeBroadcast.value"));
 
 							 write(varName + "[" + maxLength + "];");
 							 newLine();
@@ -748,7 +748,7 @@ public abstract class BlockWriter{
          final MethodEntry methodEntry = methodCall.getConstantPoolMethodEntry();
 
 				 // Issue #34: Ignore broadcast.data method. This should be an argument.
-				 if (!methodEntry.toString().contains("BlazeBroadcast.data"))
+				 if (!methodEntry.toString().contains("BlazeBroadcast.value"))
 					 writeCheck = writeMethod(methodCall, methodEntry);
 				 else {
 					 writeBroadcast(methodCall, methodEntry);

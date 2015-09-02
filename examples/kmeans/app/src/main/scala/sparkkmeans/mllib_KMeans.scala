@@ -87,7 +87,7 @@ class KMeans private (
 
         val counts = classified.countByKey()
         val sums = classified.reduceByKey((a, b) => {
-          val ary = new Array[Double](bcDim.data)
+          val ary = new Array[Double](bcDim.value)
           (0 until dims).foreach ( ii => {
             ary(ii) = a(ii) + b(ii)
           })
@@ -198,11 +198,11 @@ class KMeansClassified(
   }
 
   def call(in: Array[Double]): Int = { 
-    val centers_blazeLocalMax4096 = b_centers.data
-    val D: Int = b_D.data
+    val centers_blazeLocalMax4096 = b_centers.value
+    val D: Int = b_D.value
 
     // Blaze CodeGen: Cannot access array length of local array.
-    val K: Int = (b_centers.data).length / D
+    val K: Int = (b_centers.value).length / D
 
     var closest_center = -1
     var closest_center_dist = -1.0

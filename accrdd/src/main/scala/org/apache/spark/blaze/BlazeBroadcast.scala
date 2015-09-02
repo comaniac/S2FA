@@ -35,7 +35,7 @@ import scala.reflect.ClassTag
   */
 class BlazeBroadcast[T: ClassTag](appId: Int, bd: Broadcast[T]) extends java.io.Serializable {
   var brdcst_id: Long = Util.getBlockID(appId, bd.id.asInstanceOf[Int])
-  lazy val data = bd.value
+  lazy val value = bd.value
   var length: Int = 0
   var size: Int = 0
 }

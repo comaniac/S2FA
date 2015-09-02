@@ -158,7 +158,7 @@ class AccRDD[U: ClassTag, T: ClassTag](appId: Int, prev: RDD[T], acc: Accelerato
         for (i <- 0 until brdcstId.length) {
           if (!revMsg.getData(i + numBlock).getCached()) {
             requireData = true
-            val bcData = acc.getArg(i).get.data
+            val bcData = acc.getArg(i).get.value
             if (bcData.getClass.isArray) { // Serialize array and use memory mapped file to send the data.
               val arrayData = bcData.asInstanceOf[Array[_]]
               val mappedFileInfo = Util.serializePartition(appId, arrayData, brdcstId(i))
