@@ -18,7 +18,6 @@
 package org.apache.spark.blaze
 
 import java.io._
-import java.util.LinkedList
 import java.util.ArrayList     
 import java.nio.ByteBuffer     
 import java.nio.ByteOrder      
@@ -32,18 +31,6 @@ import org.apache.spark.rdd._
 import org.apache.spark.storage._
 import org.apache.spark.scheduler._
 
-import com.amd.aparapi.internal.model.ClassModel
-import com.amd.aparapi.internal.model.Tuple2ClassModel
-import com.amd.aparapi.internal.model.HardCodedClassModels
-import com.amd.aparapi.internal.model.HardCodedClassModels.ShouldNotCallMatcher
-import com.amd.aparapi.internal.model.Entrypoint
-import com.amd.aparapi.internal.writer.KernelWriter
-import com.amd.aparapi.internal.writer.KernelWriter.WriterAndKernel
-import com.amd.aparapi.internal.writer.HostWriter
-import com.amd.aparapi.internal.writer.HostWriter.WriterAndHost
-import com.amd.aparapi.internal.writer.BlockWriter.ScalaArrayParameter
-import com.amd.aparapi.internal.writer.BlockWriter.ScalaParameter.DIRECTION
-
 /**
   * A RDD that uses accelerator to accelerate the computation. The behavior of AccRDD is 
   * similar to Spark partition RDD which performs the computation for a whole partition at a
@@ -55,8 +42,6 @@ import com.amd.aparapi.internal.writer.BlockWriter.ScalaParameter.DIRECTION
   */
 class AccRDD[U: ClassTag, T: ClassTag](appId: Int, prev: RDD[T], acc: Accelerator[T, U]) 
   extends RDD[U](prev) with Logging {
-
-  var entryPoint : Entrypoint = null
 
   def getPrevRDD() = prev
   def getRDD() = this
@@ -76,9 +61,9 @@ class AccRDD[U: ClassTag, T: ClassTag](appId: Int, prev: RDD[T], acc: Accelerato
 
     val isCached = inMemoryCheck(split)
 
-    val outputIter = new Iterator[U] {
+    val resultIter = new Iterator[U] {
+      var outputIter: Iterator[U] = null
       var outputAry: Array[U] = null // Length is unknown before reading the input
-      var idx: Int = 0
       var dataLength: Int = -1
       val typeSize: Int = Util.getTypeSizeByRDD(getRDD())
 
@@ -109,12 +94,8 @@ class AccRDD[U: ClassTag, T: ClassTag](appId: Int, prev: RDD[T], acc: Accelerato
         elapseTime = System.nanoTime - startTime
         logInfo("Partition " + split.index + " communication latency: " + elapseTime + " ns")
 
-        if (revMsg.getType() != AccMessage.MsgType.ACCGRANT) {
-          // TODO: Manager should return an error code
-          if (split.index == 0) // Only let one worker to generate the kernel
-            genOpenCLKernel(acc.id)
+        if (revMsg.getType() != AccMessage.MsgType.ACCGRANT)
           throw new RuntimeException("Request reject.")
-        }
 
         startTime = System.nanoTime
 
@@ -158,7 +139,7 @@ class AccRDD[U: ClassTag, T: ClassTag](appId: Int, prev: RDD[T], acc: Accelerato
         for (i <- 0 until brdcstId.length) {
           if (!revMsg.getData(i + numBlock).getCached()) {
             requireData = true
-            val bcData = acc.getArg(i).get.value
+            val bcData = acc.getArg(i).get.data
             if (bcData.getClass.isArray) { // Serialize array and use memory mapped file to send the data.
               val arrayData = bcData.asInstanceOf[Array[_]]
               val mappedFileInfo = Util.serializePartition(appId, arrayData, brdcstId(i))
@@ -193,7 +174,7 @@ class AccRDD[U: ClassTag, T: ClassTag](appId: Int, prev: RDD[T], acc: Accelerato
         logInfo(Util.logMsg(finalRevMsg))
 
         if (finalRevMsg.getType() == AccMessage.MsgType.ACCFINISH) {
-          val numItems = Array(0)
+          var numItems: Int = 0
           val blkLength = new Array[Int](numBlock)
           val itemLength = new Array[Int](numBlock)
 
@@ -206,17 +187,17 @@ class AccRDD[U: ClassTag, T: ClassTag](appId: Int, prev: RDD[T], acc: Accelerato
             else {
               itemLength(i) = 1
             }
-            numItems(0) += blkLength(i) / itemLength(i)
+            numItems += blkLength(i) / itemLength(i)
           }
-          if (numItems(0) == 0)
+          if (numItems == 0)
             throw new RuntimeException("Manager returns an invalid data length")
 
-          outputAry = new Array[U](numItems(0))
+          outputAry = new Array[U](numItems)
 
           startTime = System.nanoTime
           
           // Second read: Read outputs from memory mapped file.
-          idx = 0
+          var idx = 0
           for (i <- 0 until numBlock) { // Concatenate all blocks (currently only 1 block)
 
             Util.readMemoryMappedFile(
@@ -227,7 +208,8 @@ class AccRDD[U: ClassTag, T: ClassTag](appId: Int, prev: RDD[T], acc: Accelerato
 
             idx = idx + blkLength(i) / itemLength(i)
           }
-          idx = 0
+          outputIter = outputAry.iterator
+
           elapseTime = System.nanoTime - startTime
           logInfo("Partition " + split.index + " reads memory mapped file: " + elapseTime + " ns")
         }
@@ -239,19 +221,18 @@ class AccRDD[U: ClassTag, T: ClassTag](appId: Int, prev: RDD[T], acc: Accelerato
           val sw = new StringWriter
           e.printStackTrace(new PrintWriter(sw))
           logInfo("Partition " + split.index + " fails to be executed on accelerator: " + sw.toString)
-          outputAry = computeOnJTP(split, context)
+          outputIter = computeOnJTP(split, context)
       }
 
       def hasNext(): Boolean = {
-        idx < outputAry.length
+        outputIter.hasNext
       }
 
       def next(): U = {
-        idx = idx + 1
-        outputAry(idx - 1)
+        outputIter.next
       }
     }
-    outputIter
+    resultIter
   }
 
   /**
@@ -263,6 +244,17 @@ class AccRDD[U: ClassTag, T: ClassTag](appId: Int, prev: RDD[T], acc: Accelerato
     */
   def map_acc[V: ClassTag](clazz: Accelerator[U, V]): AccRDD[V, U] = {
     new AccRDD(appId, this, clazz)
+  }
+
+  /**
+    * A method for the developer to execute the computation on the accelerator.
+    * The original Spark API `mapPartition` is still available.
+    *
+    * @param clazz Extended accelerator class.
+    * @return A transformed AccMapPartitionsRDD.
+    */
+  def mapPartitions_acc[V: ClassTag](clazz: Accelerator[U, V]): AccRDD[V, U] = {
+    new AccMapPartitionsRDD(appId, this.asInstanceOf[RDD[U]], clazz)
   }
 
   /**
@@ -292,7 +284,7 @@ class AccRDD[U: ClassTag, T: ClassTag](appId: Int, prev: RDD[T], acc: Accelerato
     * @param context TaskContext of Spark.
     * @return The output array
     */
-  def computeOnJTP(split: Partition, context: TaskContext): Array[U] = {
+  def computeOnJTP(split: Partition, context: TaskContext): Iterator[U] = {
     logInfo("Compute partition " + split.index + " using CPU")
     val inputAry: Array[T] = (firstParent[T].iterator(split, context)).toArray
     val dataLength = inputAry.length
@@ -302,61 +294,7 @@ class AccRDD[U: ClassTag, T: ClassTag](appId: Int, prev: RDD[T], acc: Accelerato
       outputAry(j) = acc.call(inputAry(j).asInstanceOf[T])
       j = j + 1
     }
-    outputAry
-  }
-
-  def genOpenCLKernel(id: String) = {
-    System.setProperty("com.amd.aparapi.enable.NEW", "true")
-    val kernelPath : String = "/tmp/blaze_kernel_" + id + ".cl" 
-    // TODO:  1. Should be a shared path e.g. HDFS
-    //        2. Should check if the kernel is existed in advance
-
-    val classModel : ClassModel = ClassModel.createClassModel(acc.getClass, null, new ShouldNotCallMatcher())
-    val hardCodedClassModels : HardCodedClassModels = new HardCodedClassModels()
-    val method = classModel.getPrimitiveCallMethod
-
-    try {
-      if (method == null)
-        throw new RuntimeException("[CodeGen] Cannot find available call method.")
-      val descriptor : String = method.getDescriptor
-
-      // Parse input type: Expect 1 input argument for map function.
-      val paramsWithDim = CodeGenUtil.getParamObjsFromMethodDescriptor(descriptor, 1)
-      if (paramsWithDim._2 == 1)
-        logWarning("[CodeGen] Input argument is 1-D array. This may cause huge overhead since" +
-          " data will be serialized during the runtime.")
-      else if (paramsWithDim._2 > 1) {
-        throw new RuntimeException("[CodeGen] Multi-dimensional array cannot be an input argument." +
-          " Stop generating OpenCL kernel.")
-      }
-      val params : LinkedList[ScalaArrayParameter] = paramsWithDim._1
-
-      // Parse output type.
-      val returnWithDim = CodeGenUtil.getReturnObjsFromMethodDescriptor(descriptor)
-      if (returnWithDim._2 == 1)
-        logWarning("[CodeGen] Output argument is 1-D array. This may cause huge overhead since" +
-          " data will be deserialized during the runtime.")
-      else if (returnWithDim._2 > 1) {
-        throw new RuntimeException("[CodeGen] Multi-dimensional array cannot be an output argument." +
-          " Stop generating OpenCL kernel.")
-      }
-      params.add(returnWithDim._1)
-
-      if (entryPoint == null) {
-        val fun: T => U = acc.call
-        entryPoint = classModel.getEntrypoint("call", descriptor, fun, params, hardCodedClassModels)
-        val writerAndKernel = KernelWriter.writeToString(entryPoint, params)
-        val openCL = writerAndKernel.kernel
-        val kernelFile = new PrintWriter(new File(kernelPath))
-        kernelFile.write(KernelWriter.applyXilinxPatch(openCL))
-        kernelFile.close
-      }
-    } catch {
-      case e: Throwable =>
-        val sw = new StringWriter
-        e.printStackTrace(new PrintWriter(sw))
-        logWarning("OpenCL kernel generated failed: " + sw.toString)
-    }
+    outputAry.iterator
   }
 }
 
