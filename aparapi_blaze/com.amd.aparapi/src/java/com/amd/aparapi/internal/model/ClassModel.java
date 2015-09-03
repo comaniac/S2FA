@@ -2723,7 +2723,11 @@ public abstract class ClassModel {
            String returnType = descriptor.substring(descriptor.lastIndexOf(')') + 1);
 
 					 // Correspond to Blaze programming model: Accelerator.call
-           if (name.equals("call") && !returnType.equals("Ljava/lang/Object;")) {
+					 // FIXME: Now we just skip MapPartition (Iterator).
+           if (name.equals("call") && 
+							 !returnType.equals("Ljava/lang/Object;") &&
+							 !returnType.contains("Lscala/collection/Iterator")) {
+
               if (result != null) {
                   // We expect only one match per Function in Scala
                   throw new RuntimeException("Multiple matches");

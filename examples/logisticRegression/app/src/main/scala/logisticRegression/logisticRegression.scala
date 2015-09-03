@@ -41,7 +41,7 @@ class LogisticRegression(b_w: BlazeBroadcast[Array[Float]])
 
   def getArgNum(): Int = 1
 
-  def call(data: Array[Float]): Array[Float] = {
+  override def call(data: Array[Float]): Array[Float] = {
     val _L: Int = 10
     val _D: Int = 784
 

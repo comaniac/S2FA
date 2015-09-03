@@ -18,6 +18,7 @@
 package org.apache.spark.blaze
 
 import java.io._
+import java.util.LinkedList
 import java.util.ArrayList     
 import java.nio.ByteBuffer     
 import java.nio.ByteOrder      
@@ -31,6 +32,18 @@ import org.apache.spark.rdd._
 import org.apache.spark.storage._
 import org.apache.spark.scheduler._
 
+import com.amd.aparapi.internal.model.ClassModel
+import com.amd.aparapi.internal.model.Tuple2ClassModel
+import com.amd.aparapi.internal.model.HardCodedClassModels
+import com.amd.aparapi.internal.model.HardCodedClassModels.ShouldNotCallMatcher
+import com.amd.aparapi.internal.model.Entrypoint
+import com.amd.aparapi.internal.writer.KernelWriter
+import com.amd.aparapi.internal.writer.KernelWriter.WriterAndKernel
+import com.amd.aparapi.internal.writer.HostWriter
+import com.amd.aparapi.internal.writer.HostWriter.WriterAndHost
+import com.amd.aparapi.internal.writer.BlockWriter.ScalaArrayParameter
+import com.amd.aparapi.internal.writer.BlockWriter.ScalaParameter.DIRECTION
+
 /**
   * A RDD that uses accelerator to accelerate the computation. The behavior of AccRDD is 
   * similar to Spark partition RDD which performs the computation for a whole partition at a
@@ -42,6 +55,8 @@ import org.apache.spark.scheduler._
   */
 class AccRDD[U: ClassTag, T: ClassTag](appId: Int, prev: RDD[T], acc: Accelerator[T, U]) 
   extends RDD[U](prev) with Logging {
+
+  var entryPoint : Entrypoint = null
 
   def getPrevRDD() = prev
   def getRDD() = this
@@ -94,8 +109,12 @@ class AccRDD[U: ClassTag, T: ClassTag](appId: Int, prev: RDD[T], acc: Accelerato
         elapseTime = System.nanoTime - startTime
         logInfo("Partition " + split.index + " communication latency: " + elapseTime + " ns")
 
-        if (revMsg.getType() != AccMessage.MsgType.ACCGRANT)
+        if (revMsg.getType() != AccMessage.MsgType.ACCGRANT) {
+          // TODO: Manager should return an error code
+          if (split.index == 0) // Only let one worker to generate the kernel
+            genOpenCLKernel(acc.id)
           throw new RuntimeException("Request reject.")
+        }
 
         startTime = System.nanoTime
 
@@ -139,7 +158,7 @@ class AccRDD[U: ClassTag, T: ClassTag](appId: Int, prev: RDD[T], acc: Accelerato
         for (i <- 0 until brdcstId.length) {
           if (!revMsg.getData(i + numBlock).getCached()) {
             requireData = true
-            val bcData = acc.getArg(i).get.data
+            val bcData = acc.getArg(i).get.value
             if (bcData.getClass.isArray) { // Serialize array and use memory mapped file to send the data.
               val arrayData = bcData.asInstanceOf[Array[_]]
               val mappedFileInfo = Util.serializePartition(appId, arrayData, brdcstId(i))
@@ -295,6 +314,60 @@ class AccRDD[U: ClassTag, T: ClassTag](appId: Int, prev: RDD[T], acc: Accelerato
       j = j + 1
     }
     outputAry.iterator
+  }
+
+  def genOpenCLKernel(id: String) = {
+    System.setProperty("com.amd.aparapi.enable.NEW", "true")
+    val kernelPath : String = "/tmp/blaze_kernel_" + id + ".cl" 
+    // TODO:  1. Should be a shared path e.g. HDFS
+    //        2. Should check if the kernel is existed in advance
+
+    val classModel : ClassModel = ClassModel.createClassModel(acc.getClass, null, new ShouldNotCallMatcher())
+    val hardCodedClassModels : HardCodedClassModels = new HardCodedClassModels()
+    val method = classModel.getPrimitiveCallMethod
+
+    try {
+      if (method == null)
+        throw new RuntimeException("[CodeGen] Cannot find available call method.")
+      val descriptor : String = method.getDescriptor
+
+      // Parse input type: Expect 1 input argument for map function.
+      val paramsWithDim = CodeGenUtil.getParamObjsFromMethodDescriptor(descriptor, 1)
+      if (paramsWithDim._2 == 1)
+        logWarning("[CodeGen] Input argument is 1-D array. This may cause huge overhead since" +
+          " data will be serialized during the runtime.")
+      else if (paramsWithDim._2 > 1) {
+        throw new RuntimeException("[CodeGen] Multi-dimensional array cannot be an input argument." +
+          " Stop generating OpenCL kernel.")
+      }
+      val params : LinkedList[ScalaArrayParameter] = paramsWithDim._1
+
+      // Parse output type.
+      val returnWithDim = CodeGenUtil.getReturnObjsFromMethodDescriptor(descriptor)
+      if (returnWithDim._2 == 1)
+        logWarning("[CodeGen] Output argument is 1-D array. This may cause huge overhead since" +
+          " data will be deserialized during the runtime.")
+      else if (returnWithDim._2 > 1) {
+        throw new RuntimeException("[CodeGen] Multi-dimensional array cannot be an output argument." +
+          " Stop generating OpenCL kernel.")
+      }
+      params.add(returnWithDim._1)
+
+      if (entryPoint == null) {
+        val fun: T => U = acc.call
+        entryPoint = classModel.getEntrypoint("call", descriptor, fun, params, hardCodedClassModels)
+        val writerAndKernel = KernelWriter.writeToString(entryPoint, params)
+        val openCL = writerAndKernel.kernel
+        val kernelFile = new PrintWriter(new File(kernelPath))
+        kernelFile.write(KernelWriter.applyXilinxPatch(openCL))
+        kernelFile.close
+      }
+    } catch {
+      case e: Throwable =>
+        val sw = new StringWriter
+        e.printStackTrace(new PrintWriter(sw))
+        logWarning("OpenCL kernel generated failed: " + sw.toString)
+    }
   }
 }
 
