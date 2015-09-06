@@ -655,7 +655,6 @@ public abstract class KernelWriter extends BlockWriter{
       entryPoint = _entryPoint;
 
       for (final ClassModelField field : _entryPoint.getReferencedClassModelFields()) {
-         // Field field = _entryPoint.getClassModel().getField(f.getName());
          final StringBuilder thisStructLine = new StringBuilder();
          final StringBuilder argLine = new StringBuilder();
          final StringBuilder assignLine = new StringBuilder();
@@ -753,7 +752,7 @@ public abstract class KernelWriter extends BlockWriter{
          in();
          {
             newLine();
-						// TODO comanaic Issue #2, Xilinx doesn't support atomic functions.
+						// FIXME comanaic Issue #2, Xilinx doesn't support atomic functions.
             write("return atomic_add(&_arr[_index], _delta);");
             out();
             newLine();

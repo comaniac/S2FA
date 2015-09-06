@@ -2723,11 +2723,31 @@ public abstract class ClassModel {
            String returnType = descriptor.substring(descriptor.lastIndexOf(')') + 1);
 
 					 // Correspond to Blaze programming model: Accelerator.call
-					 // FIXME: Now we just skip MapPartition (Iterator).
+					 // Find partition
            if (name.equals("call") && 
 							 !returnType.equals("Ljava/lang/Object;") &&
 							 !returnType.contains("Lscala/collection/Iterator")) {
 
+              if (result != null) {
+                  // We expect only one match per Function in Scala
+                  throw new RuntimeException("Multiple matches");
+              }
+              result = method;
+           }
+       }
+       return result;
+   }
+
+   public ClassModelMethod getPrimitiveCallPartitionsMethod() {
+       ClassModelMethod result = null;
+       for (ClassModelMethod method : methods) {
+           String name = method.getName();
+           String descriptor = method.getDescriptor();
+           String returnType = descriptor.substring(descriptor.lastIndexOf(')') + 1);
+
+					 // Correspond to Blaze programming model: Accelerator.call
+					 // Find MapPartition (Iterator)
+           if (name.equals("call") && returnType.contains("Lscala/collection/Iterator")) {
               if (result != null) {
                   // We expect only one match per Function in Scala
                   throw new RuntimeException("Multiple matches");

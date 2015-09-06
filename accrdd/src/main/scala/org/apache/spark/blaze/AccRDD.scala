@@ -111,8 +111,10 @@ class AccRDD[U: ClassTag, T: ClassTag](appId: Int, prev: RDD[T], acc: Accelerato
 
         if (revMsg.getType() != AccMessage.MsgType.ACCGRANT) {
           // TODO: Manager should return an error code
-          if (split.index == 0) // Only let one worker to generate the kernel
+          if (split.index == 0) { // Only let one worker to generate the kernel
+            logInfo("Partition 0 is generating the OpenCL kernel")
             genOpenCLKernel(acc.id)
+          }
           throw new RuntimeException("Request reject.")
         }
 
@@ -324,11 +326,16 @@ class AccRDD[U: ClassTag, T: ClassTag](appId: Int, prev: RDD[T], acc: Accelerato
 
     val classModel : ClassModel = ClassModel.createClassModel(acc.getClass, null, new ShouldNotCallMatcher())
     val hardCodedClassModels : HardCodedClassModels = new HardCodedClassModels()
-    val method = classModel.getPrimitiveCallMethod
+    var isMapPartitions: Boolean = if (this.getClass.getName.contains("AccRDD")) false else true
+    var method = if (!isMapPartitions) classModel.getPrimitiveCallMethod else classModel.getPrimitiveCallPartitionsMethod
 
     try {
+      if (isMapPartitions && method != null) { // FIXME
+        throw new RuntimeException("Currently we don't support MapPartitions")
+      }
+
       if (method == null)
-        throw new RuntimeException("[CodeGen] Cannot find available call method.")
+        throw new RuntimeException("Cannot find available call method.")
       val descriptor : String = method.getDescriptor
 
       // Parse input type: Expect 1 input argument for map function.
@@ -337,7 +344,7 @@ class AccRDD[U: ClassTag, T: ClassTag](appId: Int, prev: RDD[T], acc: Accelerato
         logWarning("[CodeGen] Input argument is 1-D array. This may cause huge overhead since" +
           " data will be serialized during the runtime.")
       else if (paramsWithDim._2 > 1) {
-        throw new RuntimeException("[CodeGen] Multi-dimensional array cannot be an input argument." +
+        throw new RuntimeException("Multi-dimensional array cannot be an input argument." +
           " Stop generating OpenCL kernel.")
       }
       val params : LinkedList[ScalaArrayParameter] = paramsWithDim._1
@@ -348,7 +355,7 @@ class AccRDD[U: ClassTag, T: ClassTag](appId: Int, prev: RDD[T], acc: Accelerato
         logWarning("[CodeGen] Output argument is 1-D array. This may cause huge overhead since" +
           " data will be deserialized during the runtime.")
       else if (returnWithDim._2 > 1) {
-        throw new RuntimeException("[CodeGen] Multi-dimensional array cannot be an output argument." +
+        throw new RuntimeException("Multi-dimensional array cannot be an output argument." +
           " Stop generating OpenCL kernel.")
       }
       params.add(returnWithDim._1)
@@ -366,7 +373,7 @@ class AccRDD[U: ClassTag, T: ClassTag](appId: Int, prev: RDD[T], acc: Accelerato
       case e: Throwable =>
         val sw = new StringWriter
         e.printStackTrace(new PrintWriter(sw))
-        logWarning("OpenCL kernel generated failed: " + sw.toString)
+        logWarning("[CodeGen] OpenCL kernel generated failed: " + sw.toString)
     }
   }
 }

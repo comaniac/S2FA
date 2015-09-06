@@ -197,7 +197,7 @@ class KMeansClassified(
       None
   }
 
-  def call(in: Array[Double]): Int = { 
+  override def call(in: Array[Double]): Int = { 
     val centers_blazeLocalMax4096 = b_centers.value
     val D: Int = b_D.value
 
@@ -216,7 +216,10 @@ class KMeansClassified(
       var j: Int = 0
       while (j < D) {
         val dist_root = centers_blazeLocalMax4096(i * D + j) - in(j)
-        dist(i) = dist(i) + dist_root * dist_root
+        if (dist_root > 0)
+          dist(i) = dist(i) + dist_root
+        else
+          dist(i) = dist(i) - dist_root
         j += 1
       }      
       i += 1
