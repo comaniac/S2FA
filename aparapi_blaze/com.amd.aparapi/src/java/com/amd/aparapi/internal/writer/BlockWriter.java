@@ -422,7 +422,9 @@ public abstract class BlockWriter{
       boolean writeCheck = false;
 //			write("/*" + _instruction.toString() + "*/");
 
-      if (_instruction instanceof CompositeIfElseInstruction) {
+      if (_instruction.getByteCode().equals(ByteCode.NONE)) {
+         // do nothing
+      } else if (_instruction instanceof CompositeIfElseInstruction) {
          write("(");
          final Instruction lhs = writeConditional(((CompositeInstruction) _instruction).getBranchSet());
          write(")?");
@@ -856,9 +858,6 @@ public abstract class BlockWriter{
                write("--");
             }
          }
-
-      } else if (_instruction.getByteCode().equals(ByteCode.NONE)) {
-         // we are done
       } else if (_instruction instanceof Branch) {
          throw new CodeGenException(String.format("%s -> %04d", _instruction.getByteCode().toString().toLowerCase(),
                ((Branch) _instruction).getTarget().getThisPC()));

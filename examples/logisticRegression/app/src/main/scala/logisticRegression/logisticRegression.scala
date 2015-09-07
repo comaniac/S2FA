@@ -46,7 +46,7 @@ class LogisticRegression(b_w: BlazeBroadcast[Array[Float]])
     val _D: Int = 784
 
 //    val grad = new Array[Float](_L * (_D + 1))
-    val grad = new Array[Float](7850)
+    val grad = new Array[Float](7840)
     val w_blazeLocal7850 = b_w.value
 
     var i = 0
@@ -101,7 +101,7 @@ object LogisticRegression {
       val pointNum = dataPoints.count
       println("Total " + pointNum + " points")
 
-      val w = new Array[Float](L * (D+1))
+      val w = new Array[Float](L * D)
       for (i <- 0 until L) {
         for (j <- 0 until D)
           w(i * D + j) = (rand.nextFloat - 0.5f) * 2.0f * upperbound

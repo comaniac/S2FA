@@ -86,6 +86,8 @@ public abstract class KernelWriter extends BlockWriter{
 
    private boolean processingConstructor = false;
 
+	 private boolean isArrayTypeOutput = false;
+
    private int countAllocs = 0;
 
    private String currentReturnType = null;
@@ -194,14 +196,19 @@ public abstract class KernelWriter extends BlockWriter{
    }
 
    @Override public void writeReturn(Return ret) throws CodeGenException {
-     write("return");
-     if (processingConstructor) {
-       write(" (this)");
-     } else if (ret.getStackConsumeCount() > 0) {
-       write("(");
-       writeInstruction(ret.getFirstChild());
-       write(")");
-     }
+		 if (isArrayTypeOutput) {
+			 writeInstruction(ret.getFirstChild());
+		 }
+		 else {
+	     write("return");
+	     if (processingConstructor) {
+	       write(" (this)");
+	     } else if (ret.getStackConsumeCount() > 0) {
+	       write("(");
+	       writeInstruction(ret.getFirstChild());
+	       write(")");
+	     }
+		 }
    }
 
    private String doIndent(String str) {
@@ -876,13 +883,21 @@ public abstract class KernelWriter extends BlockWriter{
            write(" *");
            processingConstructor = false;
          } else {
-           // Arrays always map to __private or__global arrays
+           // Issue #40 Array type output support:
+					 // Change the return type to void
            if (returnType.startsWith("[")) {
-              write("static __global ");
+						 write("/* [Blaze CodeGen] WARNING: This method tries to return an array in ByteCode.");
+						 newLine();
+						 write("   This function must be called by the main function of the kernel, ");
+						 newLine();
+						 write("or the kernel might not be synthesized or compiled. */");
+						 newLine();
+             write("static void ");
+						 isArrayTypeOutput = true;
            } else {
              write("static ");
+           	 write(fullReturnType);
            }
-           write(fullReturnType);
            processingConstructor = false;
          }
 
@@ -954,6 +969,46 @@ public abstract class KernelWriter extends BlockWriter{
                alreadyHasFirstArg = true;
             }
          }
+				 
+				 // Issue #40: Add output array as an argument.
+				 if (isArrayTypeOutput) {
+
+						// Find the local variable name used for the return value in Java.
+						// aload 		<- the 2nd instruction from the last
+						// areturn 
+						Instruction retVar = mm.getPCHead();
+						while (retVar.getNextPC().getNextPC() != null)
+							retVar = retVar.getNextPC();
+						assert(retVar instanceof AccessLocalVariable);
+						final LocalVariableInfo localVariable = ((AccessLocalVariable) retVar).getLocalVariableInfo();
+						String varName = localVariable.getVariableName();
+
+						// Skip return value when writing method body
+						retVar.setByteCode(ByteCode.NONE);
+
+						// Skip local variable declaration when writing method body
+						Instruction newArrayInst = mm.getPCHead();
+						while (newArrayInst.getNextPC() != null) {
+							if (newArrayInst instanceof I_NEWARRAY) {
+								// Get variable name from astore (parent instruction)
+								Instruction parent = newArrayInst.getParentExpr();
+								if (parent instanceof LocalVariableTableIndexAccessor) {
+									LocalVariableTableIndexAccessor var = (LocalVariableTableIndexAccessor) parent;
+									if (var.getLocalVariableInfo().getVariableName().equals(varName)) {
+										newArrayInst.setByteCode(ByteCode.NONE);
+										parent.setByteCode(ByteCode.NONE);
+										break;
+									}
+								}
+							}
+							newArrayInst = newArrayInst.getNextPC();
+						}
+						if (newArrayInst == null)
+							System.err.println("WARNING: Cannot find local variable declaration for array type output.");
+						
+						write(", __global " + fullReturnType + varName);
+				 }
+
          write(")");
          writeMethodBody(mm);
          newLine();
@@ -1081,9 +1136,7 @@ public abstract class KernelWriter extends BlockWriter{
            write("__global " + outParam.getType() + "* result = " +
                _entryPoint.getMethodModel().getName() + "(this");
          } else {
-					 if (outParam.getName().contains("ary"))
-						  write(outParam.getName() + "[idx * " + outParam.getName() + "_item_length] = ");
-					 else
+					 if (!outParam.getName().contains("ary")) // Issue #40: We don't use return value for array type
               write(outParam.getName() + "[idx] = ");
 					 write(_entryPoint.getMethodModel().getName() + "(this");
          }
@@ -1102,6 +1155,11 @@ public abstract class KernelWriter extends BlockWriter{
              }
            }
          }
+		
+				 if (isArrayTypeOutput) { // Issue #40: Add another argument for output array.
+						write(", &" + outParam.getName() + "[idx * " + outParam.getName() + "_item_length]");
+				 }
+
          write(");");
          newLine();
 

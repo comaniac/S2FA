@@ -61,7 +61,7 @@ public abstract class Instruction{
 
    protected MethodModel method;
 
-   private final ByteCode byteCode;
+   private ByteCode byteCode;
 
    private int length;
 
@@ -143,6 +143,10 @@ public abstract class Instruction{
 
    public void setLength(int _length) {
       length = _length;
+   }
+
+   public void setByteCode(ByteCode _byteCode) {
+      byteCode = _byteCode;
    }
 
    public final ByteCode getByteCode() {

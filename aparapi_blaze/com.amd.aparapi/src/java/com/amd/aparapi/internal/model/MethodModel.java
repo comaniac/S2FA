@@ -1881,5 +1881,4 @@ public abstract class MethodModel {
    @Override public String toString() {
       return "MethodModel of " + method;
    }
-
 }
