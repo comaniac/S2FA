@@ -30,7 +30,7 @@ import org.apache.spark.blaze._
 class LogisticRegression(b_w: BlazeBroadcast[Array[Float]]) 
   extends Accelerator[Array[Float], Array[Float]] {
 
-  val id: String = "Logistic"
+  val id: String = "Logistic_gen"
 
   def getArg(idx: Int): Option[BlazeBroadcast[Array[Float]]] = {
     if (idx == 0)
@@ -41,28 +41,28 @@ class LogisticRegression(b_w: BlazeBroadcast[Array[Float]])
 
   def getArgNum(): Int = 1
 
-  override def call(data: Array[Float]): Array[Float] = {
+  override def call(data_blazeLocal7840: Array[Float]): Array[Float] = {
     val _L: Int = 10
     val _D: Int = 784
 
 //    val grad = new Array[Float](_L * (_D + 1))
     val grad = new Array[Float](7840)
-    val w_blazeLocal7850 = b_w.value
+    val w_blazeLocal7840 = b_w.value
 
     var i = 0
     while (i < _L) {
       var dot = 0.0f
       var j = 0
       while (j < _D) {
-        dot = dot + w_blazeLocal7850(i * _D + j) * data(j + _L)
+        dot = dot + w_blazeLocal7840(i * _D + j) * data_blazeLocal7840(j + _L)
         j += 1
       }
       
-      val c: Float = (1.0f / (1.0f + exp(-data(i) * dot).toFloat) - 1.0f) * data(i)
+      val c: Float = (1.0f / (1.0f + exp(-data_blazeLocal7840(i) * dot).toFloat) - 1.0f) * data_blazeLocal7840(i)
 
       j = 0
       while (j < _D) {
-        grad(i * _D + j) = grad(i * _D + j) + c * data(j + _L)
+        grad(i * _D + j) = grad(i * _D + j) + c * data_blazeLocal7840(j + _L)
         j += 1
       }
       i += 1

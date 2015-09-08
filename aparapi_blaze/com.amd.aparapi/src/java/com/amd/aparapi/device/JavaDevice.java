@@ -1,5 +1,5 @@
 package com.amd.aparapi.device;
 
-public class JavaDevice extends Device{
+public class JavaDevice extends Device {
 
 }
