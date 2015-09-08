@@ -730,6 +730,23 @@ public abstract class KernelWriter extends BlockWriter{
         thisStruct.add("unsigned int heap_size");
       }
 
+			// Add item length into This struct if we have array type input/output
+      for (ScalaArrayParameter p : params) {
+				String paramString = null;
+        if (p.getDir() == ScalaArrayParameter.DIRECTION.OUT)
+					paramString = p.getOutputParameterString(this);
+        else
+					paramString = p.getInputParameterString(this);
+
+				if (!paramString.contains("ary"))
+					continue;
+				
+				assigns.add("this->" + p.getName() + "_item_length = " +
+					p.getName() + "_item_length");
+
+				thisStruct.add("int " + p.getName() + "_item_length");
+			}
+
       if (Config.enableByteWrites || _entryPoint.requiresByteAddressableStorePragma()) {
          // Starting with OpenCL 1.1 (which is as far back as we support)
          // this feature is part of the core, so we no longer need this pragma
@@ -926,6 +943,8 @@ public abstract class KernelWriter extends BlockWriter{
 
          boolean alreadyHasFirstArg = !mm.getMethod().isStatic();
 
+				 final Map<String, String> promoteLocalArguments = new HashMap(); 
+
          final LocalVariableTableEntry<LocalVariableInfo> lvte = mm.getLocalVariableTableEntry();
          for (final LocalVariableInfo lvi : lvte) {
             if ((lvi.getStart() == 0) && ((lvi.getVariableIndex() != 0) || mm.getMethod().isStatic())) { // full scope but skip this
@@ -965,7 +984,15 @@ public abstract class KernelWriter extends BlockWriter{
                  convertedType = convertType(descriptor, true);
                }
                write(convertedType);
-               write(lvi.getVariableName());
+
+							 // Issue #39: Replace variable name with "_" for local variable promotion
+							 // FIXME: How about promoting output?
+							 if (useFPGAStyle && lvi.getVariableName().contains("blazeLocal")) {
+									write("_" + lvi.getVariableName());
+									promoteLocalArguments.put(lvi.getVariableName().toString(), convertedType.toString());
+							 }
+							 else
+                  write(lvi.getVariableName());
                alreadyHasFirstArg = true;
             }
          }
@@ -1010,8 +1037,26 @@ public abstract class KernelWriter extends BlockWriter{
 				 }
 
          write(")");
+
+				 // Issue #37: Local variable promotion for input arguments
+				 if (useFPGAStyle) {
+					 newLine();
+					 write("{");
+					 in();
+					 newLine();
+					 for (final String varName: promoteLocalArguments.keySet()) {
+							if (!writeLocalArrayAssign(null, varName, promoteLocalArguments.get(varName)))
+								write(promoteLocalArguments.get(varName) + varName + " = _" + varName + ";");
+					 }
+					 out();
+					 newLine();
+				 }
          writeMethodBody(mm);
-         newLine();
+				 if (useFPGAStyle) {
+	         newLine();
+					 write("}");
+				 }
+				 newLine();
       }
 
       ScalaArrayParameter outParam = null;

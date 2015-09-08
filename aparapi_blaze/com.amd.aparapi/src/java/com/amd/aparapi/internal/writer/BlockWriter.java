@@ -447,83 +447,35 @@ public abstract class BlockWriter{
 
          if (assignToLocalVariable.isDeclaration()) {
             final String descriptor = localVariableInfo.getVariableDescriptor();
- 				    Instruction child = _instruction.getFirstChild();
-
-						// Use local variable based on user hint
-						if (useFPGAStyle && varName.contains("blazeLocal")) {
-							 if (varName.contains("Max"))
-								  maxLength = Integer.parseInt(varName.substring(varName.indexOf("Max") + 3));
-							 else {
-							 	  maxLength = Integer.parseInt(varName.substring(varName.indexOf("blazeLocal") + 10));
-									fixedLength = true;
-							 }
-					  	 while (!(child instanceof I_INVOKEVIRTUAL))
-						      child = child.getFirstChild();
-
-							 if (maxLength > 0 && child instanceof I_INVOKEVIRTUAL)
-								  promoteLocal = true;
-							 else {
-								  System.err.print("Local variable with length " + maxLength);
-									System.err.print(" , has invalid child " + _instruction.getFirstChild().toString());
-									System.err.println(", skip promotion.");
-							 }
-						}
-
-            if (descriptor.startsWith("[") || descriptor.startsWith("L")) {
-							 if (!promoteLocal)
-               	  write(" __global ");
-							 else
-									write(" __local ");
-            }
 
             String localType = convertType(descriptor, true);
             if (descriptor.startsWith("L")) {
               localType = localType.replace('.', '_');
             }
 
-						// Remove * for local array due to static array declaration
-						if (promoteLocal && descriptor.startsWith("["))
-							 localType = localType.replace("*", "");
-            write(localType);
+						// Use local variable based on user hint
+						if (useFPGAStyle && varName.contains("blazeLocal") && descriptor.startsWith("["))
+							promoteLocal = writeLocalArrayAssign(_instruction, varName, localType);
 
-            if (descriptor.startsWith("L")) {
-            	 write("*"); // All local assigns to object-typed variables should be a constructor
-            }
+						if (!promoteLocal) {
+	             if (descriptor.startsWith("[") || descriptor.startsWith("L")) {
+	                write(" __global ");
+	             }
+	             write(localType);
 
-						// Promote local variable support. Only support blaze broadcast variables
-						if (promoteLocal) {
-	             final MethodCall methodCall = (MethodCall) child;
-  	           final MethodEntry methodEntry = methodCall.getConstantPoolMethodEntry();
-				 	     assert (methodEntry.toString().contains("BlazeBroadcast.value"));
-
-							 write(varName + "[" + maxLength + "];");
-							 newLine();
-							 write("for (int localAryCpy = 0; localAryCpy < ");
-							 if (!fixedLength) {
-					     	  writeBroadcast(methodCall, methodEntry);
-							 	  write(arrayLengthMangleSuffix);
-							 }
-							 else
-								  write("" + maxLength);
-							 write("; localAryCpy++)");
-							 in();
-							 newLine();
-							 write(varName + "[localAryCpy] = ");
-					     writeBroadcast(methodCall, methodEntry);
-				       write("[localAryCpy]");
-						   out();
-						}
+	             if (descriptor.startsWith("L")) {
+            	    write("*"); // All local assigns to object-typed variables should be a constructor
+            	 }
+				    }
          }
+
          if (localVariableInfo == null) {
             throw new CodeGenException("outOfScope" + _instruction.getThisPC() + " = ");
-         } else if (!promoteLocal) {
+         } else if (!promoteLocal) { // Promote local variable should be read-only
             write(varName + " = ");
+	          for (Instruction operand = _instruction.getFirstChild(); operand != null; operand = operand.getNextExpr())
+            	 writeInstruction(operand);
          }
-
-				 if (!promoteLocal) {
-            for (Instruction operand = _instruction.getFirstChild(); operand != null; operand = operand.getNextExpr())
-               writeInstruction(operand);
-				 }
       } else if (_instruction instanceof AssignToArrayElement) {
 //					write("/* assign to array ele */");
          final AssignToArrayElement arrayAssignmentInstruction = (AssignToArrayElement) _instruction;
@@ -914,6 +866,80 @@ public abstract class BlockWriter{
 
       return (AccessInstanceField) load;
    }
+
+	 public boolean writeLocalArrayAssign(Instruction _instruction, String varName, String type) throws CodeGenException {
+	    int maxLength = 0;
+		  boolean fixedLength = false;
+			boolean isBrdcstVariable = true;
+			Instruction child = null;
+			MethodCall methodCall = null;
+			MethodEntry methodEntry = null;
+
+			// Issue #37: When promoting input argument, we don't have the assignment instruction.
+			// Instead, we rename input argument name with a prefix "_" and assign it to the local variable.
+			if (_instruction == null) {
+				isBrdcstVariable = false;
+				if (varName.contains("Max")) {
+					write("/* [BlazeCodeGen] We don't support dynamic local variable promotion for input argument */");
+					newLine();
+					return false;
+				}
+			}
+
+			if (varName.contains("Max"))
+				maxLength = Integer.parseInt(varName.substring(varName.indexOf("Max") + 3));
+			else {
+				maxLength = Integer.parseInt(varName.substring(varName.indexOf("blazeLocal") + 10));
+				fixedLength = true;
+			}
+
+			if (isBrdcstVariable) {
+	 			child = _instruction.getFirstChild();
+				while (!(child instanceof I_INVOKEVIRTUAL))
+					child = child.getFirstChild();
+
+				if (maxLength == 0 || !(child instanceof I_INVOKEVIRTUAL)) {
+					System.err.print("Local variable with length " + maxLength);
+					System.err.print(" , has invalid child " + _instruction.getFirstChild().toString());
+					System.err.println(", skip promotion.");
+					return false;
+				}
+				methodCall = (MethodCall) child;
+				methodEntry = methodCall.getConstantPoolMethodEntry();
+				assert (methodEntry.toString().contains("BlazeBroadcast.value"));
+			}
+
+			// Remove * for local array due to static array declaration
+			type = type.replace("*", "");
+			write("__local " + type + varName);
+
+			write("[" + maxLength + "];");
+			newLine();
+
+			write("for (int localAryCpy = 0; localAryCpy < ");
+			if (!fixedLength) {
+				if (isBrdcstVariable) {
+					writeBroadcast(methodCall, methodEntry);
+					write(arrayLengthMangleSuffix);
+				}
+				else
+					write("this->" + varName + "_item_length");
+			}
+			else
+				write("" + maxLength);
+			write("; localAryCpy++)");
+			in();
+			newLine();
+			write(varName + "[localAryCpy] = ");
+			if (isBrdcstVariable)
+				writeBroadcast(methodCall, methodEntry);
+			else
+				write("_" + varName);
+			write("[localAryCpy];");
+			out();
+
+      return true;
+	 }
 
 	 public void writeBroadcast(MethodCall _methodCall, MethodEntry _methodEntry) throws CodeGenException {
 		 assert(_methodCall instanceof I_INVOKEVIRTUAL);
