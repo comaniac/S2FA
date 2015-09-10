@@ -994,7 +994,12 @@ public abstract class KernelWriter extends BlockWriter {
 				assert(retVar instanceof AccessLocalVariable);
 				final LocalVariableInfo localVariable = ((AccessLocalVariable) retVar).getLocalVariableInfo();
 				String varName = localVariable.getVariableName();
-				promoteLocalArguments.put(varName, "0");
+				if (fullReturnType.contains("float"))
+					promoteLocalArguments.put(varName, "0.0f");
+				else if (fullReturnType.contains("double"))
+					promoteLocalArguments.put(varName, "0.0");
+				else
+					promoteLocalArguments.put(varName, "0");
 
 				// Skip return value when writing method body
 				retVar.setByteCode(ByteCode.NONE);
@@ -1313,10 +1318,10 @@ public abstract class KernelWriter extends BlockWriter {
 		xKernel = xKernel.replace("__kernel", "__kernel __attribute__((reqd_work_group_size(512, 1, 1)))");
 
 		// Add loop pipeline to each for-loop
-		xKernel = xKernel.replace("for (", "__attribute__((xcl_pipeline_loop)) for (");
+		//xKernel = xKernel.replace("for (", "__attribute__((xcl_pipeline_loop)) for (");
 
 		// Add loop pipeline to each while-loop
-		xKernel = xKernel.replace("while (", "__attribute__((xcl_pipeline_loop)) while (");
+		//xKernel = xKernel.replace("while (", "__attribute__((xcl_pipeline_loop)) while (");
 
 		return xKernel;
 	}

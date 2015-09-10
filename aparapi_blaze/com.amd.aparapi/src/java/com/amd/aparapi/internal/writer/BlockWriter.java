@@ -896,7 +896,7 @@ public abstract class BlockWriter {
 			assert (methodEntry.toString().contains("BlazeBroadcast.value"));
 		}
 
-		if (!type.equals("0")) {
+		if (!type.contains("0")) {
 			// Remove * for local array due to static array declaration
 			type = type.replace("*", "");
 			write("__local " + type + varName);
@@ -915,8 +915,8 @@ public abstract class BlockWriter {
 		in();
 		newLine();
 		write(varName + "[localAryCpy] = ");
-		if (type.equals("0"))
-			write("0;");
+		if (type.contains("0"))
+			write(type + ";");
 		else {
 			if (isBrdcstVariable)
 				writeBroadcast(methodCall, methodEntry);
