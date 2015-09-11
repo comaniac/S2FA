@@ -18,7 +18,6 @@
 package org.apache.spark.blaze
 
 import java.io._
-import java.util.LinkedList
 import java.util.ArrayList     
 import java.nio.ByteBuffer     
 import java.nio.ByteOrder      
@@ -32,18 +31,6 @@ import org.apache.spark.rdd._
 import org.apache.spark.storage._
 import org.apache.spark.scheduler._
 
-import com.amd.aparapi.internal.model.ClassModel
-import com.amd.aparapi.internal.model.Tuple2ClassModel
-import com.amd.aparapi.internal.model.HardCodedClassModels
-import com.amd.aparapi.internal.model.HardCodedClassModels.ShouldNotCallMatcher
-import com.amd.aparapi.internal.model.Entrypoint
-import com.amd.aparapi.internal.writer.KernelWriter
-import com.amd.aparapi.internal.writer.KernelWriter.WriterAndKernel
-import com.amd.aparapi.internal.writer.HostWriter
-import com.amd.aparapi.internal.writer.HostWriter.WriterAndHost
-import com.amd.aparapi.internal.writer.BlockWriter.ScalaArrayParameter
-import com.amd.aparapi.internal.writer.BlockWriter.ScalaParameter.DIRECTION
-
 /**
   * A RDD that uses accelerator to accelerate the computation. The behavior of AccRDD is 
   * similar to Spark partition RDD which performs the computation for a whole partition at a
@@ -56,8 +43,6 @@ import com.amd.aparapi.internal.writer.BlockWriter.ScalaParameter.DIRECTION
 class AccRDD[U: ClassTag, T: ClassTag](appId: Int, prev: RDD[T], acc: Accelerator[T, U]) 
   extends RDD[U](prev) with Logging {
 
-  var entryPoint : Entrypoint = null
-
   def getPrevRDD() = prev
   def getRDD() = this
 
@@ -67,7 +52,7 @@ class AccRDD[U: ClassTag, T: ClassTag](appId: Int, prev: RDD[T], acc: Accelerato
     val numBlock: Int = 1 // Now we just use 1 block for an input partition.
 
     val blockId = new Array[Long](numBlock)
-    val brdcstId = new Array[Long](acc.getArgNum)
+    val brdcstIdOrValue = new Array[(Long, Boolean)](acc.getArgNum)
 
     // Generate an input data block ID array
     for (j <- 0 until numBlock) {
@@ -90,18 +75,23 @@ class AccRDD[U: ClassTag, T: ClassTag](appId: Int, prev: RDD[T], acc: Accelerato
           throw new RuntimeException("Cannot recognize RDD data type")
 
         // Get broadcast block IDs
-        for (j <- 0 until brdcstId.length) {
+        for (j <- 0 until brdcstIdOrValue.length) {
           val arg = acc.getArg(j)
           if (arg.isDefined == false)
             throw new RuntimeException("Argument index " + j + " is out of range.")
 
-          brdcstId(j) = arg.get.brdcst_id
+          // Set as true if it is the ID
+          if (arg.get.isInstanceOf[Long])
+            brdcstIdOrValue(j) = (arg.get.asInstanceOf[Long], false) 
+          else 
+            brdcstIdOrValue(j) = ((arg.get.asInstanceOf[BlazeBroadcast[_]]).brdcst_id, true)
         }
 
         val transmitter = new DataTransmitter()
         if (transmitter.isConnect == false)
           throw new RuntimeException("Connection refuse.")
-        var msg = DataTransmitter.buildRequest(acc.id, blockId, brdcstId)
+        var msg = DataTransmitter.buildRequest(acc.id, blockId, brdcstIdOrValue.unzip._1.toArray, 
+          brdcstIdOrValue.unzip._2.toArray)
 
         startTime = System.nanoTime
         transmitter.send(msg)
@@ -109,14 +99,8 @@ class AccRDD[U: ClassTag, T: ClassTag](appId: Int, prev: RDD[T], acc: Accelerato
         elapseTime = System.nanoTime - startTime
         logInfo("Partition " + split.index + " communication latency: " + elapseTime + " ns")
 
-        if (revMsg.getType() != AccMessage.MsgType.ACCGRANT) {
-          // TODO: Manager should return an error code
-          if (split.index == 0) { // Only let one worker to generate the kernel
-            logInfo("Partition 0 is generating the OpenCL kernel")
-            genOpenCLKernel(acc.id)
-          }
+        if (revMsg.getType() != AccMessage.MsgType.ACCGRANT)
           throw new RuntimeException("Request reject.")
-        }
 
         startTime = System.nanoTime
 
@@ -157,28 +141,30 @@ class AccRDD[U: ClassTag, T: ClassTag](appId: Int, prev: RDD[T], acc: Accelerato
         }
 
         // Prepare broadcast blocks
-        for (i <- 0 until brdcstId.length) {
-          if (!revMsg.getData(i + numBlock).getCached()) {
+        var numBrdcstBlock: Int = 0
+        for (i <- 0 until brdcstIdOrValue.length) {
+          if (brdcstIdOrValue(i)._2 == true && !revMsg.getData(numBrdcstBlock + numBlock).getCached()) {
             requireData = true
-            val bcData = acc.getArg(i).get.value
+            val bcData = (acc.getArg(i).get.asInstanceOf[BlazeBroadcast[_]]).data // Uncached data must be BlazeBroadcast.
             if (bcData.getClass.isArray) { // Serialize array and use memory mapped file to send the data.
               val arrayData = bcData.asInstanceOf[Array[_]]
-              val mappedFileInfo = Util.serializePartition(appId, arrayData, brdcstId(i))
+              val mappedFileInfo = Util.serializePartition(appId, arrayData, brdcstIdOrValue(i)._1)
               val typeName = arrayData(0).getClass.getName.replace("java.lang.", "").toLowerCase
               val typeSize = Util.getTypeSizeByName(typeName)
               assert(typeSize != 0, "Cannot find the size of type " + typeName)
 
-              DataTransmitter.addData(dataMsg, brdcstId(i), arrayData.length, 1,
+              DataTransmitter.addData(dataMsg, brdcstIdOrValue(i)._1, arrayData.length, 1,
                 arrayData.length * typeSize, 0, mappedFileInfo._1)
-              acc.getArg(i).get.length = arrayData.length
-              acc.getArg(i).get.size = arrayData.length * typeSize
+              (acc.getArg(i).get.asInstanceOf[BlazeBroadcast[_]]).length = arrayData.length
+              (acc.getArg(i).get.asInstanceOf[BlazeBroadcast[_]]).size = arrayData.length * typeSize
             }
             else { // Send a scalar data through the socket directly.
               val longData: Long = Util.casting(bcData, classOf[Long])
-              DataTransmitter.addScalarData(dataMsg, brdcstId(i), longData)
-              acc.getArg(i).get.length = 1
-              acc.getArg(i).get.size = 4
+              DataTransmitter.addScalarData(dataMsg, brdcstIdOrValue(i)._1, longData)
+              (acc.getArg(i).get.asInstanceOf[BlazeBroadcast[_]]).length = 1
+              (acc.getArg(i).get.asInstanceOf[BlazeBroadcast[_]]).size = 4
             }
+            numBrdcstBlock += 1
           }
         }
 
@@ -316,65 +302,6 @@ class AccRDD[U: ClassTag, T: ClassTag](appId: Int, prev: RDD[T], acc: Accelerato
       j = j + 1
     }
     outputAry.iterator
-  }
-
-  def genOpenCLKernel(id: String) = {
-    System.setProperty("com.amd.aparapi.enable.NEW", "true")
-    val kernelPath : String = "/tmp/blaze_kernel_" + id + ".cl" 
-    // TODO:  1. Should be a shared path e.g. HDFS
-    //        2. Should check if the kernel is existed in advance
-
-    val classModel : ClassModel = ClassModel.createClassModel(acc.getClass, null, new ShouldNotCallMatcher())
-    val hardCodedClassModels : HardCodedClassModels = new HardCodedClassModels()
-    var isMapPartitions: Boolean = if (this.getClass.getName.contains("AccRDD")) false else true
-    var method = if (!isMapPartitions) classModel.getPrimitiveCallMethod else classModel.getPrimitiveCallPartitionsMethod
-
-    try {
-      if (isMapPartitions && method != null) { // FIXME
-        throw new RuntimeException("Currently we don't support MapPartitions")
-      }
-
-      if (method == null)
-        throw new RuntimeException("Cannot find available call method.")
-      val descriptor : String = method.getDescriptor
-
-      // Parse input type: Expect 1 input argument for map function.
-      val paramsWithDim = CodeGenUtil.getParamObjsFromMethodDescriptor(descriptor, 1)
-      if (paramsWithDim._2 == 1)
-        logWarning("[CodeGen] Input argument is 1-D array. This may cause huge overhead since" +
-          " data will be serialized during the runtime.")
-      else if (paramsWithDim._2 > 1) {
-        throw new RuntimeException("Multi-dimensional array cannot be an input argument." +
-          " Stop generating OpenCL kernel.")
-      }
-      val params : LinkedList[ScalaArrayParameter] = paramsWithDim._1
-
-      // Parse output type.
-      val returnWithDim = CodeGenUtil.getReturnObjsFromMethodDescriptor(descriptor)
-      if (returnWithDim._2 == 1)
-        logWarning("[CodeGen] Output argument is 1-D array. This may cause huge overhead since" +
-          " data will be deserialized during the runtime.")
-      else if (returnWithDim._2 > 1) {
-        throw new RuntimeException("Multi-dimensional array cannot be an output argument." +
-          " Stop generating OpenCL kernel.")
-      }
-      params.add(returnWithDim._1)
-
-      if (entryPoint == null) {
-        val fun: T => U = acc.call
-        entryPoint = classModel.getEntrypoint("call", descriptor, fun, params, hardCodedClassModels)
-        val writerAndKernel = KernelWriter.writeToString(entryPoint, params)
-        val openCL = writerAndKernel.kernel
-        val kernelFile = new PrintWriter(new File(kernelPath))
-        kernelFile.write(KernelWriter.applyXilinxPatch(openCL))
-        kernelFile.close
-      }
-    } catch {
-      case e: Throwable =>
-        val sw = new StringWriter
-        e.printStackTrace(new PrintWriter(sw))
-        logWarning("[CodeGen] OpenCL kernel generated failed: " + sw.toString)
-    }
   }
 }
 
