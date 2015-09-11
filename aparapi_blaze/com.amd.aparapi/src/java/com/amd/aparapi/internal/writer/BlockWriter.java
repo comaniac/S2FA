@@ -906,12 +906,12 @@ public abstract class BlockWriter {
 		}
 
 		write("for (int localAryCpy = 0; localAryCpy < ");
-		if (isBrdcstVariable) {
+		if (isBrdcstVariable && varName.contains("Max")) {
 			writeBroadcast(methodCall, methodEntry);
 			write(arrayLengthMangleSuffix);
 		} else
 			write(maxLength);
-		write("; localAryCpy++)");
+		write("; localAryCpy++) {");
 		in();
 		newLine();
 		write(varName + "[localAryCpy] = ");
@@ -924,6 +924,8 @@ public abstract class BlockWriter {
 				write("_" + varName);
 			write("[localAryCpy];");
 		}
+		newLine();
+		write("}");
 		out();
 
 		return true;
