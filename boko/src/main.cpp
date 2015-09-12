@@ -39,7 +39,60 @@ class BokoASTConsumer : public ASTConsumer {
 	public:
 	  BokoASTConsumer(ASTContext &C, Rewriter &R) : 
 			LoopPipelineInserter(C, R), ReductionInserter(C, R) {
-/*
+
+			// Reduction matcher
+			Matcher.addMatcher(forStmt(
+				hasIncrement(anyOf( // Case 1: <declRefExpr>++
+					unaryOperator( 
+						hasOperatorName("++"),
+	          hasUnaryOperand(declRefExpr(to(
+							varDecl(hasType(isInteger())).bind("incVarName")))
+						) // end hasUnaryOperand
+					), // end case 1: unaryOperator
+					binaryOperator( // Case 2: <declRefExpr> = <declRefExpr> + 1
+						hasOperatorName("="),
+						hasLHS(ignoringParenImpCasts(declRefExpr(to(
+							varDecl(hasType(isInteger())).bind("incVarName"))))
+						), // end hasLHS
+						hasRHS(
+							binaryOperator(
+								hasOperatorName("+"),
+								anyOf(
+									hasLHS(integerLiteral(equals(1))),
+									hasRHS(integerLiteral(equals(1)))
+								)
+							)
+						) // end hasRHS
+					) // end case 2: binaryOperator
+				)), // end anyOf, hasIncrement
+				hasCondition(
+					binaryOperator( // <declRefExpr> < <expr>
+						hasOperatorName("<"),
+						hasLHS(ignoringParenImpCasts(declRefExpr(to(
+							varDecl(hasType(isInteger())).bind("condVarName"))))
+						), // end hasLHS
+						hasRHS(expr(hasType(isInteger())).bind("condBoundExpr")
+						) // end hasRHS
+					) // end binaryOperator
+				), // end hasCondition
+				hasBody(
+					stmt(compoundStmt(
+						has(
+							binaryOperator(
+								hasOperatorName("="),
+								hasLHS(stmt().bind("sumLHS")),
+								hasRHS(
+									binaryOperator(
+										hasLHS(ignoringParenImpCasts(stmt().bind("sumRHS_LHS"))),
+										hasRHS(ignoringParenImpCasts(stmt().bind("sumRHS_RHS")))
+									).bind("sumOp") // end binaryOperator
+								) // end hasRHS
+							) // end binaryOperator
+						) // end has
+					)) // end stmt
+				) // end hasBody
+			).bind("SumReduction"), &ReductionInserter);
+
 			// Loop pipeline matcher
 			Matcher.addMatcher(forStmt(
 				hasIncrement(anyOf( // Case 1: <declRefExpr>++
@@ -75,59 +128,6 @@ class BokoASTConsumer : public ASTConsumer {
 					) // end binaryOperator
 				) // end hasCondition
 			).bind("LoopPipeline"), &LoopPipelineInserter);
-*/
-			// Reduction matcher
-			Matcher.addMatcher(forStmt(
-				hasIncrement(anyOf( // Case 1: <declRefExpr>++
-					unaryOperator( 
-						hasOperatorName("++"),
-	          hasUnaryOperand(declRefExpr(to(
-							varDecl(hasType(isInteger())).bind("incVarName")))
-						) // end hasUnaryOperand
-					), // end case 1: unaryOperator
-					binaryOperator( // Case 2: <declRefExpr> = <declRefExpr> + 1
-						hasOperatorName("="),
-						hasLHS(ignoringParenImpCasts(declRefExpr(to(
-							varDecl(hasType(isInteger())).bind("incVarName"))))
-						), // end hasLHS
-						hasRHS(
-							binaryOperator(
-								hasOperatorName("+"),
-								anyOf(
-									hasLHS(integerLiteral(equals(1))),
-									hasRHS(integerLiteral(equals(1)))
-								)
-							)
-						) // end hasRHS
-					) // end case 2: binaryOperator
-				)), // end anyOf, hasIncrement
-				hasCondition(
-					binaryOperator( // <declRefExpr> < <expr>
-						hasOperatorName("<"),
-						hasLHS(ignoringParenImpCasts(declRefExpr(to(
-							varDecl(hasType(isInteger())).bind("condVarName"))))
-						), // end hasLHS
-						hasRHS(expr(hasType(isInteger())))
-					) // end binaryOperator
-				), // end hasCondition
-				hasBody(
-					stmt(compoundStmt(
-						has(
-							binaryOperator(
-								hasOperatorName("="),
-								hasLHS(stmt().bind("sumLHS")),
-								hasRHS(
-									binaryOperator(
-										hasLHS(ignoringParenImpCasts(stmt().bind("sumRHS_LHS"))),
-										hasRHS(ignoringParenImpCasts(stmt().bind("sumRHS_RHS")))
-									).bind("sumOp") // end binaryOperator
-								) // end hasRHS
-							) // end binaryOperator
-						) // end has
-					)) // end stmt
-				) // end hasBody
-			).bind("SumReduction"), &ReductionInserter);
-
 		}
 
 		virtual void HandleTranslationUnit(ASTContext &Context) override {

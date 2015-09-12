@@ -1,59 +1,14 @@
 // File Name    : LoopHandler.cpp
 // Author       : Cody Hao Yu
 // Creation Date: 2015 09 10 12:05 
-// Last Modified: 2015 09 11 11:42
+// Last Modified: 2015 09 12 01:26
 #include <list>
 #include "LoopHandler.h"
+#include "Util.h"
 
 using namespace llvm;
 using namespace clang;
 using namespace clang::ast_matchers;
-
-static bool areSameVariable(const ValueDecl *First, const ValueDecl *Second) {
-	return 	First && Second &&
-					First->getCanonicalDecl() == Second->getCanonicalDecl();
-}
-
-static bool areSameStmt(const Stmt *First, const Stmt *Second) {
-
-	if (!First || !Second)
-		return false;
-
-	std::list<const Stmt*> FirstQueue, SecondQueue;
-
-	for (auto fite = First->child_begin(); fite != First->child_end(); ++fite)
-		FirstQueue.push_back(*fite);
-	for (auto site = Second->child_begin(); site != Second->child_end(); ++site)
-		SecondQueue.push_back(*site);
-
-	while (!FirstQueue.empty() && !SecondQueue.empty()) {
-		const Stmt *FirstStmt = FirstQueue.front();
-		FirstQueue.pop_front();
-		const Stmt *SecondStmt = SecondQueue.front();
-		SecondQueue.pop_front();
-
-		errs() << FirstStmt->getStmtClassName() << " vs. " << SecondStmt->getStmtClassName() << " --> ";
-		if (strcmp(FirstStmt->getStmtClassName(), SecondStmt->getStmtClassName())) {
-			errs() << "false\n";
-			errs() << "end false: diff =====================\n";
-			return false;
-		}
-		errs() << "true\n";
-
-		for (auto fite = FirstStmt->child_begin(); fite != FirstStmt->child_end(); ++fite)
-			FirstQueue.push_back(*fite);
-		for (auto site = SecondStmt->child_begin(); site != SecondStmt->child_end(); ++site)
-			SecondQueue.push_back(*site);
-
-		if (FirstQueue.size() != SecondQueue.size()) {
-			errs() << "end false: size =====================\n";
-			return false;
-		}
-	}
-
-	errs() << "end true =====================\n";
-	return true;
-}
 
 void LoopPipelineInserterImpl::run(const MatchFinder::MatchResult &Result) {
 
@@ -68,34 +23,34 @@ void LoopPipelineInserterImpl::run(const MatchFinder::MatchResult &Result) {
 void ReductionInserterImpl::run(const MatchFinder::MatchResult &Result) {
 	const ForStmt *loop = Result.Nodes.getStmtAs<ForStmt>("SumReduction");
 	const VarDecl *incVar = Result.Nodes.getNodeAs<VarDecl>("incVarName");
+	const Expr *condExpr = Result.Nodes.getNodeAs<Expr>("condBoundExpr");
 	const Stmt *stmtLHS = Result.Nodes.getNodeAs<Stmt>("sumLHS");
 	const Stmt *stmtRHS_LHS = Result.Nodes.getNodeAs<Stmt>("sumRHS_LHS");
 	const Stmt *stmtRHS_RHS = Result.Nodes.getNodeAs<Stmt>("sumRHS_RHS");
 	bool isValueAtLHS = true;
+	int factor = 8; // FIXME: Should be determined cleverly
 
 	// Test if LHS uses the loop variable.
 	if (isa<ArraySubscriptExpr>(stmtLHS)) {
 		const ArraySubscriptExpr *aryExpr = cast<ArraySubscriptExpr>(stmtLHS);
 		const Expr *aryIdx = aryExpr->getIdx()->IgnoreParenImpCasts();
-		if (isa<DeclRefExpr>(aryIdx)) {
-			const ValueDecl *aryIdxVar = (cast<DeclRefExpr>(aryIdx))->getDecl();
-			if (areSameVariable(aryIdxVar, incVar)) {
-				TheRewriter.InsertText(loop->getLocStart(), 
-				"/* Boko Loop with no reduction since loop variable used */\n", false, true);	
-				return ;
-			}
+
+		if (isVarInExpr(incVar, aryIdx)) {
+			TheRewriter.InsertText(loop->getLocStart(), 
+			"/* Boko Loop with no reduction since loop variable used */\n", false, true);	
+			return ;
 		}
 	}
 
 	// Test if it has the same variable on both sides
 	if (areSameStmt(stmtLHS, stmtRHS_LHS)) {
-		TheRewriter.InsertText(loop->getLocStart(), 
-			"/* Boko Loop with reduction a = a + <stmt> */\n", false, true);
+//		TheRewriter.InsertText(loop->getLocStart(), 
+//			"/* Boko Loop with reduction a = a + <stmt> */\n", false, true);
 		isValueAtLHS = false;
 	}
 	else if (areSameStmt(stmtLHS, stmtRHS_RHS)) {
-		TheRewriter.InsertText(loop->getLocStart(), 
-			"/* Boko Loop with reduction a = <stmt> + a */\n", false, true);
+//		TheRewriter.InsertText(loop->getLocStart(), 
+//			"/* Boko Loop with reduction a = <stmt> + a */\n", false, true);
 	}
 	else {
 		TheRewriter.InsertText(loop->getLocStart(), 
@@ -103,11 +58,43 @@ void ReductionInserterImpl::run(const MatchFinder::MatchResult &Result) {
 		return ;
 	}
 	
-//	const Stmt *stmtValue = (isValueAtLHS)? stmtRHS_RHS: stmtRHS_LHS;
+	const Stmt *stmtValue = (isValueAtLHS)? stmtRHS_LHS: stmtRHS_RHS;
+//	const BinaryOperator *op = Result.Nodes.getNodeAs<BinaryOperator>("sumOp");
+	const std::string type = getFirstVarType(stmtLHS);
 
-//	TheRewriter.InsertText(stmtLHS->getLocStart(), "/* LHS */", false, true);
-//	TheRewriter.InsertText(stmtRHS_LHS->getLocStart(), "/* RHS_LHS */", false, true);
-//	TheRewriter.InsertText(stmtRHS_RHS->getLocStart(), "/* RHS_RHS */", false, true);
+	// Modify loop increment from +1 to +factor
+	std::string newLoopDef = writeStmt(cast<Stmt>(loop));
+
+	// Step 1: Cut loop body
+	newLoopDef = newLoopDef.substr(0, newLoopDef.find("{") + 1);
+
+	// Step 2: Locating increment part from 2nd semicolon to the first left curly bracket
+	std::size_t secondSemi = newLoopDef.find_first_of(";", newLoopDef.find_first_of(";") + 1);
+	std::size_t firstLeftCurly = newLoopDef.find_first_of("{");
+
+	// Step 3: Replace the increment with the new code
+	newLoopDef = newLoopDef.replace(secondSemi + 1, firstLeftCurly - secondSemi, 
+		" " + incVar->getNameAsString() + " += " + std::to_string(factor) + ") {");
+
+	std::string newCode = newLoopDef + "\n";
+
+	// Write reduction temp variables
+	newCode += writeIndent(1) + type + " boko_dup[" + std::to_string(factor) + "];\n";
+
+	// Write the first loop
+	newCode += writeIndent(1) + "for (int boko_idx = 0; boko_idx < " + std::to_string(factor) + "; ++boko_idx) {\n";
+	newCode += writeIndent(2) + "if (boko_idx + " + incVar->getNameAsString() + " < " + writeStmt(cast<Stmt>(condExpr)) + ")\n";
+	newCode += writeIndent(3) + "boko_dup[boko_idx] = " + writeStmt(stmtValue) + ";\n";
+	newCode += writeIndent(2) + "else\n";
+	newCode += writeIndent(3) + "boko_dup[boko_idx] = 0;\n";
+	newCode += writeIndent(1) + "}\n";
+
+	TheRewriter.InsertText(loop->getLocStart(), 
+		newCode, false, true);
+
+	// Comment the body of the original loop
+	TheRewriter.InsertText(loop->getLocStart(), "/*\n", true, true);
+	TheRewriter.InsertText(loop->getLocEnd(), "*/\n", true, true);
 
 	return ;
 }

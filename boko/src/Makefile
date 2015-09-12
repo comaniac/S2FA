@@ -11,7 +11,7 @@ $(info Using LLVM_BIN_PATH = $(LLVM_BIN_PATH))
 $(info -----------------------------------------------)
 
 CXX := /curr/cody/.local/gcc-4.8/bin/g++
-CXXFLAGS := -fno-rtti -O0 -g -fexceptions
+CXXFLAGS := -fno-rtti -O0 -g -fexceptions -Wunused-function
 PLUGIN_CXXFLAGS := -fpic
 
 LLVM_CXXFLAGS := `$(LLVM_BIN_PATH)/llvm-config --cxxflags`
@@ -52,7 +52,8 @@ INCLUDE := ../include
 BUILDDIR := ../bin
 TARGET := Boko
 
-SRC_OBJ = LoopHandler.o \
+SRC_OBJ = Util.o \
+					LoopHandler.o \
 					main.o
 
 .PHONY: all

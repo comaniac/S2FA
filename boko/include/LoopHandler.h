@@ -1,7 +1,7 @@
 // File Name    : LoopHandler.h
 // Author       : Cody Hao Yu
 // Creation Date: 2015 09 10 12:11 
-// Last Modified: 2015 09 10 23:43
+// Last Modified: 2015 09 11 23:20
  
 #ifndef __LOOP_HANDLER__
 #define __LOOP_HANDLER__
@@ -30,8 +30,6 @@ class ReductionInserterImpl : public MatchFinder::MatchCallback {
 	public:
 	  ReductionInserterImpl(ASTContext &c, Rewriter &r) : 
 			TheRewriter(r), Context(c) { ; }
-
-		// FIXME: Recognize reduction and make a transformation.
 
 	  virtual void run(const MatchFinder::MatchResult &Result);
 
