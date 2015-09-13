@@ -2,6 +2,7 @@ package org.apache.spark.blaze
 
 import scala.reflect.ClassTag
 import scala.io._
+import scala.sys.process._
 
 import java.util.LinkedList
 
@@ -109,5 +110,14 @@ object CodeGenUtil {
     } else {
       return "L" + className + ";"
     }
+  }
+
+  def applyBoko(kernelPath : String) = {
+    val bokoExe = sys.env("BLAZE_HOME") + "/boko/bin/Boko"
+    val err = new StringBuilder
+    val recorder = ProcessLogger((e: String) => err.append(e))
+
+    Process(bokoExe + " " + kernelPath + " -- ") ! recorder
+    err.toString
   }
 }

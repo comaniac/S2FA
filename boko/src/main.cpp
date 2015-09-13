@@ -141,7 +141,15 @@ class BokoFrontendAction : public ASTFrontendAction {
 
 	public:
 		virtual void EndSourceFileAction() {
-		  TheRewriter.getEditBuffer(TheRewriter.getSourceMgr().getMainFileID()).write(outs());
+			std::string str;
+			raw_string_ostream rso(str);
+		  TheRewriter.getEditBuffer(TheRewriter.getSourceMgr().getMainFileID()).write(rso);
+			ofstream outFile;
+			string fileName = getCurrentFile().str();
+			fileName.replace(fileName.find(".cl"), 3, "_opt.cl");
+			outFile.open(fileName, ios::out);
+			outFile << rso.str();
+			outFile.close();
 		}
 
 		virtual unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &CI, StringRef file) {

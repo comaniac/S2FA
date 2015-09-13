@@ -1,7 +1,7 @@
 // File Name    : LoopHandler.cpp
 // Author       : Cody Hao Yu
 // Creation Date: 2015 09 10 12:05 
-// Last Modified: 2015 09 12 12:34
+// Last Modified: 2015 09 12 23:54
 #include <list>
 #include "LoopHandler.h"
 #include "Util.h"
@@ -31,7 +31,7 @@ void ReductionInserterImpl::run(const MatchFinder::MatchResult &Result) {
 	const Stmt *stmtRHS_LHS = Result.Nodes.getNodeAs<Stmt>("sumRHS_LHS");
 	const Stmt *stmtRHS_RHS = Result.Nodes.getNodeAs<Stmt>("sumRHS_RHS");
 	bool isValueAtLHS = true;
-	int factor = 8; // FIXME: Should be determined cleverly
+	int factor = 16; // FIXME: Should be determined cleverly
 
 	// Test if LHS uses the loop variable.
 	if (isa<ArraySubscriptExpr>(stmtLHS)) {
