@@ -1,7 +1,7 @@
 // File Name    : Util.cpp
 // Author       : Cody Hao Yu
 // Creation Date: 2015 09 11 23:14 
-// Last Modified: 2015 09 12 12:22
+// Last Modified: 2015 09 16 00:09
 #include <list>
 #include "Util.h"
 #include "llvm/Support/raw_ostream.h"
@@ -178,9 +178,14 @@ std::string getFirstVarType(const Stmt *stmt)
 
 		if (isa<DeclRefExpr>(tempStmt)) {
 				const ValueDecl *decl = (cast<DeclRefExpr>(tempStmt))->getDecl();
-				const Type *type = cast<Type>(decl->getType());
-				if (!type->isBuiltinType())
+				QualType type = decl->getType();
+				bool isPointer = (cast<Type>(type))->isPointerType();
+				if (isPointer)
+					type = (cast<Type>(type))->getPointeeType();
+				
+				if (!(cast<Type>(type))->isBuiltinType()) {
 					return NULL; // Not support non-builtin types.
+				}
 
 				const BuiltinType *bType = cast<BuiltinType>(type);
 				LangOptions LangOpts;
