@@ -89,6 +89,9 @@ class AccRDD[U: ClassTag, T: ClassTag](appId: Int, prev: RDD[T], acc: Accelerato
         if (typeSize == -1)
           throw new RuntimeException("Cannot recognize RDD data type")
 
+        if (split.index == 0) // FIXME: Testing
+          genOpenCLKernel(acc.id)
+
         // Get broadcast block IDs
         for (j <- 0 until brdcstIdOrValue.length) {
           val arg = acc.getArg(j)
@@ -342,13 +345,14 @@ class AccRDD[U: ClassTag, T: ClassTag](appId: Int, prev: RDD[T], acc: Accelerato
     else {
       val classModel : ClassModel = ClassModel.createClassModel(acc.getClass, null, new ShouldNotCallMatcher())
       val hardCodedClassModels : HardCodedClassModels = new HardCodedClassModels()
-      var isMapPartitions: Boolean = if (this.getClass.getName.contains("AccRDD")) false else true
-      var method = if (!isMapPartitions) classModel.getPrimitiveCallMethod else classModel.getPrimitiveCallPartitionsMethod
+      var isMapPartitions: Boolean = if (this.getClass.getName.contains("AccMapPartitionsRDD")) true else false
+      var method =  if (!isMapPartitions) classModel.getPrimitiveCallMethod 
+                    else classModel.getPrimitiveCallPartitionsMethod
 
       try {
-        if (isMapPartitions && method != null) { // FIXME
-          throw new RuntimeException("Currently we don't support MapPartitions")
-        }
+//        if (isMapPartitions && method != null) { // FIXME
+//          throw new RuntimeException("Currently we don't support MapPartitions")
+//        }
 
         if (method == null)
           throw new RuntimeException("Cannot find available call method.")
@@ -384,8 +388,8 @@ class AccRDD[U: ClassTag, T: ClassTag](appId: Int, prev: RDD[T], acc: Accelerato
         kernelFile.write(KernelWriter.applyXilinxPatch(openCL))
         kernelFile.close
         val res = CodeGenUtil.applyBoko(kernelPath)
-        logWarning("[CodeGen] Generate and optimize the kernel successfully")
-        logDebug("[Boko] " + res)
+        logInfo("[CodeGen] Generate and optimize the kernel successfully")
+        logWarning("[Boko] " + res)
       } catch {
         case e: Throwable =>
           val sw = new StringWriter

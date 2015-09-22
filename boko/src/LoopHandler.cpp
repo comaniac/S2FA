@@ -1,7 +1,7 @@
 // File Name    : LoopHandler.cpp
 // Author       : Cody Hao Yu
 // Creation Date: 2015 09 10 12:05 
-// Last Modified: 2015 09 14 18:21
+// Last Modified: 2015 09 16 10:21
 #include <list>
 #include "LoopHandler.h"
 #include "Util.h"
@@ -102,7 +102,7 @@ void ReductionInserterImpl::run(const MatchFinder::MatchResult &Result) {
 		newCode += writeIndent(1) + LoopUnrollHint + "\n";
 		newCode += writeIndent(1) + "for (int boko_idx = 0; boko_idx < " + std::to_string(factor)
 															+ "; boko_idx += " + std::to_string(step) + ")\n";
-		newCode += writeIndent(2) + "boko_dup[bok_idx] " + op->getOpcodeStr().str()
+		newCode += writeIndent(2) + "boko_dup[boko_idx] " + op->getOpcodeStr().str()
 															+ "= boko_dup[boko_idx + " + std::to_string(step / 2) + "];\n\n";
 		step *= 2;
 	}

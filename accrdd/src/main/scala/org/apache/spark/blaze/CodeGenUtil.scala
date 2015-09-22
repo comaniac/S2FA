@@ -15,7 +15,10 @@ import com.amd.aparapi.internal.writer.BlockWriter.ScalaParameter.DIRECTION
 object CodeGenUtil {
 
   def isPrimitive(typeString : String) : Boolean = {
-    return typeString.equals("I") || typeString.equals("D") || typeString.equals("F")
+    return  typeString.equals("I") || 
+            typeString.equals("D") || 
+            typeString.equals("F") || 
+            typeString.equals("J")
   }
 
   def getPrimitiveTypeForDescriptor(descString : String) : String = {
@@ -25,6 +28,8 @@ object CodeGenUtil {
       return "double"
     } else if (descString.equals("F")) {
       return "float"
+    } else if (descString.equals("J")) {
+      return "long"
     } else {
       return null
     }
