@@ -140,18 +140,34 @@ public class DataTransmitter {
 	*
 	* @param acc_id
 	*		The accelerator ID. Should be provided by accelerator library.
-	* @param blockIdOrValue
+	* @param blockId
+	*		The unique ID of each sub-block.
+	* @param hasMask
+	*		The boolean value to indicate if the block has a mask or not.
+	* @param brdcst
 	*		The unique block ID or the scalar value.
+	* @param IdOrValue
+	*		The boolean value to indicate if the brdcst is ID (true) or value (false).
 	* @return The message which hasn't been built.
 	**/
-	public static AccMessage.TaskMsg.Builder buildRequest(String acc_id, long[] blockId, long[] brdcst, boolean[] IdOrValue) {
+	public static AccMessage.TaskMsg.Builder buildRequest(
+		String acc_id, 
+		long[] blockId, 
+		boolean hasMask, 
+		long[] brdcst, 
+		boolean[] IdOrValue
+	) {
 		AccMessage.TaskMsg.Builder msg = AccMessage.TaskMsg.newBuilder()
 			.setType(AccMessage.MsgType.ACCREQUEST)
 			.setAccId(acc_id);
 
-			for (long id: blockId) {
+			for (int i = 0; i < blockId.length; i += 1) {
 				AccMessage.DataMsg.Builder data = AccMessage.DataMsg.newBuilder()
-					.setPartitionId(id);
+					.setPartitionId(blockId[i]);
+			
+				if (hasMask)
+					data.setSampled(true);
+	
 				msg.addData(data);
 			}
 			for (int i = 0; i < brdcst.length; i += 1) {
@@ -192,6 +208,48 @@ public class DataTransmitter {
 	* @param size The file size of either memory mapped file or HDFS file.
 	* @param offset The start position of this block in the file.
 	* @param path The file path.
+	* @param maskPath The mask file path.
+	**/
+	public static void addData(
+		AccMessage.TaskMsg.Builder msg, 
+		long id, 
+		int length, 
+		int item, 
+		int size, 
+		int offset, 
+		String path,
+		String maskPath
+	) {
+		AccMessage.DataMsg.Builder data = AccMessage.DataMsg.newBuilder()
+			.setPartitionId(id)
+			.setLength(length)
+			.setSize(size)
+			.setOffset(offset);
+
+		if (path != null)
+			data.setPath(path);
+
+		if (maskPath != null)
+			data.setMaskPath(maskPath);
+
+		if (item != 1)
+			data.setNumItems(item);
+
+		msg.addData(data);
+		return ;
+	}
+
+	/**
+	* Add a data block.
+	* Create and add a data block to assigned message with without mask. 
+	*
+	*	@param msg The message that wanted to be added.
+	* @param id The unique ID of the data block.
+	* @param length The number of element of the data.
+	* @param item The number of item per element. 
+	* @param size The file size of either memory mapped file or HDFS file.
+	* @param offset The start position of this block in the file.
+	* @param path The file path.
 	**/
 	public static void addData(
 		AccMessage.TaskMsg.Builder msg, 
@@ -202,17 +260,8 @@ public class DataTransmitter {
 		int offset, 
 		String path
 	) {
-		AccMessage.DataMsg.Builder data = AccMessage.DataMsg.newBuilder()
-			.setPartitionId(id)
-			.setLength(length)
-			.setSize(size)
-			.setOffset(offset)
-			.setPath(path);
 
-		if (item != 1)
-			data.setNumItems(item);
-
-		msg.addData(data);
+		addData(msg, id, length, item, size, offset, path, null);
 		return ;
 	}
 

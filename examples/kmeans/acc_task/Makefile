@@ -17,7 +17,7 @@ COMPILE= $(CFLAGS) \
 				 -I$(BOOST_DIR)/include \
 				 -I$(PROTOBUF_DIR)/include 
 
-ACC = SimpleAddition 
+ACC = KMeansContrib
 
 OBJS= $(addsuffix .so, $(addprefix ../, $(ACC)))
 

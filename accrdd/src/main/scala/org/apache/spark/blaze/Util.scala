@@ -26,6 +26,7 @@ import java.nio.channels.FileChannel
 import java.nio.channels.FileChannel.MapMode
 import java.net.InetAddress
 import java.net.UnknownHostException
+import java.util.Random
 
 import scala.reflect.{ClassTag, classTag}
 import scala.reflect.runtime.universe._         
@@ -48,49 +49,55 @@ object Util {
   val PARTITION_BIT_START = 1
   val BLOCK_BIT_START = 0
 
+  def random = new Random()
+
   /**
     * Generate a string of message information.
     */
   def logMsg(msgBuilder: AccMessage.TaskMsg.Builder): String = {
     val msg = msgBuilder.build()
-    val logStr: Array[String] = Array("Message: Type: ")
-    logStr(0) = logStr(0) + msg.getType() + ", Data: " + msg.getDataCount() + "\n"
+    var logStr = "Message: Type: "
+    logStr = logStr + msg.getType() + ", Data: " + msg.getDataCount() + "\n"
 
     for (i <- 0 until msg.getDataCount()) {
-      logStr(0) = logStr(0) + "Data " + i + ": "
+      logStr = logStr + "Data " + i + ": "
       if (msg.getData(i).hasPartitionId())
-        logStr(0) = logStr(0) + "ID: " + msg.getData(i).getPartitionId() + ", "
+        logStr = logStr + "ID: " + msg.getData(i).getPartitionId() + ", "
       if (msg.getData(i).hasLength())
-        logStr(0) = logStr(0) + "Length: " + msg.getData(i).getLength() + ", "
+        logStr = logStr + "Length: " + msg.getData(i).getLength() + ", "
       if (msg.getData(i).hasSize())
-        logStr(0) = logStr(0) + "Size: " + msg.getData(i).getSize() + ", "
+        logStr = logStr + "Size: " + msg.getData(i).getSize() + ", "
+      if (msg.getData(i).hasNumItems())
+        logStr = logStr + "NumItems: " + msg.getData(i).getNumItems() + ", "
       if (msg.getData(i).hasPath())
-        logStr(0) = logStr(0) + "Path: " + msg.getData(i).getPath()
-      logStr(0) = logStr(0) + "\n"
+        logStr = logStr + "Path: " + msg.getData(i).getPath() + ", "
+      if (msg.getData(i).hasMaskPath())
+        logStr = logStr + "Mask_Path: " + msg.getData(i).getMaskPath()
+      logStr = logStr + "\n"
     }
-    logStr(0)
+    logStr
   }
 
   /**
     * Generate a string of message information.
     */
   def logMsg(msg: AccMessage.TaskMsg): String = {
-    val logStr: Array[String] = Array("Message: Type: ")
-    logStr(0) = logStr(0) + msg.getType() + ", Data: " + msg.getDataCount() + "\n"
+    var logStr = "Message: Type: "
+    logStr = logStr + msg.getType() + ", Data: " + msg.getDataCount() + "\n"
 
     for (i <- 0 until msg.getDataCount()) {
-      logStr(0) = logStr(0) + "Data " + i + ": "
+      logStr = logStr + "Data " + i + ": "
       if (msg.getData(i).hasPartitionId())
-        logStr(0) = logStr(0) + "ID: " + msg.getData(i).getPartitionId() + ", "
+        logStr = logStr + "ID: " + msg.getData(i).getPartitionId() + ", "
       if (msg.getData(i).hasLength())
-        logStr(0) = logStr(0) + "Length: " + msg.getData(i).getLength() + ", "
+        logStr = logStr + "Length: " + msg.getData(i).getLength() + ", "
       if (msg.getData(i).hasSize())
-        logStr(0) = logStr(0) + "Size: " + msg.getData(i).getSize() + ", "
+        logStr = logStr + "Size: " + msg.getData(i).getSize() + ", "
       if (msg.getData(i).hasPath())
-        logStr(0) = logStr(0) + "Path: " + msg.getData(i).getPath()
-      logStr(0) = logStr(0) + "\n"
+        logStr = logStr + "Path: " + msg.getData(i).getPath()
+      logStr = logStr + "\n"
     }
-    logStr(0)
+    logStr
   }
 
   /**
@@ -109,23 +116,56 @@ object Util {
     }
   }
 
-  /**
-    * Get a primitive type size of a RDD.
+    /**
+    * Calculate the number of blocks needed by the RDD.
+    * (Now only support Tuple2)
     *
     * @param rdd RDD.
-    * @return Type size of the RDD in byte.
+    * @return the number of blocks.
     */
-  def getTypeSizeByRDD[T: ClassTag](rdd: RDD[T]): Int = {
-    if (classTag[T] == classTag[Byte] || classTag[T] == classTag[Array[Byte]])          1
-    else if (classTag[T] == classTag[Short] || classTag[T] == classTag[Array[Short]])   2
-    else if (classTag[T] == classTag[Char] || classTag[T] == classTag[Array[Char]])     2
-    else if (classTag[T] == classTag[Int] || classTag[T] == classTag[Array[Int]])       4
-    else if (classTag[T] == classTag[Float] || classTag[T] == classTag[Array[Float]])   4
-    else if (classTag[T] == classTag[Long] || classTag[T] == classTag[Array[Long]])     8
-    else if (classTag[T] == classTag[Double] || classTag[T] == classTag[Array[Double]]) 8
-    else -1
+  def getBlockNum[T: ClassTag](rdd: RDD[T]): Int = {
+    if (classTag[T] == classTag[Tuple2[_, _]])
+      2
+    else
+      1
   }
 
+  /**
+    * Get a type size of the input variable.
+    *
+    * @param in Input variable.
+    * @return Type size of the variable in byte, return -1 for non-supported types.
+    */
+  def getTypeSize[T: ClassTag](in: T): Int = in match {
+    case _: Byte =>   1
+    case _: Char =>   2
+    case _: Short =>  2
+    case _: Int =>    4
+    case _: Float =>  4
+    case _: Long =>   8
+    case _: Double => 8
+    case _ =>        -1
+  }
+
+   /**
+    * Get a type name initial of the input variable.
+    *
+    * @param in Input variable.
+    * @return Type name initial of the variable in byte, 
+    * return an empty string for non-supported types.
+    */
+  def getTypeName[T: ClassTag](in: T): String = in match {
+    case _: Byte =>   "bype"
+    case _: Char =>   "char"
+    case _: Short =>  "short"
+    case _: Int =>    "int"
+    case _: Float =>  "float"
+    case _: Long =>   "long"
+    case _: Double => "double"
+    case _: Any => "any"
+    case _ =>         ""
+  }
+ 
   /**
     * Get a primitive type size by type name.
     *
@@ -138,6 +178,7 @@ object Util {
       typeName = dataType(0).toString
 
     val typeSize: Int = typeName match {
+      case "c" => 2
       case "i" => 4
       case "f" => 4
       case "l" => 8
@@ -147,6 +188,38 @@ object Util {
     typeSize
   }
 
+   /**
+    * Check the type of the RDD is primitive or not.
+    *
+    * @param rdd RDD.
+    * @return true for primitive type, false otherwise.
+    */
+  def isPrimitiveTypeRDD[T: ClassTag](rdd: RDD[T]): Boolean = {
+    if ((classTag[T] == classTag[Byte] || classTag[T] == classTag[Array[Byte]])   ||
+        (classTag[T] == classTag[Char] || classTag[T] == classTag[Array[Char]])   ||
+        (classTag[T] == classTag[Short] || classTag[T] == classTag[Array[Short]]) ||  
+        (classTag[T] == classTag[Int] || classTag[T] == classTag[Array[Int]])     ||
+        (classTag[T] == classTag[Float] || classTag[T] == classTag[Array[Float]]) ||  
+        (classTag[T] == classTag[Long] || classTag[T] == classTag[Array[Long]])   ||
+        (classTag[T] == classTag[Double] || classTag[T] == classTag[Array[Double]])) 
+      true
+    else
+      false
+  }
+
+   /**
+    * Check the type of the RDD is modeled by Blaze or not.
+    *
+    * @param rdd RDD.
+    * @return true for the modeled type, false otherwise.
+    */
+  def isModeledTypeRDD[T: ClassTag](rdd: RDD[T]): Boolean = {
+    if (classTag[T] == classTag[Tuple2[_,_]])
+      true
+    else
+      false
+  }
+ 
   /**
     * Casting a primitive scalar value to another primitive scalar value.
     *
@@ -204,40 +277,40 @@ object Util {
   }
 
   /**
-    * Serialize a partition and write the data to memory mapped file.
+    * Serialize and write the data to memory mapped file.
     *
     * @param prefix The prefix of memory mapped file. Usually use application ID.
     * @param input The data to be serialized.
-    * @param id The ID of the data block.
-    * @return A pair of (file name, size)
+    * @param id The ID of the serialized data.
+    * @return A triple pair of (file name, size, item number)
     */
-  def serializePartition[T: ClassTag](prefix: Int, input: Array[T], id: Long): (String, Int, Int) = {
+  def serialization[T: ClassTag](prefix: Int, input: Array[T], id: Long): (String, Int, Int) = {
     var fileName: String = System.getProperty("java.io.tmpdir") + "/" + prefix
     if (id < 0) // Broadcast data
       fileName = fileName + "_brdcst_" + (-id) + ".dat"
     else // Partition data
       fileName = fileName + id + ".dat"
 
-    val typeName = input(0).getClass.getName.replace("java.lang.", "").toLowerCase()
-    val dataType: String = typeName.replace("[", "")(0).toString // Fetch the element data type.
-    val typeSize: Int = getTypeSizeByName(dataType)
+    val isArray: Boolean = input(0).isInstanceOf[Array[_]]
+    val sampledData: Any = if (isArray) input(0).asInstanceOf[Array[_]](0) else input(0)
+    val typeSize: Int = getTypeSize(sampledData)
+    val dataType: String = getTypeName(sampledData)
 
-    val isArray: Boolean = typeName.contains("[")
-    val itemNum: Int = if (isArray) input.length else 1
+    val itemNum: Int = input.length
 
-    if ((typeName.split('[').length - 1) > 1)
-      throw new RuntimeException("Unsupport multi-dimension arrays: " + typeName)
+    if (typeSize == -1)
+      throw new RuntimeException("Unsupported input data type.")
 
     // Calculate buffer length
-    val bufferLength = Array(0)
+    var bufferLength = 0
     if (isArray) {
       for (e <- input) {
         val a = e.asInstanceOf[Array[_]]
-        bufferLength(0) = bufferLength(0) + a.length
+        bufferLength = bufferLength + a.length
       }
     }
     else
-      bufferLength(0) = input.length
+      bufferLength = input.length
 
     // Create and write memory mapped file
     var raf: RandomAccessFile = null
@@ -249,13 +322,14 @@ object Util {
         throw new IOException("Fail to create memory mapped file " + fileName + ": " + e.toString)
     }
     val fc: FileChannel = raf.getChannel()
-    val buf: ByteBuffer = fc.map(MapMode.READ_WRITE, 0, bufferLength(0) * typeSize)
+    val buf: ByteBuffer = fc.map(MapMode.READ_WRITE, 0, bufferLength * typeSize)
     buf.order(ByteOrder.LITTLE_ENDIAN)
 
     for (e <- input) {
       if (isArray) {
         for (a <- e.asInstanceOf[Array[_]]) {
           dataType match {
+            case "c" => buf.putChar(a.asInstanceOf[Char].charValue)
             case "i" => buf.putInt(a.asInstanceOf[Int].intValue)
             case "f" => buf.putFloat(a.asInstanceOf[Float].floatValue)
             case "l" => buf.putLong(a.asInstanceOf[Long].longValue)
@@ -267,6 +341,7 @@ object Util {
       }
       else {
         dataType match {
+          case "c" => buf.putChar(e.asInstanceOf[Char].charValue)
           case "i" => buf.putInt(e.asInstanceOf[Int].intValue)
           case "f" => buf.putFloat(e.asInstanceOf[Float].floatValue)
           case "l" => buf.putLong(e.asInstanceOf[Long].longValue)
@@ -285,7 +360,7 @@ object Util {
         throw new IOException("Fail to close memory mapped file " + fileName + ": " + e.toString)
     }
 
-    (fileName, bufferLength(0), itemNum)
+    (fileName, bufferLength, itemNum)
   }
 
   /**
@@ -348,6 +423,7 @@ object Util {
       if (isArray) {
         for (ii <- 0 until itemLength) {
           dataType match {
+            case "c" => out(idx).asInstanceOf[Array[Char]](ii) = buf.getChar()
             case "i" => out(idx).asInstanceOf[Array[Int]](ii) = buf.getInt()
             case "f" => out(idx).asInstanceOf[Array[Float]](ii) = buf.getFloat()
             case "l" => out(idx).asInstanceOf[Array[Long]](ii) = buf.getLong()
@@ -359,6 +435,7 @@ object Util {
       }
       else {
          dataType match {
+          case "c" => out(idx) = buf.getChar().asInstanceOf[T]
           case "i" => out(idx) = buf.getInt().asInstanceOf[T]
           case "f" => out(idx) = buf.getFloat().asInstanceOf[T]
           case "l" => out(idx) = buf.getLong().asInstanceOf[T]

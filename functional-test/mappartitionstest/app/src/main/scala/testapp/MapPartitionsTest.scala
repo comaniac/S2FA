@@ -18,6 +18,7 @@
 import org.apache.spark.SparkContext
 import org.apache.spark.SparkContext._
 import org.apache.spark.SparkConf
+import org.apache.spark.util.random._
 import Array._
 import scala.math._
 import org.apache.spark.rdd._
@@ -26,8 +27,8 @@ import java.net._
 // comaniac: Import extended package
 import org.apache.spark.blaze._
 
-class SimpleAddition(v: Long) extends Accelerator[Double, Double] {
-  val id: String = "SimpleAddition"
+class MapPartitionsTest(v: Int) extends Accelerator[Double, Double] {
+  val id: String = "MapPartitionsTest"
 
   def getArgNum(): Int = 1
 
@@ -57,19 +58,16 @@ class SimpleAddition(v: Long) extends Accelerator[Double, Double] {
 object TestApp {
     def main(args : Array[String]) {
       val sc = get_spark_context("Test App")
-      val rdd = sc.textFile("/curr/cody/test/testInput.txt", 15)
+      val data = new Array[Double](20000).map(e => random)
+      val rdd = sc.parallelize(data, 10)
 
       val acc = new BlazeRuntime(sc)
-      val rdd_acc = acc.wrap(rdd.map(a => a.toDouble))
+      val rdd_acc = acc.wrap(rdd)
 
-      val b = acc.wrap(sc.broadcast(Array(1, 2, 3)))
-      val v: Long = 2L
+      val v: Int = 2
 
-      rdd_acc.cache
-      rdd_acc.collect
-      val rdd_acc2 = rdd_acc.mapPartitions_acc(new SimpleAddition(v))
-      println("Result: " + rdd_acc2.reduce((a, b) => (a + b)))
-      println("Expect: " + rdd_acc.map(e => e + v.toDouble).reduce((a, b) => (a + b)))
+      println("Result: " + rdd_acc.mapPartitions_acc(new MapPartitionsTest(v)).reduce((a, b) => (a + b)))
+      println("CPU result: " + rdd.map(e => e + v).reduce((a, b) => (a + b)))
 
       acc.stop()
     }
