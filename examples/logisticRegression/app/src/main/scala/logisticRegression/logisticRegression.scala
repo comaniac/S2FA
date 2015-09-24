@@ -22,7 +22,7 @@ import Array._
 import org.apache.spark.rdd._
 
 import scala.math._
-import java.util.Random
+import java.util._
 
 // comaniac: Import extended package
 import org.apache.spark.blaze._
@@ -30,7 +30,7 @@ import org.apache.spark.blaze._
 class LogisticRegression(b_w: BlazeBroadcast[Array[Float]]) 
   extends Accelerator[Array[Float], Array[Float]] {
 
-  val id: String = "Logistic_gen"
+  val id: String = "Logistic"
 
   def getArg(idx: Int): Option[BlazeBroadcast[Array[Float]]] = {
     if (idx == 0)
@@ -41,65 +41,23 @@ class LogisticRegression(b_w: BlazeBroadcast[Array[Float]])
 
   def getArgNum(): Int = 1
 
-  // mapParitions
-  override def call(data: Iterator[Array[Float]]): Iterator[Array[Float]] = {
+  override def call(data: Array[Float]): Array[Float] = {
     val _L: Int = 10
     val _D: Int = 784
 
-    val grad = new Array[Float](7840)
-    val w_blazeLocal7840 = b_w.value
+    val grad = new Array[Float](_L * _D)
+    val dot = new Array[Float](1)
+    val w = b_w.data
 
-    while (data.hasNext) {
-      val adata = data.next
-
-      var i = 0
-      while (i < _L) {
-        var dot = 0.0f
-        var j = 0
-        while (j < _D) {
-          dot = dot + w_blazeLocal7840(i * _D + j) * adata(j + _L)
-          j += 1
-        }
+    for (i <- 0 until _L) {
+      dot(0) = 0.0f
+      for (j <- 0 until _D)
+        dot(0) = dot(0) + w(i * _D + j) * data(j + _L)
       
-        val c: Float = (1.0f / (1.0f + exp(-adata(i) * dot).toFloat) - 1.0f) * adata(i)
-  
-        j = 0
-        while (j < _D) {
-          grad(i * _D + j) = grad(i * _D + j) + c * adata(j + _L)
-          j += 1
-        }
-        i += 1
-      }
-    }
-    Array(grad).iterator // FIXME: How to generate
-  }
+      val c: Float = (1.0f / (1.0f + Math.exp(-data(i) * dot(0)).toFloat) - 1.0f) * data(i)
 
-  // map
-  override def call(data_blazeLocal7840: Array[Float]): Array[Float] = {
-    val _L: Int = 10
-    val _D: Int = 784
-
-//    val grad = new Array[Float](_L * (_D + 1))
-    val grad = new Array[Float](7840)
-    val w_blazeLocal7840 = b_w.value
-
-    var i = 0
-    while (i < _L) {
-      var dot = 0.0f
-      var j = 0
-      while (j < _D) {
-        dot = dot + w_blazeLocal7840(i * _D + j) * data_blazeLocal7840(j + _L)
-        j += 1
-      }
-      
-      val c: Float = (1.0f / (1.0f + exp(-data_blazeLocal7840(i) * dot).toFloat) - 1.0f) * data_blazeLocal7840(i)
-
-      j = 0
-      while (j < _D) {
-        grad(i * _D + j) = grad(i * _D + j) + c * data_blazeLocal7840(j + _L)
-        j += 1
-      }
-      i += 1
+      for (j <- 0 until _D)
+        grad(i * _D + j) = grad(i * _D + j) + c * data(j + _L)
     }
     grad
   }
@@ -135,7 +93,7 @@ object LogisticRegression {
       val pointNum = dataPoints.count
       println("Total " + pointNum + " points")
 
-      val w = new Array[Float](L * D)
+      val w = new Array[Float](L * (D+1))
       for (i <- 0 until L) {
         for (j <- 0 until D)
           w(i * D + j) = (rand.nextFloat - 0.5f) * 2.0f * upperbound
@@ -145,7 +103,7 @@ object LogisticRegression {
         var start_time = System.nanoTime
         val b_w = acc.wrap(sc.broadcast(w))
         val gradient = dataPoints
-          .mapPartitions_acc(new LogisticRegression(b_w))
+          .map_acc(new LogisticRegression(b_w))
           .reduce((a, b) => {
             for (i <- 0 until L) {
               for (j <- 0 until D)
@@ -153,7 +111,7 @@ object LogisticRegression {
             }
             a
           })
-
+        
         for (i <- 0 until L) {
           for (j <- 0 until D)
             w(i * D + j) = w(i * D + j) - 0.13f * gradient(i * D + j) / pointNum;
@@ -163,10 +121,10 @@ object LogisticRegression {
 
         // Verification 
         
-        val errNum = dataPoints
-          .map(points => predictor(w, points))
-          .reduce((a, b) => (a + b))
-        println("Error rate: " + ((errNum.toFloat / pointNum.toFloat) * 100) + "%")
+        //val errNum = dataPoints
+        //  .map(points => predictor(w, points))
+        //  .reduce((a, b) => (a + b))
+        //println("Error rate: " + ((errNum.toFloat / pointNum.toFloat) * 100) + "%")
         
       }
 
@@ -174,21 +132,23 @@ object LogisticRegression {
     }
 
     def predictor(w: Array[Float], data: Array[Float]): Int = {
-      var maxPred = 0.0f
-      var maxIdx = 0
+      val maxPred = new Array[Float](1)
+      val maxIdx = new Array[Int](1)
+      maxPred(0) = 0.0f
       
       for (i <- 0 until L) {
-        var dot = 0.0f
+        val dot = new Array[Float](1)
+        dot(0) = 0.0f
         for(j <- 0 until D)
-          dot = dot + w(i * D + j) * data(L + j)
-        dot = dot + w(i * D)
-        val pred = 1 / (1 + Math.exp(-dot).toFloat)
-        if (pred > maxPred) {
-          maxPred = pred
-          maxIdx = i
+          dot(0) = dot(0) + w(i * D + j) * data(L + j)
+        dot(0) = dot(0) + w(i * D)
+        val pred = 1 / (1 + Math.exp(-dot(0)).toFloat)
+        if (pred > maxPred(0)) {
+          maxPred(0) = pred
+          maxIdx(0) = i
         }
       }
-      if (data(maxIdx) < 0.5)
+      if (data(maxIdx(0)) < 0.5)
         1
       else
         0
