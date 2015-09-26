@@ -79,12 +79,15 @@ class KMeans private (
       val bcDim = acc.wrap(sc.broadcast(dims))
       while (iteration < maxIterations) {
         val bcCenters = acc.wrap(sc.broadcast(centers))
+        val startTime = System.nanoTime()
         val classifiedCenters = points.map_acc(new KMeansClassified(bcCenters, bcDim))
+        val elapsedTime = (System.nanoTime() - initStartTime) / 1e9
+        println("Execution time " + "%.3f".format(initTimeInSeconds) + " s.")
         val classified = classifiedCenters.zip(points)
 
         val counts = classified.countByKey()
         val sums = classified.reduceByKey((a, b) => {
-          val ary = new Array[Double](bcDim.data)
+          val ary = new Array[Double](bcDim.value)
           (0 until dims).foreach ( ii => {
             ary(ii) = a(ii) + b(ii)
           })
@@ -194,24 +197,41 @@ class KMeansClassified(
       None
   }
 
-  override def call(in: Array[Double]): Int = {
-    val centers = b_centers.data
-    val D: Int = b_D.data
-    val K: Int = centers.length / D
+  override def call(in_blazeLocal784: Array[Double]): Int = { 
+    val centers_blazeLocalMax4096 = b_centers.value
+    val D: Int = b_D.value
+
+    // Blaze CodeGen: Cannot access array length of local array.
+    val K: Int = (b_centers.value).length / D
 
     var closest_center = -1
     var closest_center_dist = -1.0
+    val dist = new Array[Double](3)
 
-    for (i <- 0 until K) {
-      var allDiff = 0.0
-      for (j <- 0 until D)
-        allDiff = allDiff + pow(centers(i * D + j) - in(j), 2)
-      val dist = sqrt(allDiff)
-      
-      if (closest_center == -1 || dist < closest_center_dist) {
+    // Blaze CodeGen: foreach and for loop are forbidden.
+    var i: Int = 0
+    while (i < K) {
+      dist(i) = 0.0
+
+      var j: Int = 0
+      while (j < D) {
+        val dist_root = centers_blazeLocalMax4096(i * D + j) - in_blazeLocal784(j)
+        if (dist_root > 0)
+          dist(i) = dist(i) + dist_root
+        else
+          dist(i) = dist(i) - dist_root
+        j += 1
+      }      
+      i += 1
+    }
+
+    i = 0
+    while (i < K) {
+      if (closest_center == -1 || dist(i) < closest_center_dist) {
         closest_center = i
-        closest_center_dist = dist
+        closest_center_dist = dist(i)
       }
+      i += 1
     }
 
     closest_center

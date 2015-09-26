@@ -37,6 +37,8 @@ import org.apache.spark._
 import org.apache.spark.{Partition, TaskContext}
 import org.apache.spark.rdd._                   
 
+import ModeledType._
+
 /**
   * Various utility methods used by Blaze.
   */
@@ -48,6 +50,39 @@ object Util {
   val RDD_BIT_START = 13
   val PARTITION_BIT_START = 1
   val BLOCK_BIT_START = 0
+
+    /**
+    * Check the type of the RDD is primitive or not.
+    *
+    * @param rdd RDD.
+    * @return true for primitive type, false otherwise.
+    */
+  def isPrimitiveTypeRDD[T: ClassTag](rdd: RDD[T]): Boolean = {
+    if ((classTag[T] == classTag[Byte] || classTag[T] == classTag[Array[Byte]])   ||
+        (classTag[T] == classTag[Char] || classTag[T] == classTag[Array[Char]])   ||
+        (classTag[T] == classTag[Short] || classTag[T] == classTag[Array[Short]]) ||  
+        (classTag[T] == classTag[Int] || classTag[T] == classTag[Array[Int]])     ||
+        (classTag[T] == classTag[Float] || classTag[T] == classTag[Array[Float]]) ||  
+        (classTag[T] == classTag[Long] || classTag[T] == classTag[Array[Long]])   ||
+        (classTag[T] == classTag[Double] || classTag[T] == classTag[Array[Double]])) 
+      true
+    else
+      false
+  }
+
+   /**
+    * Check the type of the RDD is modeled by Blaze or not.
+    *
+    * @param rdd RDD.
+    * @return an enumeration for the modeled class.
+    */
+  def whichModeledTypeRDD[T: ClassTag](rdd: RDD[T]): ModeledType = {
+    if (classTag[T] == classTag[Tuple2[_,_]])
+      ModeledType.ScalaTuple2
+    else
+      ModeledType.NotModeled
+  }
+ 
 
   def random = new Random()
 
@@ -186,38 +221,6 @@ object Util {
       case _ => -1
     }
     typeSize
-  }
-
-   /**
-    * Check the type of the RDD is primitive or not.
-    *
-    * @param rdd RDD.
-    * @return true for primitive type, false otherwise.
-    */
-  def isPrimitiveTypeRDD[T: ClassTag](rdd: RDD[T]): Boolean = {
-    if ((classTag[T] == classTag[Byte] || classTag[T] == classTag[Array[Byte]])   ||
-        (classTag[T] == classTag[Char] || classTag[T] == classTag[Array[Char]])   ||
-        (classTag[T] == classTag[Short] || classTag[T] == classTag[Array[Short]]) ||  
-        (classTag[T] == classTag[Int] || classTag[T] == classTag[Array[Int]])     ||
-        (classTag[T] == classTag[Float] || classTag[T] == classTag[Array[Float]]) ||  
-        (classTag[T] == classTag[Long] || classTag[T] == classTag[Array[Long]])   ||
-        (classTag[T] == classTag[Double] || classTag[T] == classTag[Array[Double]])) 
-      true
-    else
-      false
-  }
-
-   /**
-    * Check the type of the RDD is modeled by Blaze or not.
-    *
-    * @param rdd RDD.
-    * @return true for the modeled type, false otherwise.
-    */
-  def isModeledTypeRDD[T: ClassTag](rdd: RDD[T]): Boolean = {
-    if (classTag[T] == classTag[Tuple2[_,_]])
-      true
-    else
-      false
   }
  
   /**

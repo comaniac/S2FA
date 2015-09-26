@@ -17,6 +17,8 @@
 
 package org.apache.spark.blaze
 
+import ModeledType._
+
 import java.io._
 import java.util.LinkedList
 import java.util.ArrayList     
@@ -89,8 +91,8 @@ class AccRDD[U: ClassTag, T: ClassTag](
       var outputIter: Iterator[U] = null
       var outputAry: Array[U] = null // Length is unknown before reading the input
       var dataLength: Int = -1
-      val isPrimitiveType: Boolean = Util.isPrimitiveTypeRDD(getRDD)
-      val isModeledType: Boolean = Util.isModeledTypeRDD(getRDD)
+      val isPrimitiveType: Boolean = Util.isPrimitiveTypeRDD(getRDD.asInstanceOf[RDD[T]])
+      val modeledType: ModeledType = Util.whichModeledTypeRDD(getRDD.asInstanceOf[RDD[T]])
       var partitionMask: Array[Char] = null
       var isSampled: Boolean = false
 
@@ -98,11 +100,17 @@ class AccRDD[U: ClassTag, T: ClassTag](
       var elapseTime: Long = 0
 
       try {
-        if (!isPrimitiveType && !isModeledType)
+        if (!isPrimitiveType && modeledType == ModeledType.NotModeled)
           throw new RuntimeException("RDD data type is not supported")
 
-        if (split.index == 0) // FIXME: Testing
-          genOpenCLKernel(acc.id)
+        if (split.index == 0) { // FIXME: Testing
+          if (isPrimitiveType)
+            genOpenCLKernel(acc.id)
+          else { // Non primitive types must provide a sample object.
+            val sample = firstParent[T].iterator(split, context).next
+            genOpenCLKernel(acc.id, modeledType, Some(sample))
+          }
+        }
 
         // Get broadcast block IDs
         for (j <- 0 until brdcstIdOrValue.length) {
@@ -449,7 +457,11 @@ class AccRDD[U: ClassTag, T: ClassTag](
     outputList.iterator
   }
 
-  def genOpenCLKernel(id: String) = {
+  def genOpenCLKernel(
+    id: String, 
+    modeledType: ModeledType = NotModeled, 
+    sample: Option[Any] = None
+  ) = {
     System.setProperty("com.amd.aparapi.enable.NEW", "true")
     val kernelPath : String = "/tmp/blaze_kernel_" + id + ".cl" 
     // TODO:  1. Should be a shared path e.g. HDFS
@@ -496,6 +508,17 @@ class AccRDD[U: ClassTag, T: ClassTag](
         }
         params.add(returnWithDim._1)
 
+        if (modeledType == ModeledType.ScalaTuple2) {
+          require (sample.isDefined)
+          createHardCodedClassModel(sample.get.asInstanceOf[Tuple2[_,_]], 
+            hardCodedClassModels, params.get(0))
+          val sampledOut = acc.call(sample.get.asInstanceOf[T])
+          if (sampledOut.isInstanceOf[Tuple2[_,_]]) {
+            createHardCodedClassModel(sampledOut.asInstanceOf[Tuple2[_,_]], 
+              hardCodedClassModels, params.get(1))
+          }
+        }
+
         val fun: T => U = acc.call
         entryPoint = classModel.getEntrypoint("call", descriptor, fun, params, hardCodedClassModels)
         val writerAndKernel = KernelWriter.writeToString(entryPoint, params)
@@ -513,6 +536,29 @@ class AccRDD[U: ClassTag, T: ClassTag](
           logWarning("[CodeGen] OpenCL kernel generated failed: " + sw.toString)
       }
     }
+  }
+
+  def createHardCodedClassModel(
+    obj: Tuple2[_, _],
+    hardCodedClassModels: HardCodedClassModels, 
+    param: ScalaArrayParameter
+  ) {
+    val inputClassType1 = obj._1.getClass
+    val inputClassType2 = obj._2.getClass
+
+    val inputClassType1Name = CodeGenUtil.cleanClassName(
+        inputClassType1.getName)
+    val inputClassType2Name = CodeGenUtil.cleanClassName(
+        inputClassType2.getName)
+
+    val tuple2ClassModel : Tuple2ClassModel = Tuple2ClassModel.create(
+        inputClassType1Name, inputClassType2Name, param.getDir != DIRECTION.IN)
+    hardCodedClassModels.addClassModelFor(obj.getClass, tuple2ClassModel)
+
+    param.addTypeParameter(inputClassType1Name,
+        !CodeGenUtil.isPrimitive(inputClassType1Name))
+    param.addTypeParameter(inputClassType2Name,
+        !CodeGenUtil.isPrimitive(inputClassType2Name))
   }
 }
 

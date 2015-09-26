@@ -66,7 +66,9 @@ object TestApp {
 
       val v: Int = 2
 
-      println("Result: " + rdd_acc.mapPartitions_acc(new MapPartitionsTest(v)).reduce((a, b) => (a + b)))
+      println("Result: " + rdd_acc.map_acc(new MapPartitionsTest(v)).reduce((a, b) => (a + b)))
+
+//      println("Result: " + rdd_acc.mapPartitions_acc(new MapPartitionsTest(v)).reduce((a, b) => (a + b)))
       println("CPU result: " + rdd.map(e => e + v).reduce((a, b) => (a + b)))
 
       acc.stop()

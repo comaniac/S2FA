@@ -582,6 +582,8 @@ public class Entrypoint implements Cloneable {
 			}
 		}
 
+//	comaniac: Now we don't want to model Tuple2 class.
+//	Intead, we want to transform it as 2 variables and access them directly.
 		if (params != null) {
 			for (ScalaArrayParameter p : params) {
 				if (p.getClazz() != null)
@@ -611,7 +613,7 @@ public class Entrypoint implements Cloneable {
 		// Collect all methods called directly from kernel's run method
 		for (final MethodCall methodCall : methodModel.getMethodCalls()) {
 			ClassModelMethod m = resolveCalledMethod(methodCall, classModel);
-			if ((m != null) && !methodMap.keySet().contains(m) && !noCL(m)) {
+			if ((m != null) && !methodMap.keySet().contains(m) && !noCL(m) && !transformedMethod(m)) {
 				final MethodModel target = new LoadedMethodModel(m, this);
 				methodMap.put(m, target);
 				methodModel.getCalledMethods().add(target);
@@ -687,7 +689,6 @@ public class Entrypoint implements Cloneable {
 
 				for (Instruction instruction = methodModel.getPCHead(); instruction != null; instruction =
 				       instruction.getNextPC()) {
-
 					if (instruction instanceof AssignToArrayElement) {
 						final AssignToArrayElement assignment = (AssignToArrayElement) instruction;
 
@@ -739,6 +740,7 @@ public class Entrypoint implements Cloneable {
 						final FieldEntry field = access.getConstantPoolFieldEntry();
 						final String accessedFieldName = field.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
 						fieldAccesses.add(accessedFieldName);
+
 						final String signature;
 						if (access instanceof ScalaGetObjectRefField) {
 							ScalaGetObjectRefField scalaGet = (ScalaGetObjectRefField)access;
@@ -827,7 +829,8 @@ public class Entrypoint implements Cloneable {
 								}
 							}
 							lexicalOrdering.add(className);
-						} else {
+						} 
+						else {
 							final String className = (field.getClassEntry().getNameUTF8Entry().getUTF8()).replace('/', '.');
 							final Set<String> ignoreScalaRuntimeStuff = new HashSet<String>();
 							ignoreScalaRuntimeStuff.add("scala.runtime.RichInt$");
@@ -836,11 +839,7 @@ public class Entrypoint implements Cloneable {
 							ignoreScalaRuntimeStuff.add("scala.runtime.ObjectRef");
 							ignoreScalaRuntimeStuff.add("scala.runtime.IntRef");
 							ignoreScalaRuntimeStuff.add("scala.math.package$");
-							/*
-							 * Ignore some internal scala stuff, because we won't be emitting any code based on them anyway.
-							 * In general, this is a lot of Scala boxing/unboxing code that just translates down to a single
-							 * int, double, float, etc.
-							 */
+
 							if (!ignoreScalaRuntimeStuff.contains(className)) {
 								// Look for object data member access
 								if (!className.equals(getClassModel().getClassWeAreModelling().getName())
@@ -849,7 +848,6 @@ public class Entrypoint implements Cloneable {
 									updateObjectMemberFieldAccesses(className, field);
 							}
 						}
-
 					} else if (instruction instanceof AssignToField) {
 						final AssignToField assignment = (AssignToField) instruction;
 						final FieldEntry field = assignment.getConstantPoolFieldEntry();
@@ -1041,6 +1039,14 @@ public class Entrypoint implements Cloneable {
 	private boolean noCL(ClassModelMethod m) {
 		boolean found = m.getClassModel().getNoCLMethods().contains(m.getName());
 		return found;
+	}
+
+	private boolean transformedMethod(ClassModelMethod m) {
+		// TODO: DenseVector, etc
+		if(m.getClassModel().toString().contains("scala.Tuple2"))
+			return true;
+		else
+			return false;
 	}
 
 	private FieldEntry getSimpleGetterField(MethodModel method) {

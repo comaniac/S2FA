@@ -101,6 +101,10 @@ public abstract class KernelWriter extends BlockWriter {
 		scalaMapped.add("scala/math/package$.exp(D)D");
 	}
 
+	public final static Set<String> SelfMapped = new HashSet<String>();
+	{
+		SelfMapped.add("scala/math/package$.random()D");
+	}
 
 	public final static Map<String, String[]> XilinxMethodMap = new HashMap<String, String[]>();
 	{
@@ -429,6 +433,7 @@ public abstract class KernelWriter extends BlockWriter {
 				assert entryPoint != null : "entryPoint should not be null";
 				boolean isMapped = Kernel.isMappedMethod(_methodEntry);
 				boolean isScalaMapped = scalaMapped.contains(_methodEntry.toString());
+				boolean isSelfMapped = SelfMapped.contains(_methodEntry.toString());
 
 				if (m != null)
 					write(m.getName());
@@ -438,8 +443,8 @@ public abstract class KernelWriter extends BlockWriter {
 					 * java.lang.Object super constructor
 					 */
 				} else {
-					// Must be a library call like rsqrt
-					if (!isMapped && !isScalaMapped)
+					// Must be a library call like rsqrt // FIXME: Tuple2
+					if (!isMapped && !isScalaMapped && !isSelfMapped && !_methodEntry.toString().contains("scala/Tuple2"))
 						throw new RuntimeException(_methodEntry + " should be mapped method!");
 					write(methodName);
 					isIntrinsic = true;
@@ -735,6 +740,10 @@ public abstract class KernelWriter extends BlockWriter {
 
 			thisStruct.add("int " + p.getName() + "_item_length");
 		}
+
+		// Include self mapped function libaray
+		write("#include \"boko.h\"");
+		newLine();
 
 		if (Config.enableByteWrites || _entryPoint.requiresByteAddressableStorePragma()) {
 			// Starting with OpenCL 1.1 (which is as far back as we support)

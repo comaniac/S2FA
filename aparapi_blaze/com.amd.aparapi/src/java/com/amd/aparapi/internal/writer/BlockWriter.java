@@ -1199,8 +1199,9 @@ public abstract class BlockWriter {
 			if (type.equals("scala.Tuple2")) {
 				final String firstParam = getParameterStringFor(writer, 0);
 				final String secondParam = getParameterStringFor(writer, 1);
-				String containerParam = "__global " + getType() + " *" + name;
-				return firstParam + ", " + secondParam + ", " + containerParam;
+// #Issue 49: We don't use container anymore
+//				String containerParam = "__global " + getType() + " *" + name;
+				return firstParam + ", " + secondParam;
 			} else
 				return "__global " + type.replace('.', '_') + "* " + name;
 		}
