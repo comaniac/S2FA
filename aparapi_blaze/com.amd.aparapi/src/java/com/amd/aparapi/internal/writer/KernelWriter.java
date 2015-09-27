@@ -38,6 +38,7 @@ under those regulations, please refer to the U.S. Bureau of Industry and Securit
 package com.amd.aparapi.internal.writer;
 
 import com.amd.aparapi.*;
+import com.amd.aparapi.internal.util.*;
 import com.amd.aparapi.internal.exception.*;
 import com.amd.aparapi.internal.instruction.*;
 import com.amd.aparapi.internal.instruction.InstructionSet.*;
@@ -707,24 +708,8 @@ public abstract class KernelWriter extends BlockWriter {
 			}
 		}
 
-		if (_entryPoint.requiresHeap()) {
-			argLines.add("__global void *heap");
-			argLines.add("__global uint *free_index");
-			argLines.add("unsigned int heap_size");
-			argLines.add("__global int *processing_succeeded");
-			argLines.add("__global int *any_failed");
-
-			assigns.add("this->heap = heap");
-			assigns.add("this->free_index = free_index");
-			assigns.add("this->heap_size = heap_size");
-
-			thisStruct.add("__global void *heap");
-			thisStruct.add("__global uint *free_index");
-			thisStruct.add("int alloc_failed");
-			thisStruct.add("unsigned int heap_size");
-		}
-
 		// Add item length into This struct if we have array type input/output
+/* 	// Comment out since we cannot map the variable name.
 		for (ScalaArrayParameter p : params) {
 			String paramString = null;
 			if (p.getDir() == ScalaArrayParameter.DIRECTION.OUT)
@@ -740,7 +725,7 @@ public abstract class KernelWriter extends BlockWriter {
 
 			thisStruct.add("int " + p.getName() + "_item_length");
 		}
-
+*/
 		// Include self mapped function libaray
 		write("#include \"boko.h\"");
 		newLine();
@@ -755,7 +740,7 @@ public abstract class KernelWriter extends BlockWriter {
 		}
 
 		boolean usesAtomics = false;
-		if (Config.enableAtomic32 || _entryPoint.requiresAtomic32Pragma() || _entryPoint.requiresHeap()) {
+		if (Config.enableAtomic32 || _entryPoint.requiresAtomic32Pragma()) {
 			usesAtomics = true;
 			writePragma("cl_khr_global_int32_base_atomics", true);
 			writePragma("cl_khr_global_int32_extended_atomics", true);
@@ -786,27 +771,6 @@ public abstract class KernelWriter extends BlockWriter {
 
 		if (Config.enableDoubles || _entryPoint.requiresDoublePragma()) {
 			writePragma("cl_khr_fp64", true);
-			newLine();
-		}
-
-		// Heap allocation
-		if (!useFPGAStyle) {
-			write("static __global void *alloc(__global void *heap,");
-			write(" volatile __global uint *free_index, unsigned int heap_size, int nbytes, int *alloc_failed) {");
-			in();
-			newLine();
-
-			write("__global unsigned char *cheap = (__global unsigned char *)heap;");
-			newLine();
-			write("uint offset = atomic_add(free_index, nbytes);");
-			newLine();
-			write("if (offset + nbytes > heap_size) { *alloc_failed = 1; return 0x0; }");
-			newLine();
-			write("else return (__global void *)(cheap + offset);");
-
-			out();
-			newLine();
-			write("}");
 			newLine();
 		}
 
@@ -904,7 +868,7 @@ public abstract class KernelWriter extends BlockWriter {
 					newLine();
 					write("   or the kernel might not be synthesized or compiled. */");
 					newLine();
-					write("static void ");
+//					write("static void ");
 					isArrayTypeOutput = true;
 				} else {
 					write("static ");
@@ -948,46 +912,82 @@ public abstract class KernelWriter extends BlockWriter {
 			for (final LocalVariableInfo lvi : lvte) {
 				if ((lvi.getStart() == 0) && ((lvi.getVariableIndex() != 0) ||
 				                              mm.getMethod().isStatic())) { // full scope but skip this
-					final String descriptor = lvi.getVariableDescriptor();
-					if (alreadyHasFirstArg)
-						write(", ");
+					final String clazzDesc = lvi.getVariableDescriptor();
+					List<String> descList = new LinkedList<String>();
+					List<String> fieldList = new LinkedList<String>();
 
-					// Arrays always map to __global arrays
-					if (descriptor.startsWith("["))
-						write(" __global ");
+					// Issue #49: Here we made several assumptions to support the argument with type parameter.
+					// 1. Only "call" method has the argument with type parameter.
+					// 2. The argument of "call" method must be (this, input, <output>)
+					// Based on the assumptions we are able to allow different type parameter for the same class
+					// of input and output. For example input Tuple2[Int, Float]; output Tuple2[Double, Double]
+					if (mm.getName().contains("call") && Utils.isTransformedClass(clazzDesc)) {
+						for (ScalaArrayParameter p : params) {
+						  String paramString = null;
+						  if (p.getDir() == ScalaArrayParameter.DIRECTION.IN) {
+						    String [] descArray = p.getDescArray();
+								for (int i = 0; i < descArray.length; i += 1) {
+									String desc = descArray[i];
+									String field = Utils.getTransformedClassField(clazzDesc, i);
+									descList.add(desc);
+									fieldList.add(field);
+								}
+								break;
+							}
+						}
+					}
+					else
+						descList.add(clazzDesc);
 
-					if (descriptor.startsWith("L"))
-						write("__global ");
-					final String convertedType;
-					if (descriptor.startsWith("L")) {
-						final String converted = convertType(descriptor, true).trim();
-						final SignatureEntry sigEntry = mm.getMethod().getAttributePool().getSignatureEntry();
-						final TypeSignature sig;
+					for (int i = 0; i < descList.size(); i += 1) {
+						String descriptor = descList.get(i);
 
-						if (sigEntry != null) {
-							final int argumentOffset = (mm.getMethod().isStatic() ?
-							                            lvi.getVariableIndex() : lvi.getVariableIndex() - 1);
-							final FullMethodSignature methodSig = new FullMethodSignature(
-							  sigEntry.getSignature());
-							sig =
-							  methodSig.getTypeParameters().get(argumentOffset);
+						if (alreadyHasFirstArg)
+							write(", ");
+
+						if (descriptor.startsWith("["))
+							write(" __local ");
+
+						// FIXME: We haven't create a programming model for user-defined classes.
+						if (descriptor.startsWith("L"))
+							write("__global ");
+
+						final String convertedType;
+						if (descriptor.startsWith("L")) {
+							final String converted = convertType(descriptor, true).trim();
+							final SignatureEntry sigEntry = mm.getMethod().getAttributePool().getSignatureEntry();
+							final TypeSignature sig;
+
+							if (sigEntry != null) {
+								final int argumentOffset = (mm.getMethod().isStatic() ?
+								                            lvi.getVariableIndex() : lvi.getVariableIndex() - 1);
+								final FullMethodSignature methodSig = new FullMethodSignature(
+								  sigEntry.getSignature());
+								sig =
+								  methodSig.getTypeParameters().get(argumentOffset);
+							} else
+								sig = new TypeSignature(descriptor);
+							ClassModel cm = entryPoint.getModelFromObjectArrayFieldsClasses(
+							                  converted, new SignatureMatcher(sig));
+							convertedType = cm.getMangledClassName() + "* ";
 						} else
-							sig = new TypeSignature(descriptor);
-						ClassModel cm = entryPoint.getModelFromObjectArrayFieldsClasses(
-						                  converted, new SignatureMatcher(sig));
-						convertedType = cm.getMangledClassName() + "* ";
-					} else
-						convertedType = convertType(descriptor, true);
-					write(convertedType);
+							convertedType = convertType(descriptor, true);
+						write(convertedType);
 
-					// Issue #39: Replace variable name with "_" for local variable promotion
-					// FIXME: How about promoting output?
-					if (useFPGAStyle && lvi.getVariableName().contains("blazeLocal")) {
-						write("_" + lvi.getVariableName());
-						promoteLocalArguments.put(lvi.getVariableName().toString(), convertedType.toString());
-					} else
-						write(lvi.getVariableName());
-					alreadyHasFirstArg = true;
+						String varName = lvi.getVariableName();
+						if (fieldList.size() != 0) {
+							varName = varName + fieldList.get(i);
+						}
+
+						// Issue #39: Replace variable name with "_" for local variable promotion
+						// FIXME: How about promoting output?
+						if (useFPGAStyle && lvi.getVariableName().contains("blazeLocal")) {
+							write("_" + lvi.getVariableName());
+							promoteLocalArguments.put(varName, convertedType.toString());
+						} else
+							write(varName);
+						alreadyHasFirstArg = true;
+					}
 				}
 			}
 
@@ -1065,6 +1065,7 @@ public abstract class KernelWriter extends BlockWriter {
 			newLine();
 		}
 
+		// Start writing main function
 		ScalaArrayParameter outParam = null;
 		write("__kernel ");
 		newLine();
@@ -1072,57 +1073,54 @@ public abstract class KernelWriter extends BlockWriter {
 		in();
 		in();
 		newLine();
-		{
-			boolean first = true;
-			for (ScalaArrayParameter p : params) {
-				if (first) {
-					first = false;
-					write("int N");
-				}
+
+		// Argunments: (dataNum, input, output, reference)
+		boolean first = true;
+		for (ScalaArrayParameter p : params) {
+			if (first) {
+				first = false;
+				write("int N");
+			}
+			write(", ");
+			newLine();
+
+			// Find output parameter
+			String paramString = null;
+			if (p.getDir() == ScalaArrayParameter.DIRECTION.OUT) {
+				assert(outParam == null); // Expect only one output parameter.
+				outParam = p;
+				paramString = p.getOutputParameterString(this);
+			} else
+				paramString = p.getInputParameterString(this);
+			write(paramString);
+
+			// comaniac: Add length and item number for 1-D array I/O.
+			if (paramString.contains("ary")) {
 				write(", ");
 				newLine();
 
-				String paramString = null;
-				if (p.getDir() == ScalaArrayParameter.DIRECTION.OUT) {
-					assert(outParam == null); // Expect only one output parameter.
-					outParam = p;
-					paramString = p.getOutputParameterString(this);
-				} else
-					paramString = p.getInputParameterString(this);
-				write(paramString);
-
-				// comaniac: Add length and item number for 1-D array I/O.
-				if (paramString.contains("ary")) {
-					write(", ");
-					newLine();
-
-					// Currently only support one-to-one mapping so output item # is same as N.
-					// if (p.getDir() == ScalaArrayParameter.DIRECTION.OUT) {
-					//	 write("int " + p.getName() + "_item_num, ");
-					//	 newLine();
-					// }
-					write("int " + p.getName() + "_item_length");
-				}
-			}
-
-			for (final String line : argLines) {
-				write(", ");
-				write(line);
+				// Currently only support one-to-one mapping so output item # is same as N.
+				// if (p.getDir() == ScalaArrayParameter.DIRECTION.OUT) {
+				//	 write("int " + p.getName() + "_item_num, ");
+				//	 newLine();
+				// }
+				write("int " + p.getName() + "_item_length");
 			}
 		}
+		for (final String line : argLines) {
+			write(", ");
+			write(line);
+		}
+
 		write(") {");
 		out();
 		newLine();
 		assert(outParam != null);
 
-		writeln("int nthreads = get_global_size(0);");
-
-		if (!useFPGAStyle)
+		// FPGA uses 1 work group while GPU uses multiple.
+		if (!useFPGAStyle) {
+			writeln("int nthreads = get_global_size(0);");
 			writeln("int idx = get_global_id(0);");
-		else {
-			writeln("int part = (N / nthreads) + 1;");
-			writeln("int idx = get_global_id(0) * part;");
-			writeln("int end = (idx + part > N)? N: idx + part;");
 		}
 
 		writeln("This thisStruct;");
@@ -1132,136 +1130,63 @@ public abstract class KernelWriter extends BlockWriter {
 			writeln(";");
 		}
 
-		for (ScalaArrayParameter p : params) {
-			if (p.getDir() == ScalaArrayParameter.DIRECTION.IN) {
-				if (p.getClazz() != null && p.getClazz().getName().equals("scala.Tuple2")) {
-					writeln("__global " + p.getType() + " *my_" + p.getName() + " = " +
-					        p.getName() + " + get_global_id(0);");
-				}
-			}
-		}
-
 		if (!useFPGAStyle)
 			write("for (; idx < N; idx += nthreads) {");
 		else
-			write("for (; idx < end; idx++) {");
+			write("for (int idx = 0; idx < N; idx++) {");
 		in();
 		newLine();
-		{
-			if (_entryPoint.requiresHeap()) {
-				write("if (processing_succeeded[idx]) continue;");
-				newLine();
-				newLine();
 
-				write("this->alloc_failed = 0;");
-				newLine();
-			}
+		// Call the kernel function. TODO: Double buffering
+		if (outParam.getClazz() != null) {
+			write("__global " + outParam.getType() + "* result = " +
+			      _entryPoint.getMethodModel().getName() + "(this");
+		} else {
+			if (!outParam.getName().contains("ary")) // Issue #40: We don't use return value for array type
+				write(outParam.getName() + "[idx] = ");
+			write(_entryPoint.getMethodModel().getName() + "(this");
+		}
 
-			for (ScalaArrayParameter p : params) {
-				if (p.getDir() == ScalaParameter.DIRECTION.IN) {
-					if (p.getClazz() != null && p.getClazz().getName().equals("scala.Tuple2")) {
-						// comaniac: Issue #1, we use scalar instead of pointer for kernel argument structure type.
-						// It means that we cannot use pointer assignment.
-						// Restriction: Tuple2 doesn't allow Array type.
-						// TODO: Recognize the platform and generate different kernels.
-						writeln("my_" + p.getName() + "->_1 = " + p.getName() + "_1[idx];");
-						writeln("my_" + p.getName() + "->_2 = " + p.getName() + "_2[idx];");
-						/*
-						               if (p.typeParameterIsObject(0)) {
-						                   writeln("my_" + p.getName() + "->_1 = " + p.getName() + "_1 + i;");
-						               } else {
-						                   writeln("my_" + p.getName() + "->_1 = " + p.getName() + "_1[idx];");
-						               }
-
-						               if (p.typeParameterIsObject(1)) {
-						                   writeln("my_" + p.getName() + "->_2 = " + p.getName() + "_2 + i;");
-						               } else {
-						                   writeln("my_" + p.getName() + "->_2 = " + p.getName() + "_2[idx];");
-						               }
-						*/
+		for (ScalaArrayParameter p : params) {
+			if (p.getDir() == ScalaParameter.DIRECTION.IN) {
+				if (p.getName().contains("ary")) { // Deserialized access
+					if (p.getClazz() == null) // Primitive type
+						write(", &" + p.getName() + "[idx * " + p.getName() + "_item_length]");
+					else if (Utils.isTransformedClass(p.getClazz().getName())) {
+						String [] fields = Utils.getTransformedClassFields(p.getClazz().getName());
+						for (String field : fields)
+							write(", &" + p.getName() + field + "[idx " + p.getName() + "_item_length]");
 					}
+					else // Object array is not allowed.
+						throw new RuntimeException();
 				}
-			}
-
-			if (outParam.getClazz() != null) {
-				write("__global " + outParam.getType() + "* result = " +
-				      _entryPoint.getMethodModel().getName() + "(this");
-			} else {
-				if (!outParam.getName().contains("ary")) // Issue #40: We don't use return value for array type
-					write(outParam.getName() + "[idx] = ");
-				write(_entryPoint.getMethodModel().getName() + "(this");
-			}
-
-			for (ScalaArrayParameter p : params) {
-				if (p.getDir() == ScalaParameter.DIRECTION.IN) {
-					if (p.getClazz() == null) {
-						if (p.getName().contains("ary")) // Deserialized access
-							write(", &" + p.getName() + "[idx * " + p.getName() + "_item_length]");
-						else
-							write(", " + p.getName() + "[idx]");
-					} else if (p.getClazz().getName().equals("scala.Tuple2"))
-						write(", my_" + p.getName());
-					else
+				else {
+					if (p.getClazz() == null) // Primitive type
+						write(", " + p.getName() + "[idx]");
+					else if (Utils.isTransformedClass(p.getClazz().getName())) {
+						String [] fields = Utils.getTransformedClassFields(p.getClazz().getName());
+						for (String field : fields)
+							write(", " + p.getName() + field + "[idx]");
+					}
+					else // User defined class
 						write(", " + p.getName() + " + i");
 				}
 			}
+		}
 
-			if (isArrayTypeOutput)   // Issue #40: Add another argument for output array.
+		if (isArrayTypeOutput) { // Issue #40: Add another argument for output array.
+			if (outParam.getClazz() == null) // Primitive type
 				write(", &" + outParam.getName() + "[idx * " + outParam.getName() + "_item_length]");
-
-			write(");");
-			newLine();
-
-			if (_entryPoint.requiresHeap()) {
-				write("if (this->alloc_failed) {");
-				in();
-				newLine();
-				{
-					write("processing_succeeded[idx] = 0;");
-					newLine();
-					write("*any_failed = 1;");
-				}
-				out();
-				newLine();
-				write("} else {");
-				in();
-				newLine();
-				{
-					write("processing_succeeded[idx] = 1;");
-					newLine();
-					if (outParam.getClazz() != null) {
-						if (outParam.getClazz().getName().equals("scala.Tuple2")) {
-							// comaniac: Issue #1, we use scalar instead of pointer for kernel argument structure type.
-							// It means that we cannot use pointer assignment.
-							// Restriction: Tuple2 doesn't allow Array type.
-							// TODO: Recognize the platform and generate different kernels.
-							write(outParam.getName() + "_1[idx] = result->_1;");
-							write(outParam.getName() + "_2[idx] = result->_2;");
-							/*
-							                     if (outParam.typeParameterIsObject(0)) {
-							                         write(outParam.getName() + "_1[idx] = *(result->_1);");
-							                     } else {
-							                         write(outParam.getName() + "_1[idx] = result->_1;");
-							                     }
-
-							                     newLine();
-
-							                     if (outParam.typeParameterIsObject(1)) {
-							                         write(outParam.getName() + "_2[idx] = *(result->_2);");
-							                     } else {
-							                         write(outParam.getName() + "_2[idx] = result->_2;");
-							                     }
-							*/
-						} else
-							write(outParam.getName() + "[idx] = *result;");
-					} else
-						write(outParam.getName() + "[idx] = result;");
-				}
-				out();
-				newLine();
-				write("}");
+			else if (Utils.isTransformedClass(outParam.getClazz().getName())) {
+				String [] fields = Utils.getTransformedClassFields(outParam.getClazz().getName());
+				for (String field : fields)
+					write(", &" + outParam.getName() + field + "[idx " + outParam.getName() + "_item_length]");
 			}
 		}
+
+		write(");");
+		newLine();
+
 		out();
 		newLine();
 		write("}");
@@ -1324,7 +1249,7 @@ public abstract class KernelWriter extends BlockWriter {
 		String xKernel = kernel.replace("$", "___");
 
 		// Add specified work group number
-		xKernel = xKernel.replace("__kernel", "__kernel __attribute__((reqd_work_group_size(512, 1, 1)))");
+		xKernel = xKernel.replace("__kernel", "__kernel __attribute__((reqd_work_group_size(1, 1, 1)))");
 
 		// Add loop pipeline to each for-loop
 		//xKernel = xKernel.replace("for (", "__attribute__((xcl_pipeline_loop)) for (");

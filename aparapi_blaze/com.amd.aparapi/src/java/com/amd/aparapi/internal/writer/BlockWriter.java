@@ -38,6 +38,7 @@ under those regulations, please refer to the U.S. Bureau of Industry and Securit
 package com.amd.aparapi.internal.writer;
 
 import com.amd.aparapi.*;
+import com.amd.aparapi.internal.util.*;
 import com.amd.aparapi.internal.exception.*;
 import com.amd.aparapi.internal.instruction.*;
 import com.amd.aparapi.internal.instruction.BranchSet.LogicalExpressionNode;
@@ -678,18 +679,20 @@ public abstract class BlockWriter {
 
 			writeInstruction(unaryInstruction.getUnary());
 			//   write(")");
-		} else if (_instruction instanceof Return)
+		} else if (_instruction instanceof Return) {
 			writeReturn((Return) _instruction);
-		else if (_instruction instanceof MethodCall) {
+		} else if (_instruction instanceof MethodCall) {
+//			write("/*methodcall*/");
 			final MethodCall methodCall = (MethodCall) _instruction;
 
 			final MethodEntry methodEntry = methodCall.getConstantPoolMethodEntry();
+			final String clazzName = methodEntry.toString().substring(0, methodEntry.toString().indexOf("."));
 
-			// Issue #34: Ignore broadcast.data method. This should be an argument.
-			if (!methodEntry.toString().contains("BlazeBroadcast.value"))
+			// Issue #34: Ignore modeled method. This should be an argument.
+			if (!Utils.isTransformedClass(clazzName))
 				writeCheck = writeMethod(methodCall, methodEntry);
 			else {
-				writeBroadcast(methodCall, methodEntry);
+				writeTransformMethod(methodCall, methodEntry);
 				writeCheck = false;
 			}
 		} else if (_instruction.getByteCode().equals(ByteCode.CLONE)) {
@@ -893,7 +896,8 @@ public abstract class BlockWriter {
 			}
 			methodCall = (MethodCall) child;
 			methodEntry = methodCall.getConstantPoolMethodEntry();
-			assert (methodEntry.toString().contains("BlazeBroadcast.value"));
+			String clazzName = methodEntry.toString().substring(0, methodEntry.toString().indexOf("."));
+			assert (clazzName.contains("BlazeBroadcast.value"));
 		}
 
 		if (!type.contains("0")) {
@@ -907,7 +911,7 @@ public abstract class BlockWriter {
 
 		write("for (int localAryCpy = 0; localAryCpy < ");
 		if (isBrdcstVariable && varName.contains("Max")) {
-			writeBroadcast(methodCall, methodEntry);
+			writeTransformMethod(methodCall, methodEntry);
 			write(arrayLengthMangleSuffix);
 		} else
 			write(maxLength);
@@ -919,7 +923,7 @@ public abstract class BlockWriter {
 			write(type + ";");
 		else {
 			if (isBrdcstVariable)
-				writeBroadcast(methodCall, methodEntry);
+				writeTransformMethod(methodCall, methodEntry);
 			else
 				write("_" + varName);
 			write("[localAryCpy];");
@@ -931,23 +935,41 @@ public abstract class BlockWriter {
 		return true;
 	}
 
-	public void writeBroadcast(MethodCall _methodCall,
+	public void writeTransformMethod(MethodCall _methodCall,
 	                           MethodEntry _methodEntry) throws CodeGenException {
 		assert(_methodCall instanceof I_INVOKEVIRTUAL);
 
-		// Issue #34: Instead of writing method "data", we traverse its child instruction,
+		// Issue #34: Instead of writing method "value", we traverse its child instruction,
 		// which should be getField, to know the broadcast variable name.
 
 		Instruction c = ((I_INVOKEVIRTUAL) _methodCall).getFirstChild();
-		while (!(c instanceof AccessField))
+		while (c != null && !(c instanceof AccessField))
 			c = c.getFirstChild();
 
-		String fieldName = ((AccessField) c)
-		                   .getConstantPoolFieldEntry()
-		                   .getNameAndTypeEntry()
-		                   .getNameUTF8Entry().getUTF8();
+		if (c != null) { // Reference transformed object access. e.q. BlazeBroadcast
+			String fieldName = ((AccessField) c)
+			                   .getConstantPoolFieldEntry()
+			                   .getNameAndTypeEntry()
+			                   .getNameUTF8Entry().getUTF8();
 
-		write("this->" + fieldName);
+			write("this->" + fieldName);
+		}
+		else { // Argument transformed object access. e.q. Tuple2/Vector
+			Instruction l = ((I_INVOKEVIRTUAL) _methodCall).getFirstChild();
+			while (l != null && !(l instanceof AccessLocalVariable))
+				l = l.getFirstChild();
+
+			assert(l != null && (l instanceof AccessLocalVariable));
+			final AccessLocalVariable localVariableLoadInstruction = (AccessLocalVariable) l;
+			final LocalVariableInfo localVariable = localVariableLoadInstruction.getLocalVariableInfo();
+			write(localVariable.getVariableName());
+
+			final String fullName = _methodEntry.toString();
+			String fieldName = fullName.substring(fullName.indexOf(".") + 1, fullName.indexOf("("));
+			if (fieldName.contains("$")) // Special case: Scala/Tuple2._1$mcD$sp()D (why?
+				fieldName = fieldName.substring(0, fieldName.indexOf("$"));
+			write(fieldName);
+		}
 		return ;
 	}
 
@@ -1247,19 +1269,6 @@ public abstract class BlockWriter {
 				// TODO: Recognize the platform and generate different kernels.
 				sb.append(name + "[i]._1 = " + name + "_1[i]; ");
 				sb.append(name + "[i]._2 = " + name + "_2[i]; ");
-				/*
-				               if (typeParameterIsObject.get(0)) {
-				                   sb.append(name + "[i]._1 = " + name + "_1 + i; ");
-				               } else {
-				                   sb.append(name + "[i]._1 = " + name + "_1[i]; ");
-				               }
-
-				               if (typeParameterIsObject.get(1)) {
-				                   sb.append(name + "[i]._2 = " + name + "_2 + i; ");
-				               } else {
-				                   sb.append(name + "[i]._2 = " + name + "_2[i]; ");
-				               }
-				*/
 				sb.append(" } ");
 				return sb.toString();
 			} else

@@ -48,6 +48,7 @@ import com.amd.aparapi.internal.util.*;
 
 import com.amd.aparapi.internal.writer.BlockWriter.ScalaParameter;
 import com.amd.aparapi.internal.writer.BlockWriter.ScalaArrayParameter;
+import com.amd.aparapi.internal.writer.BlockWriter.ScalaParameter.DIRECTION;
 import com.amd.aparapi.internal.model.HardCodedClassModels.HardCodedClassModelMatcher;
 import com.amd.aparapi.internal.model.HardCodedClassModels.DescMatcher;
 import com.amd.aparapi.internal.model.HardCodedClassModels.ShouldNotCallMatcher;
@@ -218,7 +219,6 @@ public class Entrypoint implements Cloneable {
 
 		if (logger.isLoggable(Level.FINE))
 			logger.fine("looking for " + _name + " in " + _clazz.getName());
-
 		try {
 			field = _clazz.getDeclaredField(_name);
 			final Class<?> type = field.getType();
@@ -234,7 +234,6 @@ public class Entrypoint implements Cloneable {
 
 		if (logger.isLoggable(Level.FINE))
 			logger.fine("looking for " + _name + " in " + mySuper.getName());
-
 		// Find better way to do this check
 		while (mySuper != null && !mySuper.getName().equals(Kernel.class.getName())) {
 			try {
@@ -566,6 +565,7 @@ public class Entrypoint implements Cloneable {
 		classModel = _classModel;
 		methodModel = _methodModel;
 		kernelInstance = _k;
+
 		if (setHardCodedClassModels == null)
 			hardCodedClassModels = new HardCodedClassModels();
 		else
@@ -582,12 +582,15 @@ public class Entrypoint implements Cloneable {
 			}
 		}
 
-//	comaniac: Now we don't want to model Tuple2 class.
-//	Intead, we want to transform it as 2 variables and access them directly.
 		if (params != null) {
 			for (ScalaArrayParameter p : params) {
-				if (p.getClazz() != null)
-					addClass(p.getClazz().getName(), p.getDescArray());
+				if (p.getClazz() != null) {
+
+					//	Issue #49: Now we don't want to model some transformed class such as Tuple2.
+					//	Intead, we want to transform it as variables and access them directly.
+					if (!Utils.isTransformedClass(p.getClazz().getName()))
+						addClass(p.getClazz().getName(), p.getDescArray());
+				}
 			}
 		}
 
@@ -613,7 +616,9 @@ public class Entrypoint implements Cloneable {
 		// Collect all methods called directly from kernel's run method
 		for (final MethodCall methodCall : methodModel.getMethodCalls()) {
 			ClassModelMethod m = resolveCalledMethod(methodCall, classModel);
-			if ((m != null) && !methodMap.keySet().contains(m) && !noCL(m) && !transformedMethod(m)) {
+			if ((m != null) && !methodMap.keySet().contains(m) && 
+					!noCL(m) && !Utils.isTransformedClass(m.getClassModel().toString())
+			) {
 				final MethodModel target = new LoadedMethodModel(m, this);
 				methodMap.put(m, target);
 				methodModel.getCalledMethods().add(target);
@@ -672,7 +677,6 @@ public class Entrypoint implements Cloneable {
 
 			// This is just a prepass that collects metadata, we don't actually write kernels at this point
 			for (final MethodModel methodModel : methods) {
-
 				// Record which pragmas we need to enable
 				if (methodModel.requiresDoublePragma()) {
 					usesDoubles = true;
@@ -749,7 +753,6 @@ public class Entrypoint implements Cloneable {
 							addToReferencedFieldNames(accessedFieldName, "L" + signature);
 						} else {
 							signature = field.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
-
 							// Issue #34: Find type hint of broadcast fields.
 							if (signature.contains("BlazeBroadcast")) {
 								Instruction parent = instruction.getParentExpr();
@@ -844,8 +847,9 @@ public class Entrypoint implements Cloneable {
 								// Look for object data member access
 								if (!className.equals(getClassModel().getClassWeAreModelling().getName())
 								    && (getFieldFromClassHierarchy(getClassModel().getClassWeAreModelling(),
-								                                   accessedFieldName) == null))
+								                                   accessedFieldName) == null)) {
 									updateObjectMemberFieldAccesses(className, field);
+								}
 							}
 						}
 					} else if (instruction instanceof AssignToField) {
@@ -1039,14 +1043,6 @@ public class Entrypoint implements Cloneable {
 	private boolean noCL(ClassModelMethod m) {
 		boolean found = m.getClassModel().getNoCLMethods().contains(m.getName());
 		return found;
-	}
-
-	private boolean transformedMethod(ClassModelMethod m) {
-		// TODO: DenseVector, etc
-		if(m.getClassModel().toString().contains("scala.Tuple2"))
-			return true;
-		else
-			return false;
 	}
 
 	private FieldEntry getSimpleGetterField(MethodModel method) {

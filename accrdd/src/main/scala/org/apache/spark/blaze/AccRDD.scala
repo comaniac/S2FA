@@ -104,8 +104,9 @@ class AccRDD[U: ClassTag, T: ClassTag](
           throw new RuntimeException("RDD data type is not supported")
 
         if (split.index == 0) { // FIXME: Testing
-          if (isPrimitiveType)
+          if (isPrimitiveType) {
             genOpenCLKernel(acc.id)
+          }
           else { // Non primitive types must provide a sample object.
             val sample = firstParent[T].iterator(split, context).next
             genOpenCLKernel(acc.id, modeledType, Some(sample))
