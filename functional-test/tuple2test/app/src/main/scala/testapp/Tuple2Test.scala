@@ -61,7 +61,7 @@ object TestApp {
       val rdd_acc = acc.wrap(rdd)
 
       println("map Result: " + rdd_acc.map_acc(new Tuple2Test).reduce((a, b) => (a + b)))
-//      println("mapPartition Result: " + rdd_acc.mapPartitions_acc(new Tuple2Test).reduce((a, b) => (a + b)))
+      println("mapPartition Result: " + rdd_acc.mapPartitions_acc(new Tuple2Test).reduce((a, b) => (a + b)))
       println("CPU Result: " + rdd_acc.map({case (a, b) => (a + b)}).reduce((a, b) => (a + b)))
 
       acc.stop()
