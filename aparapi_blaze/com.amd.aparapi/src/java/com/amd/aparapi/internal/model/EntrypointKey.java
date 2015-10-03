@@ -1,7 +1,7 @@
 package com.amd.aparapi.internal.model;
 
 import java.util.Collection;
-import com.amd.aparapi.internal.writer.BlockWriter.ScalaArrayParameter;
+import com.amd.aparapi.internal.writer.ScalaArrayParameter;
 
 final class EntrypointKey {
 	public static EntrypointKey of(String entrypointName, String descriptor,

@@ -46,12 +46,35 @@ class MonteCarlo extends Accelerator[Int, Int] {
   def getArg(idx: Int) = None
 
   override def call(in: Int): Int = {
-    val x = (random * 65535).toLong
-    val y = (random * 65535).toLong
+    var seed0: Int = 13
+    var seed1: Int = 17
 
-    if (x * x + y * y < 4294836225L)
+    val x = myRand(seed0)
+    val y = myRand(seed1)
+    seed0 = (x * 65535).toInt
+    seed1 = (y * 65535).toInt
+
+    if (x * x + y * y < 1.0)
       1
     else
       0
+  }
+
+  def myRand(seed: Int): Float = {
+    ((16807 * seed) % 65535).toFloat / 65535
+  }
+
+  override def call(in: Iterator[Int]): Iterator[Int] = {
+    var count: Int = 0
+
+    while (in.hasNext) {
+      val x = random
+      val y = random
+
+      if (x * x + y * y < 1.0)
+        count += 1
+      in.next
+    }
+    Array(count).iterator
   }
 }

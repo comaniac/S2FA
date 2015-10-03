@@ -46,9 +46,9 @@ import com.amd.aparapi.internal.model.ClassModel.ConstantPool.*;
 import com.amd.aparapi.internal.model.ClassModel.ConstantPool.MethodReferenceEntry.*;
 import com.amd.aparapi.internal.util.*;
 
-import com.amd.aparapi.internal.writer.BlockWriter.ScalaParameter;
-import com.amd.aparapi.internal.writer.BlockWriter.ScalaArrayParameter;
-import com.amd.aparapi.internal.writer.BlockWriter.ScalaParameter.DIRECTION;
+import com.amd.aparapi.internal.writer.ScalaParameter;
+import com.amd.aparapi.internal.writer.ScalaArrayParameter;
+import com.amd.aparapi.internal.writer.ScalaParameter.DIRECTION;
 import com.amd.aparapi.internal.model.HardCodedClassModels.HardCodedClassModelMatcher;
 import com.amd.aparapi.internal.model.HardCodedClassModels.DescMatcher;
 import com.amd.aparapi.internal.model.HardCodedClassModels.ShouldNotCallMatcher;
@@ -753,17 +753,20 @@ public class Entrypoint implements Cloneable {
 							addToReferencedFieldNames(accessedFieldName, "L" + signature);
 						} else {
 							signature = field.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
-							// Issue #34: Find type hint of broadcast fields.
-							if (signature.contains("BlazeBroadcast")) {
+							// Issue #34: Find type hint of transformd class fields.
+							if (Utils.isTransformedClass(signature)) {
 								Instruction parent = instruction.getParentExpr();
 								String typeHint = null;
 
-								while (parent instanceof I_INVOKEVIRTUAL)
+								while (parent instanceof I_INVOKEVIRTUAL && parent != null)
 									parent = parent.getParentExpr();
-								if (parent instanceof I_CHECKCAST) { // Array type
+								if (parent == null)
+									typeHint = null;
+								else if (parent instanceof I_CHECKCAST) { // Array type
 									I_CHECKCAST cast = (I_CHECKCAST) parent;
 									typeHint = cast.getConstantPoolClassEntry().getNameUTF8Entry().getUTF8();
-								} else if (parent instanceof I_INVOKESTATIC) { // Scalar type (boxed)
+								}
+								else if (parent instanceof I_INVOKESTATIC) { // Scalar type (boxed)
 									I_INVOKESTATIC unbox = (I_INVOKESTATIC) parent;
 									typeHint = unbox.getConstantPoolMethodEntry().getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
 									if (typeHint.contains("Int"))
@@ -774,9 +777,8 @@ public class Entrypoint implements Cloneable {
 										typeHint = "F";
 									else if (typeHint.contains("Long"))
 										typeHint = "J";
-									else
-										typeHint = "null";
 								}
+System.err.println("TypeHint of " + signature + ", " + accessedFieldName + ": " + typeHint);
 								addToReferencedFieldNames(accessedFieldName, typeHint);
 							} else
 								addToReferencedFieldNames(accessedFieldName, null);

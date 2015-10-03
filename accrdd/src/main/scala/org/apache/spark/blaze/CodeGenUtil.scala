@@ -9,8 +9,9 @@ import java.util.LinkedList
 import com.amd.aparapi.internal.model.Entrypoint
 import com.amd.aparapi.internal.model.ClassModel
 import com.amd.aparapi.internal.writer.BlockWriter._
-import com.amd.aparapi.internal.writer.BlockWriter.ScalaParameter
-import com.amd.aparapi.internal.writer.BlockWriter.ScalaParameter.DIRECTION
+import com.amd.aparapi.internal.writer.ScalaParameter
+import com.amd.aparapi.internal.writer.ScalaParameter.DIRECTION
+import com.amd.aparapi.internal.writer.ScalaArrayParameter
 
 object CodeGenUtil {
 

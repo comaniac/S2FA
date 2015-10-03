@@ -708,24 +708,6 @@ public abstract class KernelWriter extends BlockWriter {
 			}
 		}
 
-		// Add item length into This struct if we have array type input/output
-/* 	// Comment out since we cannot map the variable name.
-		for (ScalaArrayParameter p : params) {
-			String paramString = null;
-			if (p.getDir() == ScalaArrayParameter.DIRECTION.OUT)
-				paramString = p.getOutputParameterString(this);
-			else
-				paramString = p.getInputParameterString(this);
-
-			if (!paramString.contains("ary"))
-				continue;
-
-			assigns.add("this->" + p.getName() + "_item_length = " +
-			            p.getName() + "_item_length");
-
-			thisStruct.add("int " + p.getName() + "_item_length");
-		}
-*/
 		// Include self mapped function libaray
 		write("#include \"boko.h\"");
 		newLine();
@@ -737,36 +719,6 @@ public abstract class KernelWriter extends BlockWriter {
 				writePragma("cl_khr_byte_addressable_store", true);
 				newLine();
 			}
-		}
-
-		boolean usesAtomics = false;
-		if (Config.enableAtomic32 || _entryPoint.requiresAtomic32Pragma()) {
-			usesAtomics = true;
-			writePragma("cl_khr_global_int32_base_atomics", true);
-			writePragma("cl_khr_global_int32_extended_atomics", true);
-			writePragma("cl_khr_local_int32_base_atomics", true);
-			writePragma("cl_khr_local_int32_extended_atomics", true);
-		}
-
-		if (Config.enableAtomic64 || _entryPoint.requiresAtomic64Pragma()) {
-			usesAtomics = true;
-			writePragma("cl_khr_int64_base_atomics", true);
-			writePragma("cl_khr_int64_extended_atomics", true);
-		}
-
-		if (usesAtomics) {
-			write("static int atomicAdd(__global int *_arr, int _index, int _delta){");
-			in();
-			{
-				newLine();
-				// FIXME comanaic Issue #2, Xilinx doesn't support atomic functions.
-				write("return atomic_add(&_arr[_index], _delta);");
-				out();
-				newLine();
-			}
-			write("}");
-
-			newLine();
 		}
 
 		if (Config.enableDoubles || _entryPoint.requiresDoublePragma()) {
@@ -928,10 +880,11 @@ public abstract class KernelWriter extends BlockWriter {
 						    String [] descArray = p.getDescArray();
 								for (int i = 0; i < descArray.length; i += 1) {
 									String desc = descArray[i];
-									String field = Utils.getTransformedClassField(clazzDesc, i);
 									descList.add(desc);
-									fieldList.add(field);
 								}
+								Set<String> fields = Utils.getTransformedClassFields(clazzDesc);
+								for (String field : fields)
+									fieldList.add(field);
 								break;
 							}
 						}
@@ -1153,7 +1106,7 @@ public abstract class KernelWriter extends BlockWriter {
 					if (p.getClazz() == null) // Primitive type
 						write(", &" + p.getName() + "[idx * " + p.getName() + "_item_length]");
 					else if (Utils.isTransformedClass(p.getClazz().getName())) {
-						String [] fields = Utils.getTransformedClassFields(p.getClazz().getName());
+						Set<String> fields = Utils.getTransformedClassFields(p.getClazz().getName());
 						for (String field : fields)
 							write(", &" + p.getName() + field + "[idx " + p.getName() + "_item_length]");
 					}
@@ -1164,7 +1117,7 @@ public abstract class KernelWriter extends BlockWriter {
 					if (p.getClazz() == null) // Primitive type
 						write(", " + p.getName() + "[idx]");
 					else if (Utils.isTransformedClass(p.getClazz().getName())) {
-						String [] fields = Utils.getTransformedClassFields(p.getClazz().getName());
+						Set<String> fields = Utils.getTransformedClassFields(p.getClazz().getName());
 						for (String field : fields)
 							write(", " + p.getName() + field + "[idx]");
 					}
@@ -1178,7 +1131,7 @@ public abstract class KernelWriter extends BlockWriter {
 			if (outParam.getClazz() == null) // Primitive type
 				write(", &" + outParam.getName() + "[idx * " + outParam.getName() + "_item_length]");
 			else if (Utils.isTransformedClass(outParam.getClazz().getName())) {
-				String [] fields = Utils.getTransformedClassFields(outParam.getClazz().getName());
+				Set<String> fields = Utils.getTransformedClassFields(outParam.getClazz().getName());
 				for (String field : fields)
 					write(", &" + outParam.getName() + field + "[idx " + outParam.getName() + "_item_length]");
 			}

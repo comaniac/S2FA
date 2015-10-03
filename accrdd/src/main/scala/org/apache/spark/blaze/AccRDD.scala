@@ -43,10 +43,8 @@ import com.amd.aparapi.internal.model.HardCodedClassModels.ShouldNotCallMatcher
 import com.amd.aparapi.internal.model.Entrypoint
 import com.amd.aparapi.internal.writer.KernelWriter
 import com.amd.aparapi.internal.writer.KernelWriter.WriterAndKernel
-import com.amd.aparapi.internal.writer.HostWriter
-import com.amd.aparapi.internal.writer.HostWriter.WriterAndHost
-import com.amd.aparapi.internal.writer.BlockWriter.ScalaArrayParameter
-import com.amd.aparapi.internal.writer.BlockWriter.ScalaParameter.DIRECTION
+import com.amd.aparapi.internal.writer.ScalaArrayParameter
+import com.amd.aparapi.internal.writer.ScalaParameter.DIRECTION
 
 /**
   * A RDD that uses accelerator to accelerate the computation. The behavior of AccRDD is 
@@ -524,6 +522,7 @@ class AccRDD[U: ClassTag, T: ClassTag](
     sample: Option[Any] = None
   ) = {
     System.setProperty("com.amd.aparapi.enable.NEW", "true")
+    System.setProperty("com.amd.aparapi.enable.INVOKEINTERFACE", "true")
     val kernelPath : String = "/tmp/blaze_kernel_" + id + ".cl" 
     // TODO:  1. Should be a shared path e.g. HDFS
     //        2. Should check if the kernel is existed in advance

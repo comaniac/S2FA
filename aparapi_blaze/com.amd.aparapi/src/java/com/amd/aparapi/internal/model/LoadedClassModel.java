@@ -46,7 +46,7 @@ import com.amd.aparapi.internal.model.ClassModel.AttributePool.*;
 import com.amd.aparapi.internal.model.ClassModel.ConstantPool.*;
 import com.amd.aparapi.internal.reader.*;
 
-import com.amd.aparapi.internal.writer.BlockWriter.ScalaParameter;
+import com.amd.aparapi.internal.writer.ScalaParameter;
 import com.amd.aparapi.internal.model.HardCodedClassModels.ShouldNotCallMatcher;
 
 import java.io.*;

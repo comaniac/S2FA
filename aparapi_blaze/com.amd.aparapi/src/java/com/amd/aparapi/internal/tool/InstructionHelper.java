@@ -28,6 +28,7 @@ import com.amd.aparapi.internal.model.MethodModel;
 import com.amd.aparapi.internal.model.ClassModel.LocalVariableTableEntry;
 import com.amd.aparapi.internal.model.ClassModel.LocalVariableInfo;
 import com.amd.aparapi.internal.writer.BlockWriter;
+import com.amd.aparapi.internal.writer.*;
 
 public class InstructionHelper {
 

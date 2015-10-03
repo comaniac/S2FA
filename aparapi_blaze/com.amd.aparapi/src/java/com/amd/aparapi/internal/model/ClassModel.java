@@ -13,7 +13,7 @@ import com.amd.aparapi.internal.model.HardCodedClassModel.TypeParameters;
 import com.amd.aparapi.internal.model.HardCodedClassModel.AllFieldInfo;
 import com.amd.aparapi.internal.model.HardCodedClassModels.HardCodedClassModelMatcher;
 import com.amd.aparapi.internal.model.HardCodedClassModels.DescMatcher;
-import com.amd.aparapi.internal.writer.BlockWriter.ScalaArrayParameter;
+import com.amd.aparapi.internal.writer.ScalaArrayParameter;
 
 import java.io.*;
 import java.lang.reflect.*;

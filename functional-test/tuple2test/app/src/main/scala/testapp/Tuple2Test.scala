@@ -28,15 +28,21 @@ import java.net._
 import org.apache.spark.blaze._
 
 // TODO: Tuple2 as an output type
-class Tuple2Test extends Accelerator[Tuple2[Double, Double], Double] {
+class Tuple2Test(b: BlazeBroadcast[Tuple2[Double, Double]]) 
+  extends Accelerator[Tuple2[Double, Double], Double] {
+
   val id: String = "Tuple2Test"
 
-  def getArgNum(): Int = 0
+  def getArgNum(): Int = 1
 
-  def getArg(idx: Int): Option[_] = None
+  def getArg(idx: Int): Option[_] = idx match {
+    case 0 => Some(b)
+    case _ => None
+  }
 
   override def call(in: Tuple2[Double, Double]): Double = {
-    in._1 + in._2
+    val v1 = (b.value)._1
+    in._1 + in._2 + v1
   }
 
   override def call(in: Iterator[Tuple2[Double, Double]]): Iterator[Double] = {
@@ -59,9 +65,11 @@ object TestApp {
 
       val acc = new BlazeRuntime(sc)
       val rdd_acc = acc.wrap(rdd)
+      val b_data = (1.1, 2.2)
+      val brdcst = acc.wrap(sc.broadcast(b_data))
 
-      println("map Result: " + rdd_acc.map_acc(new Tuple2Test).reduce((a, b) => (a + b)))
-      println("mapPartition Result: " + rdd_acc.mapPartitions_acc(new Tuple2Test).reduce((a, b) => (a + b)))
+      println("map Result: " + rdd_acc.map_acc(new Tuple2Test(brdcst)).reduce((a, b) => (a + b)))
+      println("mapPartition Result: " + rdd_acc.mapPartitions_acc(new Tuple2Test(brdcst)).reduce((a, b) => (a + b)))
       println("CPU Result: " + rdd_acc.map({case (a, b) => (a + b)}).reduce((a, b) => (a + b)))
 
       acc.stop()

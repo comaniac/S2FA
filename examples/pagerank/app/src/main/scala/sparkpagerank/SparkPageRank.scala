@@ -56,7 +56,9 @@ object SparkPageRank {
         case (urls, rank) => 
         (urls.toArray, rank)
       })
-      val new_rank = acc.wrap(contribs).map_acc(new PageRank)
+      val new_rank = acc.wrap(contribs.map({
+        case (urls, rank) => (urls.length, rank)
+      })).map_acc(new PageRank)
 //      val new_rank = contribs.map({ case (urls, rank) => 
 //        rank / urls.length
 //      })
@@ -82,15 +84,15 @@ object SparkPageRank {
   }
 }
 
-class PageRank extends Accelerator[Tuple2[Array[Int], Float], Float] {
+class PageRank extends Accelerator[Tuple2[Int, Float], Float] {
   val id: String = "PageRank"
 
   def getArgNum = 0
 
   def getArg(idx: Int) = None
 
-  override def call(in: (Array[Int], Float)): Float = {
-    in._2 / in._1.length
+  override def call(in: Tuple2[Int, Float]): Float = {
+    in._2 / in._1
   }
 }
 
