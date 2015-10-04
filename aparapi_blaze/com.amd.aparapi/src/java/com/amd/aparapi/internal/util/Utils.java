@@ -67,7 +67,7 @@ public class Utils {
 		}
 	}
 
-	public static String getCleanMethodName(String clazz, String methodName) {
+	public static String cleanMethodName(String clazz, String methodName) {
 		String clazzName = cleanClassName(clazz);
 		if(!transformedClasses.containsKey(clazzName))
 			return null;
@@ -77,6 +77,27 @@ public class Utils {
 					return s;
 			}
 			return null;
+		}
+	}
+
+	public static String addTransformedFieldTypeMapping(String clazz) {
+		String clazzName = cleanClassName(clazz);
+		if(!transformedClasses.containsKey(clazzName))
+			return clazzName;
+		else {
+			boolean first = true;
+			Map<String, METHODTYPE> modeledClazz = transformedClasses.get(clazzName);
+			clazzName += "<";
+			for (Map.Entry<String, METHODTYPE> field: modeledClazz.entrySet()) {
+				if (field.getValue() == METHODTYPE.VAR_ACCESS) {
+					if (!first)
+						clazzName += ",";
+					clazzName += field.getKey();
+					first = false;
+				}
+			}
+			clazzName += ">";
+			return clazzName;
 		}
 	}
 }

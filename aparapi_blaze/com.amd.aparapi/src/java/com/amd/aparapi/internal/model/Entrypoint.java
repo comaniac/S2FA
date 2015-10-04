@@ -88,13 +88,8 @@ public class Entrypoint implements Cloneable {
 	private final Map<String, String> referencedFieldNames = new HashMap<String, String>();
 	private void addToReferencedFieldNames(String name, String hint) {
 		if (referencedFieldNames.containsKey(name)) {
-			if (hint != null) {
-				String curHint = referencedFieldNames.get(name);
-				if (curHint != hint) {
-					curHint = curHint + "," + hint;
-					referencedFieldNames.put(name, curHint);
-				}
-			}
+			if (hint != null)
+				referencedFieldNames.put(name, hint);
 		} else
 			referencedFieldNames.put(name, hint);
 	}
@@ -757,8 +752,9 @@ public class Entrypoint implements Cloneable {
 							signature = cast.getConstantPoolClassEntry().getNameUTF8Entry().getUTF8().replace('.', '/');
 							addToReferencedFieldNames(accessedFieldName, "L" + signature);
 						} else {
+							// Get signature (class name) of the field.
+							// Example: signature BlazeBroadcast for BlazeBroadcast[Tuple2[_,_]]
 							signature = field.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
-							// Issue #34: Find type hint of transformd class fields.
 							if (Utils.isTransformedClass(signature)) {
 								String typeHint = null;
 								Instruction next = instruction.getNextPC();
@@ -769,8 +765,12 @@ public class Entrypoint implements Cloneable {
 								next = next.getNextPC();
 								if (next instanceof I_CHECKCAST) { // Cast for array or object type
 									I_CHECKCAST cast = (I_CHECKCAST) next;
+
+									// Get generic type information by guessing the next cast instruction.
+									// Example: generic type scala.Tuple2 for BlazeBroadcast[Tuple2[_,_]]
 									typeHint = cast.getConstantPoolClassEntry().getNameUTF8Entry().getUTF8();
 									String genericType = typeHint;
+
 									boolean isArray = false;
 									if (genericType.startsWith("[")) {
 										isArray = true;
@@ -778,23 +778,34 @@ public class Entrypoint implements Cloneable {
 										arrayFieldArrayLengthUsed.add(accessedFieldName);
 									}
 									if (Utils.isTransformedClass(genericType)) {
+										String curFieldType = getReferencedFieldTypeHint(accessedFieldName);
+
+										if (curFieldType == null) {
+											// Add field type mapping to genericType for later used.
+											// Example: scala.Tuple2 -> scala.Tuple2<_1, _2>
+											curFieldType = Utils.addTransformedFieldTypeMapping(genericType);
+										}
+
 										if (cast.getParentExpr() instanceof I_INVOKEVIRTUAL) {
 											I_INVOKEVIRTUAL accessor = (I_INVOKEVIRTUAL) cast.getParentExpr();
 											final MethodEntry methodEntry = accessor.getConstantPoolMethodEntry();
 											final String methodName = methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();;
 											final String methodDesc = methodEntry.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();;
 
-											final String cleanMethodName = Utils.getCleanMethodName(genericType, methodName);
-											if (cleanMethodName == null)
+											final String pureMethodName = Utils.cleanMethodName(genericType, methodName);
+											if (pureMethodName == null)
 												throw new RuntimeException("Method " + methodName + " doesn't be modeled in class " + genericType);
 											
+											// Get field type by consulting the method call.
+											// Example: scala/Tuple2._2$mcD$sp:()D has type D
+											String realFieldType = null;
 											if (accessor.getParentExpr() instanceof I_CHECKCAST) { // FIXME: Not be verified yet.
 												I_CHECKCAST cast_to_real = (I_CHECKCAST) accessor.getParentExpr();
-												genericType = cast_to_real.getConstantPoolClassEntry().getNameUTF8Entry().getUTF8();
+												realFieldType = cast_to_real.getConstantPoolClassEntry().getNameUTF8Entry().getUTF8();
 											} else
-												genericType = methodDesc.substring(methodDesc.lastIndexOf(')') + 1);
+												realFieldType = methodDesc.substring(methodDesc.lastIndexOf(')') + 1);
 											
-											typeHint = cleanMethodName + ":" + genericType;
+											typeHint = curFieldType.replace(pureMethodName, realFieldType);
 										}
 										else
 											throw new RuntimeException("Expectede aload and invokevirtual to find generic types, but not found.");
@@ -814,7 +825,6 @@ public class Entrypoint implements Cloneable {
 								}
 								else
 									throw new RuntimeException("Expected cast/unbox, but found " + next);
-
 								addToReferencedFieldNames(accessedFieldName, typeHint);
 							} else
 								addToReferencedFieldNames(accessedFieldName, null);
@@ -1103,6 +1113,14 @@ public class Entrypoint implements Cloneable {
 
 	public List<MethodModel> getCalledMethods() {
 		return calledMethods;
+	}
+
+	public String getReferencedFieldTypeHint(String name) {		
+		String pureName = Utils.cleanClassName(name);
+		if (referencedFieldNames.containsKey(pureName))
+			return (referencedFieldNames.get(pureName));
+		else
+			return null;
 	}
 
 	public Map<String, String> getReferencedFieldNames() {

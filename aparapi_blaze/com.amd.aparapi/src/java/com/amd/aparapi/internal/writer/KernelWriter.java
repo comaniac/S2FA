@@ -663,6 +663,7 @@ public abstract class KernelWriter extends BlockWriter {
 			final StringBuilder assignLine = new StringBuilder();
 
 			String signature = field.getDescriptor();
+System.err.println("Field: " + field.getName() + ", sig: " + signature);
 
 			ScalaParameter param = null;
 			if (signature.startsWith("[")) {
@@ -711,15 +712,6 @@ public abstract class KernelWriter extends BlockWriter {
 		// Include self mapped function libaray
 		write("#include \"boko.h\"");
 		newLine();
-
-		if (Config.enableByteWrites || _entryPoint.requiresByteAddressableStorePragma()) {
-			// Starting with OpenCL 1.1 (which is as far back as we support)
-			// this feature is part of the core, so we no longer need this pragma
-			if (false) {
-				writePragma("cl_khr_byte_addressable_store", true);
-				newLine();
-			}
-		}
 
 		if (Config.enableDoubles || _entryPoint.requiresDoublePragma()) {
 			writePragma("cl_khr_fp64", true);
