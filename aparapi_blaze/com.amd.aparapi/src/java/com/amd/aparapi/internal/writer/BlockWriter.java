@@ -366,10 +366,16 @@ public abstract class BlockWriter {
 		// Get array length from i_const/push (child instruction)
 		Instruction child = _instruction.getFirstChild();
 		int length = 0;
-		if (child instanceof BytecodeEncodedConstant)
-			length = ((BytecodeEncodedConstant<Integer>) child).getValue();
-		else if (child instanceof ImmediateConstant)
-			length = ((ImmediateConstant<Integer>) child).getValue();
+		if (child instanceof BytecodeEncodedConstant) {
+			@SuppressWarnings("unchecked")
+			BytecodeEncodedConstant<Integer> inst = (BytecodeEncodedConstant<Integer>) child;
+			length = inst.getValue();
+		}
+		else if (child instanceof ImmediateConstant) {
+			@SuppressWarnings("unchecked")
+			ImmediateConstant<Integer> inst = (ImmediateConstant<Integer>) child;
+			length = inst.getValue();
+		}
 
 		deleteCurrentLine();
 		write(typeName + " " + varName + "[" + length + "]");

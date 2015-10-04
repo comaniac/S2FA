@@ -42,6 +42,7 @@ class Tuple2Test(b: BlazeBroadcast[Tuple2[Double, Double]])
 
   override def call(in: Tuple2[Double, Double]): Double = {
     val v1 = (b.value)._1
+    val v2 = (b.value)._2
     in._1 + in._2 + v1
   }
 

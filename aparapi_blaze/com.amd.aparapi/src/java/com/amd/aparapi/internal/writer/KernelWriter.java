@@ -858,6 +858,7 @@ public abstract class KernelWriter extends BlockWriter {
 
 			// A list of arguments which will be copied to the local variable in advacne.
 			// Map<Name, Type>. Type "0" means we just want to initalize the argument.
+			@SuppressWarnings("unchecked")
 			final Map<String, String> promoteLocalArguments = new HashMap();
 
 			final LocalVariableTableEntry<LocalVariableInfo> lvte = mm.getLocalVariableTableEntry();
@@ -882,7 +883,7 @@ public abstract class KernelWriter extends BlockWriter {
 									String desc = descArray[i];
 									descList.add(desc);
 								}
-								Set<String> fields = Utils.getTransformedClassFields(clazzDesc);
+								Set<String> fields = Utils.getTransformedClassMethods(clazzDesc);
 								for (String field : fields)
 									fieldList.add(field);
 								break;
@@ -1106,7 +1107,7 @@ public abstract class KernelWriter extends BlockWriter {
 					if (p.getClazz() == null) // Primitive type
 						write(", &" + p.getName() + "[idx * " + p.getName() + "_item_length]");
 					else if (Utils.isTransformedClass(p.getClazz().getName())) {
-						Set<String> fields = Utils.getTransformedClassFields(p.getClazz().getName());
+						Set<String> fields = Utils.getTransformedClassMethods(p.getClazz().getName());
 						for (String field : fields)
 							write(", &" + p.getName() + field + "[idx " + p.getName() + "_item_length]");
 					}
@@ -1117,7 +1118,7 @@ public abstract class KernelWriter extends BlockWriter {
 					if (p.getClazz() == null) // Primitive type
 						write(", " + p.getName() + "[idx]");
 					else if (Utils.isTransformedClass(p.getClazz().getName())) {
-						Set<String> fields = Utils.getTransformedClassFields(p.getClazz().getName());
+						Set<String> fields = Utils.getTransformedClassMethods(p.getClazz().getName());
 						for (String field : fields)
 							write(", " + p.getName() + field + "[idx]");
 					}
@@ -1131,7 +1132,7 @@ public abstract class KernelWriter extends BlockWriter {
 			if (outParam.getClazz() == null) // Primitive type
 				write(", &" + outParam.getName() + "[idx * " + outParam.getName() + "_item_length]");
 			else if (Utils.isTransformedClass(outParam.getClazz().getName())) {
-				Set<String> fields = Utils.getTransformedClassFields(outParam.getClazz().getName());
+				Set<String> fields = Utils.getTransformedClassMethods(outParam.getClazz().getName());
 				for (String field : fields)
 					write(", &" + outParam.getName() + field + "[idx " + outParam.getName() + "_item_length]");
 			}

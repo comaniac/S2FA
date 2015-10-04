@@ -88,8 +88,13 @@ public class Entrypoint implements Cloneable {
 	private final Map<String, String> referencedFieldNames = new HashMap<String, String>();
 	private void addToReferencedFieldNames(String name, String hint) {
 		if (referencedFieldNames.containsKey(name)) {
-			if (hint != null)
-				referencedFieldNames.put(name, hint);
+			if (hint != null) {
+				String curHint = referencedFieldNames.get(name);
+				if (curHint != hint) {
+					curHint = curHint + "," + hint;
+					referencedFieldNames.put(name, curHint);
+				}
+			}
 		} else
 			referencedFieldNames.put(name, hint);
 	}
@@ -755,19 +760,48 @@ public class Entrypoint implements Cloneable {
 							signature = field.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
 							// Issue #34: Find type hint of transformd class fields.
 							if (Utils.isTransformedClass(signature)) {
-								Instruction parent = instruction.getParentExpr();
 								String typeHint = null;
+								Instruction next = instruction.getNextPC();
 
-								while (parent instanceof I_INVOKEVIRTUAL && parent != null)
-									parent = parent.getParentExpr();
-								if (parent == null)
+								if (!(next instanceof I_INVOKEVIRTUAL)) // No type info.
 									typeHint = null;
-								else if (parent instanceof I_CHECKCAST) { // Array type
-									I_CHECKCAST cast = (I_CHECKCAST) parent;
+
+								next = next.getNextPC();
+								if (next instanceof I_CHECKCAST) { // Cast for array or object type
+									I_CHECKCAST cast = (I_CHECKCAST) next;
 									typeHint = cast.getConstantPoolClassEntry().getNameUTF8Entry().getUTF8();
+									String genericType = typeHint;
+									boolean isArray = false;
+									if (genericType.startsWith("[")) {
+										isArray = true;
+										genericType = genericType.substring(1);
+										arrayFieldArrayLengthUsed.add(accessedFieldName);
+									}
+									if (Utils.isTransformedClass(genericType)) {
+										if (cast.getParentExpr() instanceof I_INVOKEVIRTUAL) {
+											I_INVOKEVIRTUAL accessor = (I_INVOKEVIRTUAL) cast.getParentExpr();
+											final MethodEntry methodEntry = accessor.getConstantPoolMethodEntry();
+											final String methodName = methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();;
+											final String methodDesc = methodEntry.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();;
+
+											final String cleanMethodName = Utils.getCleanMethodName(genericType, methodName);
+											if (cleanMethodName == null)
+												throw new RuntimeException("Method " + methodName + " doesn't be modeled in class " + genericType);
+											
+											if (accessor.getParentExpr() instanceof I_CHECKCAST) { // FIXME: Not be verified yet.
+												I_CHECKCAST cast_to_real = (I_CHECKCAST) accessor.getParentExpr();
+												genericType = cast_to_real.getConstantPoolClassEntry().getNameUTF8Entry().getUTF8();
+											} else
+												genericType = methodDesc.substring(methodDesc.lastIndexOf(')') + 1);
+											
+											typeHint = cleanMethodName + ":" + genericType;
+										}
+										else
+											throw new RuntimeException("Expectede aload and invokevirtual to find generic types, but not found.");
+									}
 								}
-								else if (parent instanceof I_INVOKESTATIC) { // Scalar type (boxed)
-									I_INVOKESTATIC unbox = (I_INVOKESTATIC) parent;
+								else if (next instanceof I_INVOKESTATIC) { // Boxed for scalar type
+									I_INVOKESTATIC unbox = (I_INVOKESTATIC) next;
 									typeHint = unbox.getConstantPoolMethodEntry().getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
 									if (typeHint.contains("Int"))
 										typeHint = "I";
@@ -778,7 +812,9 @@ public class Entrypoint implements Cloneable {
 									else if (typeHint.contains("Long"))
 										typeHint = "J";
 								}
-System.err.println("TypeHint of " + signature + ", " + accessedFieldName + ": " + typeHint);
+								else
+									throw new RuntimeException("Expected cast/unbox, but found " + next);
+
 								addToReferencedFieldNames(accessedFieldName, typeHint);
 							} else
 								addToReferencedFieldNames(accessedFieldName, null);
@@ -786,7 +822,7 @@ System.err.println("TypeHint of " + signature + ", " + accessedFieldName + ": " 
 						if (logger.isLoggable(Level.FINE))
 							logger.fine("AccessField field type= " + signature + " in " + methodModel.getName());
 
-						// Add the class model for the referenced obj array
+						// Add the customed class model for the referenced obj array FIXME: Not verify yet.
 						if (signature.startsWith("[L")) {
 							// Turn [Lcom/amd/javalabs/opencl/demo/DummyOOA; into com.amd.javalabs.opencl.demo.DummyOOA for example
 							final String className = (signature.substring(2, signature.length() - 1)).replace('/', '.');
@@ -884,8 +920,10 @@ System.err.println("TypeHint of " + signature + ", " + accessedFieldName + ": " 
 							final MethodEntry methodEntry = invokeInstruction.getConstantPoolMethodEntry();
 							if (Kernel.isMappedMethod(methodEntry)) { //only do this for intrinsics
 
-								if (Kernel.usesAtomic32(methodEntry))
-									setRequiresAtomics32Pragma(true);
+								if (Kernel.usesAtomic32(methodEntry)) {
+									throw new RuntimeException("We don't support atomic builtin functions.");
+									//setRequiresAtomics32Pragma(true);
+								}
 
 								final Arg methodArgs[] = methodEntry.getArgs();
 								if ((methodArgs.length > 0) && methodArgs[0].isArray()) { //currently array arg can only take slot 0

@@ -1775,6 +1775,7 @@ public abstract class MethodModel {
 			// Pass #1 create a linked list of instructions from head to tail
 			final Map<Integer, Instruction> pcMap = createListOfInstructions();
 
+			@SuppressWarnings("unchecked")
 			LocalVariableTableEntry<LocalVariableInfo> localVariableTableEntry =
 			  method.getLocalVariableTableEntry();
 			if (localVariableTableEntry == null) {
@@ -1823,7 +1824,7 @@ public abstract class MethodModel {
 	}
 
 	public LocalVariableTableEntry<LocalVariableInfo> getLocalVariableTableEntry() {
-		return (method.getLocalVariableTableEntry());
+		return ((LocalVariableTableEntry<LocalVariableInfo>) method.getLocalVariableTableEntry());
 	}
 
 	public ConstantPool getConstantPool() {

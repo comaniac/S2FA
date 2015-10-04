@@ -783,6 +783,7 @@ public class ExpressionList {
 			} else {
 
 				// might be end of arbitrary scope
+				@SuppressWarnings("unchecked")
 				final LocalVariableTableEntry<LocalVariableInfo> localVariableTable = methodModel.getMethod()
 				    .getLocalVariableTableEntry();
 				int startPc = Short.MAX_VALUE;

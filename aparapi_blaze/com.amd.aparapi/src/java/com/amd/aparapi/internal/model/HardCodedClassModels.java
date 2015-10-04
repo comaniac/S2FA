@@ -37,6 +37,7 @@ public class HardCodedClassModels implements Iterable<HardCodedClassModel> {
 
 	@Override
 	public Iterator<HardCodedClassModel> iterator() {
+		@SuppressWarnings("unchecked")
 		List<HardCodedClassModel> accClassModels =
 		  new LinkedList<HardCodedClassModel>();
 		for (Map.Entry<String, List<HardCodedClassModel>> entry :

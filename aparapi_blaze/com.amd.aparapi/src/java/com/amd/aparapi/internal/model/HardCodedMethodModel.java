@@ -37,7 +37,7 @@ public class HardCodedMethodModel extends MethodModel {
 	}
 
 	public String getMethodDef(HardCodedClassModel classModel, KernelWriter writer) {
-		return methodDef.getMethodDef(this, classModel, writer);
+		return methodDef.getMethodDef(this, classModel, writer).toString();
 	}
 
 	@Override

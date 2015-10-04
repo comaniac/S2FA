@@ -386,6 +386,7 @@ public class OpenCLDevice extends Device {
 		}
 
 		final OpenCLInvocationHandler<T> invocationHandler = new OpenCLInvocationHandler<T>(program, map);
+		@SuppressWarnings("unchecked")
 		final T instance = (T) Proxy.newProxyInstance(OpenCLDevice.class.getClassLoader(), new Class[] {
 		                     _interface,
 		                     OpenCL.class

@@ -30,25 +30,53 @@ public class Utils {
 		transformedClasses.put("scala/collection/Iterator", iterMethods);
 	}
 
-	public static boolean isTransformedClass(String name) {
-		// TODO: DenseVector, etc
-		String tname = name.replace('.', '/').replace(";", "");
+	public static String cleanClassName(String clazz) {
+		String tname = clazz.replace('.', '/').replace(";", "");
 		if (tname.startsWith("L"))
 			tname = tname.substring(1);
+		return tname;
+	}
+
+	public static boolean isTransformedClass(String name) {
+		// TODO: DenseVector, etc
+		String tname = cleanClassName(name);
 		if(transformedClasses.containsKey(tname))
 			return true;
 		else
 			return false;
 	}
 
-	public static Set<String> getTransformedClassFields(String clazz) {
-		String tname = clazz.replace('.', '/').replace(";", "");
-		if (tname.startsWith("L"))
-			tname = tname.substring(1);
-
+	public static Set<String> getTransformedClassMethods(String clazz) {
+		String tname = cleanClassName(clazz);
 		if (transformedClasses.containsKey(tname))
 			return (transformedClasses.get(tname).keySet());
 		else
 			return null;
+	}
+
+	public static boolean hasMethod(String clazz, String methodName) {
+		String clazzName = cleanClassName(clazz);
+		if(!transformedClasses.containsKey(clazzName))
+			return false;
+		else {
+			for (String s: transformedClasses.get(clazzName).keySet()) {
+				if (methodName.contains(s))
+					return true;
+			}
+			return false;
+		}
+	}
+
+	public static String getCleanMethodName(String clazz, String methodName) {
+		String clazzName = cleanClassName(clazz);
+		if(!transformedClasses.containsKey(clazzName))
+			return null;
+		else {
+			for (String s: transformedClasses.get(clazzName).keySet()) {
+				if (methodName.contains(s))
+					return s;
+			}
+			return null;
+		}
 	}
 }
