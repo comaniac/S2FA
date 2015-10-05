@@ -15,16 +15,16 @@ public class Utils {
 		new HashMap<String, Map<String, METHODTYPE>>(); 
 
 	static {
-		Map<String, METHODTYPE> tuple2Methods = new HashMap<String, METHODTYPE>();
+		LinkedHashMap<String, METHODTYPE> tuple2Methods = new LinkedHashMap<String, METHODTYPE>();
 		tuple2Methods.put("_1", METHODTYPE.VAR_ACCESS);
 		tuple2Methods.put("_2", METHODTYPE.VAR_ACCESS);
 		transformedClasses.put("scala/Tuple2", tuple2Methods);
 
-		Map<String, METHODTYPE> blazeBroadcastMethods = new HashMap<String, METHODTYPE>();
+		LinkedHashMap<String, METHODTYPE> blazeBroadcastMethods = new LinkedHashMap<String, METHODTYPE>();
 		blazeBroadcastMethods.put("value", METHODTYPE.VAR_ACCESS);
 		transformedClasses.put("org/apache/spark/blaze/BlazeBroadcast", blazeBroadcastMethods);
 
-	 	Map<String, METHODTYPE> iterMethods = new HashMap<String, METHODTYPE>();
+	 	LinkedHashMap<String, METHODTYPE> iterMethods = new LinkedHashMap<String, METHODTYPE>();
 		iterMethods.put("hasNext", METHODTYPE.STATUS_CHECK);
 		iterMethods.put("next", METHODTYPE.VAR_ACCESS);
 		transformedClasses.put("scala/collection/Iterator", iterMethods);
@@ -52,6 +52,23 @@ public class Utils {
 			return (transformedClasses.get(tname).keySet());
 		else
 			return null;
+	}
+
+	public static String getTransformedClassMethod(String clazz, int idx) {
+		String tname = cleanClassName(clazz);
+		if (transformedClasses.containsKey(tname)) {
+			ArrayList<String> methodList = new ArrayList<String>(transformedClasses.get(tname).keySet());
+			return methodList.get(idx);
+		}
+		else
+			return null;
+	}
+
+	public static int getTransformedClassMethodNum(String clazz) {
+		String tname = cleanClassName(clazz);
+		if (transformedClasses.containsKey(tname))
+			return (transformedClasses.get(tname).size());
+		return 0;
 	}
 
 	public static boolean hasMethod(String clazz, String methodName) {

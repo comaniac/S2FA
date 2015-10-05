@@ -5,6 +5,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.LinkedList;
 import com.amd.aparapi.internal.model.ClassModel;
+import com.amd.aparapi.internal.util.Utils;
 
 public abstract class ScalaParameter {
 	public static enum DIRECTION {
@@ -17,6 +18,7 @@ public abstract class ScalaParameter {
 	protected final DIRECTION dir;
 	protected final List<String> typeParameterDescs;
 	protected final List<Boolean> typeParameterIsObject;
+	protected final boolean isArray;
 
 	public ScalaParameter(String fullSig, String name, DIRECTION dir) {
 		this.name = name;
@@ -27,10 +29,14 @@ public abstract class ScalaParameter {
 		this.typeParameterIsObject = new LinkedList<Boolean>();
 
 		String eleSig = null;
-		if (fullSig.charAt(0) == '[')
+		if (fullSig.charAt(0) != '[') {
 			eleSig = fullSig;
-		else
+			isArray = false;
+		}
+		else {
 			eleSig = fullSig.substring(1);
+			isArray = true;
+		}
 
 		if (eleSig.indexOf('<') != -1) {
 			String topLevelType = eleSig.substring(0, eleSig.indexOf('<'));
@@ -74,6 +80,10 @@ public abstract class ScalaParameter {
 		this.dir = dir;
 		this.typeParameterDescs = new LinkedList<String>();
 		this.typeParameterIsObject = new LinkedList<Boolean>();
+		if (type.charAt(0) != '[')
+			isArray = false;
+		else
+			isArray = true;
 	}
 
 	public ScalaParameter(String fullSig, String name) {
@@ -122,11 +132,12 @@ public abstract class ScalaParameter {
 		return sb.toString();
 	}
 
-	protected String getParameterStringFor(KernelWriter writer, int field) {
+	protected String getParameterStringFor(int field) {
 		final String param;
 		if (!typeParameterIsObject(field)) {
 			param = "__global " + ClassModel.convert(
-			          typeParameterDescs.get(field), "", true) + "* " + name + "_" + (field + 1);
+			          typeParameterDescs.get(field), "", true) + "* " 
+								+ name + "_" + Utils.getTransformedClassMethod(type, field);
 		} else {
 			String fieldDesc = typeParameterDescs.get(field);
 			if (fieldDesc.charAt(0) != 'L' ||
@@ -151,9 +162,24 @@ public abstract class ScalaParameter {
 		return dir; 
 	}
 
+	/*
+	 * Generate the string for method argument.
+	 */
 	public abstract String getInputParameterString(KernelWriter writer);
+
+	/*
+	 * Generate the string for method argument.
+	 */
 	public abstract String getOutputParameterString(KernelWriter writer);
+
+	/*
+	 * Generate the string for the variables in "this" struct.
+	 */ 
 	public abstract String getStructString(KernelWriter writer);
+
+	/*
+	 * Generate the string for assigning input variables to "this" struct.
+	 */
 	public abstract String getAssignString(KernelWriter writer);
 }
 

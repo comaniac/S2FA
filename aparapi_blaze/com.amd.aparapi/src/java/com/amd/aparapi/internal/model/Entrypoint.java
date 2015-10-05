@@ -755,25 +755,42 @@ public class Entrypoint implements Cloneable {
 							// Get signature (class name) of the field.
 							// Example: signature BlazeBroadcast for BlazeBroadcast[Tuple2[_,_]]
 							signature = field.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
+
+							// trnasformed class. Generic type has to be fetched here.
 							if (Utils.isTransformedClass(signature)) {
 								String typeHint = null;
 								Instruction next = instruction.getNextPC();
 
+								boolean fetchDirectly = false;
 								if (!(next instanceof I_INVOKEVIRTUAL)) // No type info.
-									typeHint = null;
+									throw new RuntimeException("Expecting invokevirtual after getfield for generic type, but found " + next);
+								else {
+									MethodEntry methodEntry = ((I_INVOKEVIRTUAL) next).getConstantPoolMethodEntry();
+									String methodName = Utils.cleanMethodName(signature, methodEntry.getNameAndTypeEntry()
+																			.getNameUTF8Entry().getUTF8());
+									String returnType = methodEntry.getNameAndTypeEntry().getDescriptorUTF8Entry()
+																			.getUTF8().replace("()", "");
 
-								next = next.getNextPC();
-								if (next instanceof I_CHECKCAST) { // Cast for array or object type
-									I_CHECKCAST cast = (I_CHECKCAST) next;
+									// Method returns a primitve type so fetch directly.
+									if (!returnType.startsWith("L"))
+										fetchDirectly = true;
+								}
 
-									// Get generic type information by guessing the next cast instruction.
-									// Example: generic type scala.Tuple2 for BlazeBroadcast[Tuple2[_,_]]
-									typeHint = cast.getConstantPoolClassEntry().getNameUTF8Entry().getUTF8();
+								if (fetchDirectly || next.getNextPC() instanceof I_CHECKCAST) { // Cast for array or object type
+									I_CHECKCAST cast = null;
+									if (!fetchDirectly) {
+										next = next.getNextPC();
+										cast = (I_CHECKCAST) next;
+
+										// Get generic type information by guessing the next cast instruction.
+										// Example: generic type scala.Tuple2 for BlazeBroadcast[Tuple2[_,_]]
+										typeHint = cast.getConstantPoolClassEntry().getNameUTF8Entry().getUTF8();
+									}
+									else
+										typeHint = signature;
 									String genericType = typeHint;
 
-									boolean isArray = false;
 									if (genericType.startsWith("[")) {
-										isArray = true;
 										genericType = genericType.substring(1);
 										arrayFieldArrayLengthUsed.add(accessedFieldName);
 									}
@@ -786,8 +803,12 @@ public class Entrypoint implements Cloneable {
 											curFieldType = Utils.addTransformedFieldTypeMapping(genericType);
 										}
 
-										if (cast.getParentExpr() instanceof I_INVOKEVIRTUAL) {
-											I_INVOKEVIRTUAL accessor = (I_INVOKEVIRTUAL) cast.getParentExpr();
+										if (fetchDirectly || cast.getParentExpr() instanceof I_INVOKEVIRTUAL) {
+											I_INVOKEVIRTUAL accessor = null;
+											if (!fetchDirectly)
+												accessor = (I_INVOKEVIRTUAL) cast.getParentExpr();
+											else
+												accessor = (I_INVOKEVIRTUAL) next;
 											final MethodEntry methodEntry = accessor.getConstantPoolMethodEntry();
 											final String methodName = methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();;
 											final String methodDesc = methodEntry.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();;
@@ -811,7 +832,8 @@ public class Entrypoint implements Cloneable {
 											throw new RuntimeException("Expectede aload and invokevirtual to find generic types, but not found.");
 									}
 								}
-								else if (next instanceof I_INVOKESTATIC) { // Boxed for scalar type
+								else if (next.getNextPC() instanceof I_INVOKESTATIC) { // Boxed for scalar type
+									next = next.getNextPC();
 									I_INVOKESTATIC unbox = (I_INVOKESTATIC) next;
 									typeHint = unbox.getConstantPoolMethodEntry().getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
 									if (typeHint.contains("Int"))
@@ -825,6 +847,7 @@ public class Entrypoint implements Cloneable {
 								}
 								else
 									throw new RuntimeException("Expected cast/unbox, but found " + next);
+
 								addToReferencedFieldNames(accessedFieldName, typeHint);
 							} else
 								addToReferencedFieldNames(accessedFieldName, null);

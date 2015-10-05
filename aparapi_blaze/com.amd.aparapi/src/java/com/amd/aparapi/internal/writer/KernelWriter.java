@@ -666,7 +666,12 @@ public abstract class KernelWriter extends BlockWriter {
 System.err.println("Field: " + field.getName() + ", sig: " + signature);
 
 			ScalaParameter param = null;
-			if (signature.startsWith("[")) {
+			
+			if (signature.contains("scala/Tuple2")) {
+				param = new ScalaTuple2Parameter(signature, 
+																				field.getName(), ScalaParameter.DIRECTION.IN);
+			}
+			else if (signature.startsWith("[")) {
 				param = new ScalaArrayParameter(signature,
 				                                field.getName(), ScalaParameter.DIRECTION.IN);
 			} else

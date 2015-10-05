@@ -22,61 +22,28 @@ public class ScalaArrayParameter extends ScalaParameter {
 		if (dir != DIRECTION.IN)
 			throw new RuntimeException("getInputParameterString can only be applied for input paramter.");
 
-		if (type.equals("scala.Tuple2")) {
-			final String firstParam = getParameterStringFor(writer, 0);
-			final String secondParam = getParameterStringFor(writer, 1);
-// #Issue 49: We don't use container anymore
-//				String containerParam = "__global " + getType() + " *" + name;
-			return firstParam + ", " + secondParam;
-		} else
-			return "__global " + type.replace('.', '_') + "* " + name;
+		return "__global " + type.replace('.', '_') + "* " + name;
 	}
 
 	@Override
 	public String getOutputParameterString(KernelWriter writer) {
 		if (dir != DIRECTION.OUT)
-			throw new RuntimeException();
+			throw new RuntimeException("getOutputParameterString can only be applied for output paramter.");
 
-		if (type.equals("scala.Tuple2")) {
-			final String firstParam = getParameterStringFor(writer, 0);
-			final String secondParam = getParameterStringFor(writer, 1);
-			return firstParam + ", " + secondParam;
-		} else
-			return "__global " + type.replace('.', '_') + "* " + name;
+		return "__global " + type.replace('.', '_') + "* " + name;
 	}
 
 	@Override
 	public String getStructString(KernelWriter writer) {
-		if (type.equals("scala.Tuple2")) {
-			if (dir == DIRECTION.OUT) {
-				return getParameterStringFor(writer, 0) + "; " +
-				       getParameterStringFor(writer, 1) + "; ";
-			} else
-				return "__global " + getType() + " *" + name;
-		} else
-			return "__global " + type.replace('.', '_') + "* " + name;
+		return "__global " + type.replace('.', '_') + "* " + name;
 	}
 
 	@Override
 	public String getAssignString(KernelWriter writer) {
 		if (dir != DIRECTION.IN)
-			throw new RuntimeException();
+			throw new RuntimeException("getAssignString can only be applied for input paramter.");
 
-		if (type.equals("scala.Tuple2")) {
-			StringBuilder sb = new StringBuilder();
-			sb.append("this->" + name + " = " + name + "; ");
-			sb.append("for (int i = 0; i < " + name + "__javaArrayLength; i++) { ");
-
-			// comaniac: Issue #1, we use scalar instead of pointer for kernel argument structure type.
-			// It means that we cannot use pointer assignment.
-			// Restriction: Tuple2 doesn't allow Array type.
-			// TODO: Recognize the platform and generate different kernels.
-			sb.append(name + "[i]._1 = " + name + "_1[i]; ");
-			sb.append(name + "[i]._2 = " + name + "_2[i]; ");
-			sb.append(" } ");
-			return sb.toString();
-		} else
-			return "this->" + name + " = " + name;
+		return "this->" + name + " = " + name;
 	}
 
 	@Override

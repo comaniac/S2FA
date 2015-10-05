@@ -70,7 +70,7 @@ object TestApp {
       val brdcst = acc.wrap(sc.broadcast(b_data))
 
       println("map Result: " + rdd_acc.map_acc(new Tuple2Test(brdcst)).reduce((a, b) => (a + b)))
-      println("mapPartition Result: " + rdd_acc.mapPartitions_acc(new Tuple2Test(brdcst)).reduce((a, b) => (a + b)))
+//      println("mapPartition Result: " + rdd_acc.mapPartitions_acc(new Tuple2Test(b_data)).reduce((a, b) => (a + b)))
       println("CPU Result: " + rdd_acc.map({case (a, b) => (a + b)}).reduce((a, b) => (a + b)))
 
       acc.stop()
