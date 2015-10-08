@@ -155,7 +155,7 @@ public class InstructionHelper {
 		}
 
 		@Override public void write(Entrypoint entryPoint,
-		                            java.util.Collection<ScalaArrayParameter> params) {
+		                            java.util.Collection<ScalaParameter> params) {
 			// TODO Auto-generated method stub
 		}
 

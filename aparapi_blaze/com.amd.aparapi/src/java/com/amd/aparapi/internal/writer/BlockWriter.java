@@ -672,30 +672,25 @@ public abstract class BlockWriter {
 		} else if (_instruction instanceof CastOperator) {
 //					write("/* cast */");
 			final CastOperator castInstruction = (CastOperator) _instruction;
-			//  write("(");
 			write(convertCast(castInstruction.getOperator().getText()));
 
 			writeInstruction(castInstruction.getUnary());
-			//    write(")");
 		} else if (_instruction instanceof UnaryOperator) {
 //					write("/* unary */");
 			final UnaryOperator unaryInstruction = (UnaryOperator) _instruction;
-			//   write("(");
 			write(unaryInstruction.getOperator().getText());
 
 			writeInstruction(unaryInstruction.getUnary());
-			//   write(")");
 		} else if (_instruction instanceof Return) {
 			writeReturn((Return) _instruction);
 		} else if (_instruction instanceof MethodCall) {
 //			write("/*methodcall*/");
 			final MethodCall methodCall = (MethodCall) _instruction;
-
 			final MethodEntry methodEntry = methodCall.getConstantPoolMethodEntry();
 			final String clazzName = methodEntry.toString().substring(0, methodEntry.toString().indexOf("."));
 
 			// Issue #34: Ignore modeled method. This should be an argument.
-			if (!Utils.isTransformedClass(clazzName))
+			if (!Utils.isHardCodedClass(clazzName))
 				writeCheck = writeMethod(methodCall, methodEntry);
 			else {
 				writeTransformMethod(methodCall, methodEntry);
@@ -944,7 +939,6 @@ public abstract class BlockWriter {
 	public void writeTransformMethod(MethodCall _methodCall,
 	                           MethodEntry _methodEntry) throws CodeGenException {
 		assert(_methodCall instanceof I_INVOKEVIRTUAL);
-
 		// Issue #34: Instead of writing method "value", we traverse its child instruction,
 		// which should be getField, to know the broadcast variable name.
 
@@ -952,12 +946,12 @@ public abstract class BlockWriter {
 		while (c != null && !(c instanceof AccessField))
 			c = c.getFirstChild();
 
+		String fieldName = null;
 		if (c != null) { // Reference transformed object access. e.q. BlazeBroadcast
-			String fieldName = ((AccessField) c)
-			                   .getConstantPoolFieldEntry()
-			                   .getNameAndTypeEntry()
-			                   .getNameUTF8Entry().getUTF8();
-
+			fieldName = ((AccessField) c)
+									.getConstantPoolFieldEntry()
+									.getNameAndTypeEntry()
+									.getNameUTF8Entry().getUTF8();
 			write("this->" + fieldName);
 		}
 		else { // Argument transformed object access. e.q. Tuple2/Vector
@@ -969,13 +963,14 @@ public abstract class BlockWriter {
 			final AccessLocalVariable localVariableLoadInstruction = (AccessLocalVariable) l;
 			final LocalVariableInfo localVariable = localVariableLoadInstruction.getLocalVariableInfo();
 			write(localVariable.getVariableName());
-
-			final String fullName = _methodEntry.toString();
-			String fieldName = fullName.substring(fullName.indexOf(".") + 1, fullName.indexOf("("));
-			if (fieldName.contains("$")) // Special case: Scala/Tuple2._1$mcD$sp()D (why?
-				fieldName = fieldName.substring(0, fieldName.indexOf("$"));
-			write(fieldName);
 		}
+
+		final String fullName = _methodEntry.toString();
+		String methodName = fullName.substring(fullName.indexOf(".") + 1, fullName.indexOf("("));
+		if (methodName.contains("$")) // Special case: Scala/Tuple2._1$mcD$sp()D (why?
+			methodName = methodName.substring(0, methodName.indexOf("$"));
+		write(methodName);
+
 		return ;
 	}
 
@@ -1021,5 +1016,5 @@ public abstract class BlockWriter {
 	}
 
 	public abstract void write(Entrypoint entryPoint,
-	                           Collection<ScalaArrayParameter> params) throws CodeGenException;
+	                           Collection<ScalaParameter> params) throws CodeGenException;
 }

@@ -649,7 +649,8 @@ public abstract class MethodModel {
 		for (Instruction instruction = pcHead; instruction != null; instruction = instruction.getNextPC()) {
 
 			// Here we are going to extract loop/if/structure from the list that we have collected so far in the roots list
-			// We are looking for a new instruction which is the target of a forward branch (this is why we collected forward branch counts) we only enter this loop
+			// We are looking for a new instruction which is the target of a forward branch (this is why we collected forward 
+			// branch counts) we only enter this loop
 			// however if roots list is not empty and it's tail is not a forward branch.
 
 			expressionList.foldComposite(instruction);
@@ -1784,7 +1785,8 @@ public abstract class MethodModel {
 				logger.warning("Method "
 				               + method.getName()
 				               + method.getDescriptor()
-				               + " does not contain a LocalVariableTable entry (source not compiled with -g) aparapi will attempt to create a synthetic table based on bytecode. This is experimental!!");
+				               + " does not contain a LocalVariableTable entry (source not compiled with -g)"
+											 + " aparapi will attempt to create a synthetic table based on bytecode. This is experimental!!");
 			}
 
 			// pass #2 build branch graph

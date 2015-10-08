@@ -46,8 +46,7 @@ import com.amd.aparapi.internal.model.ClassModel.ConstantPool.*;
 import com.amd.aparapi.internal.model.ClassModel.ConstantPool.MethodReferenceEntry.*;
 import com.amd.aparapi.internal.util.*;
 
-import com.amd.aparapi.internal.writer.ScalaParameter;
-import com.amd.aparapi.internal.writer.ScalaArrayParameter;
+import com.amd.aparapi.internal.writer.*;
 import com.amd.aparapi.internal.writer.ScalaParameter.DIRECTION;
 import com.amd.aparapi.internal.model.HardCodedClassModels.HardCodedClassModelMatcher;
 import com.amd.aparapi.internal.model.HardCodedClassModels.DescMatcher;
@@ -80,7 +79,7 @@ public class Entrypoint implements Cloneable {
 	private final boolean fallback = false;
 
 	/*
-	 * A mapping from referenced fields to hints to their actual types. Some
+	 * A mapping from fields including I/O to hints to their actual types. Some
 	 * fields may have their types obscured by Scala bytecode obfuscation (e.g.
 	 * scala.runtime.ObjectRef) but we can take guesses at the actual type based
 	 * on the references to them (e.g. if they are cast to something).
@@ -93,6 +92,16 @@ public class Entrypoint implements Cloneable {
 		} else
 			referencedFieldNames.put(name, hint);
 	}
+
+	private final Map<String, String> argumentNames = new HashMap<String, String>();
+	private void addToArgumentNames(String name, String hint) {
+		if (argumentNames.containsKey(name)) {
+			if (hint != null)
+				argumentNames.put(name, hint);
+		} else
+			argumentNames.put(name, hint);
+	}
+
 
 	private final Set<String> arrayFieldAssignments = new LinkedHashSet<String>();
 
@@ -560,7 +569,7 @@ public class Entrypoint implements Cloneable {
 	}
 
 	public Entrypoint(ClassModel _classModel, MethodModel _methodModel,
-	                  Object _k, Collection<ScalaArrayParameter> params, HardCodedClassModels setHardCodedClassModels)
+	                  Object _k, Collection<ScalaParameter> params, HardCodedClassModels setHardCodedClassModels)
 	throws AparapiException {
 		classModel = _classModel;
 		methodModel = _methodModel;
@@ -583,12 +592,12 @@ public class Entrypoint implements Cloneable {
 		}
 
 		if (params != null) {
-			for (ScalaArrayParameter p : params) {
+			for (ScalaParameter p : params) {
 				if (p.getClazz() != null) {
 
 					//	Issue #49: Now we don't want to model some transformed class such as Tuple2.
 					//	Intead, we want to transform it as variables and access them directly.
-					if (!Utils.isTransformedClass(p.getClazz().getName()))
+					if (!Utils.isHardCodedClass(p.getClazz().getName()))
 						addClass(p.getClazz().getName(), p.getDescArray());
 				}
 			}
@@ -617,7 +626,7 @@ public class Entrypoint implements Cloneable {
 		for (final MethodCall methodCall : methodModel.getMethodCalls()) {
 			ClassModelMethod m = resolveCalledMethod(methodCall, classModel);
 			if ((m != null) && !methodMap.keySet().contains(m) && 
-					!noCL(m) && !Utils.isTransformedClass(m.getClassModel().toString())
+					!noCL(m) && !Utils.isHardCodedClass(m.getClassModel().toString())
 			) {
 				final MethodModel target = new LoadedMethodModel(m, this);
 				methodMap.put(m, target);
@@ -729,7 +738,7 @@ public class Entrypoint implements Cloneable {
 							child = child.getFirstChild();
 
 						if (!(child instanceof AccessField)) {
-							System.out.println("Illegal child: " + child.toString());
+							System.out.println("Expecting AccessField, but found: " + child.toString());
 							throw new ClassParseException(ClassParseException.TYPE.LOCALARRAYLENGTHACCESS);
 						}
 
@@ -757,97 +766,12 @@ public class Entrypoint implements Cloneable {
 							signature = field.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
 
 							// trnasformed class. Generic type has to be fetched here.
-							if (Utils.isTransformedClass(signature)) {
-								String typeHint = null;
+							if (Utils.isHardCodedClass(signature)) {
 								Instruction next = instruction.getNextPC();
-
-								boolean fetchDirectly = false;
 								if (!(next instanceof I_INVOKEVIRTUAL)) // No type info.
 									throw new RuntimeException("Expecting invokevirtual after getfield for generic type, but found " + next);
-								else {
-									MethodEntry methodEntry = ((I_INVOKEVIRTUAL) next).getConstantPoolMethodEntry();
-									String methodName = Utils.cleanMethodName(signature, methodEntry.getNameAndTypeEntry()
-																			.getNameUTF8Entry().getUTF8());
-									String returnType = methodEntry.getNameAndTypeEntry().getDescriptorUTF8Entry()
-																			.getUTF8().replace("()", "");
 
-									// Method returns a primitve type so fetch directly.
-									if (!returnType.startsWith("L"))
-										fetchDirectly = true;
-								}
-
-								if (fetchDirectly || next.getNextPC() instanceof I_CHECKCAST) { // Cast for array or object type
-									I_CHECKCAST cast = null;
-									if (!fetchDirectly) {
-										next = next.getNextPC();
-										cast = (I_CHECKCAST) next;
-
-										// Get generic type information by guessing the next cast instruction.
-										// Example: generic type scala.Tuple2 for BlazeBroadcast[Tuple2[_,_]]
-										typeHint = cast.getConstantPoolClassEntry().getNameUTF8Entry().getUTF8();
-									}
-									else
-										typeHint = signature;
-									String genericType = typeHint;
-
-									if (genericType.startsWith("[")) {
-										genericType = genericType.substring(1);
-										arrayFieldArrayLengthUsed.add(accessedFieldName);
-									}
-									if (Utils.isTransformedClass(genericType)) {
-										String curFieldType = getReferencedFieldTypeHint(accessedFieldName);
-
-										if (curFieldType == null) {
-											// Add field type mapping to genericType for later used.
-											// Example: scala.Tuple2 -> scala.Tuple2<_1, _2>
-											curFieldType = Utils.addTransformedFieldTypeMapping(genericType);
-										}
-
-										if (fetchDirectly || cast.getParentExpr() instanceof I_INVOKEVIRTUAL) {
-											I_INVOKEVIRTUAL accessor = null;
-											if (!fetchDirectly)
-												accessor = (I_INVOKEVIRTUAL) cast.getParentExpr();
-											else
-												accessor = (I_INVOKEVIRTUAL) next;
-											final MethodEntry methodEntry = accessor.getConstantPoolMethodEntry();
-											final String methodName = methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();;
-											final String methodDesc = methodEntry.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();;
-
-											final String pureMethodName = Utils.cleanMethodName(genericType, methodName);
-											if (pureMethodName == null)
-												throw new RuntimeException("Method " + methodName + " doesn't be modeled in class " + genericType);
-											
-											// Get field type by consulting the method call.
-											// Example: scala/Tuple2._2$mcD$sp:()D has type D
-											String realFieldType = null;
-											if (accessor.getParentExpr() instanceof I_CHECKCAST) { // FIXME: Not be verified yet.
-												I_CHECKCAST cast_to_real = (I_CHECKCAST) accessor.getParentExpr();
-												realFieldType = cast_to_real.getConstantPoolClassEntry().getNameUTF8Entry().getUTF8();
-											} else
-												realFieldType = methodDesc.substring(methodDesc.lastIndexOf(')') + 1);
-											
-											typeHint = curFieldType.replace(pureMethodName, realFieldType);
-										}
-										else
-											throw new RuntimeException("Expectede aload and invokevirtual to find generic types, but not found.");
-									}
-								}
-								else if (next.getNextPC() instanceof I_INVOKESTATIC) { // Boxed for scalar type
-									next = next.getNextPC();
-									I_INVOKESTATIC unbox = (I_INVOKESTATIC) next;
-									typeHint = unbox.getConstantPoolMethodEntry().getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
-									if (typeHint.contains("Int"))
-										typeHint = "I";
-									else if (typeHint.contains("Double"))
-										typeHint = "D";
-									else if (typeHint.contains("Float"))
-										typeHint = "F";
-									else if (typeHint.contains("Long"))
-										typeHint = "J";
-								}
-								else
-									throw new RuntimeException("Expected cast/unbox, but found " + next);
-
+								String typeHint = findTypeHintForHardCodedClass(accessedFieldName, signature, next, true);
 								addToReferencedFieldNames(accessedFieldName, typeHint);
 							} else
 								addToReferencedFieldNames(accessedFieldName, null);
@@ -971,13 +895,45 @@ public class Entrypoint implements Cloneable {
 										throw new ClassParseException(ClassParseException.TYPE.ACCESSEDOBJECTSETTERARRAY);
 								}
 							}
-
 						}
 					} else if (instruction instanceof I_NEWARRAY) {
 						Instruction child = instruction.getFirstChild();
 						if (!(child instanceof BytecodeEncodedConstant) && // i_const
 						    !(child instanceof ImmediateConstant)) // push
 							throw new ClassParseException(ClassParseException.TYPE.NEWDYNAMICARRAY);
+					}
+					else if (instruction instanceof I_ALOAD_1) { 
+						// Parse input data generic type [Experiment]
+						// Assume the only input data argument is stored in I_ALOAD_1
+						// Only focus on the main function (call method in Scala)
+						if (!methodModel.getName().contains("call"))
+							continue;
+
+						I_ALOAD_1 loadInst = (I_ALOAD_1) instruction;
+						LocalVariableInfo varInfo = loadInst.getLocalVariableInfo();
+						String clazz = varInfo.getVariableDescriptor().replace(";", "");
+						String fieldName = varInfo.getVariableName();
+						String typeHint = null;
+						boolean isArray = false;
+
+						System.err.println("call arg type: " + clazz);
+
+						if (clazz.startsWith("[")) {
+							isArray = true;
+							clazz.substring(1);
+						}
+
+						if (clazz.startsWith("L") && Utils.isHardCodedClass(clazz.substring(1))) {
+							Instruction next = instruction.getNextPC();
+							if (!(next instanceof I_INVOKEVIRTUAL) && !(next instanceof I_INVOKEINTERFACE))
+								throw new RuntimeException("Expecting method call for hardcoded class, but found " + next);
+
+							typeHint = findTypeHintForHardCodedClass(fieldName, clazz, next, false);
+						}
+						else // Primitive type
+							typeHint = clazz;
+						addToArgumentNames(fieldName, typeHint);
+						System.err.println("call arg typeHint: " + typeHint);
 					}
 				}
 			}
@@ -1051,46 +1007,25 @@ public class Entrypoint implements Cloneable {
 							int alignTo = 0;
 							int totalSize = 0;
 
-							if (c.getClassWeAreModelling().getName().equals("scala.Tuple2")) {
+							for (final FieldNameInfo f : fields) {
+								// Record field offset for use while copying
+								// Get field we will copy out of the kernel member object
+								final Field rfield = getFieldFromClassHierarchy(c.getClassWeAreModelling(), f.name);
 
-								for (final FieldNameInfo f : fields) {
-									final String fieldType = f.desc;
-									final int fSize;
-									if (fieldType.startsWith("L")) {
-										fSize = 8; // TODO safe to hard-code size of pointer on device?
-									} else
-										fSize = getSizeOf(fieldType);
-									if (fSize > alignTo)
-										alignTo = fSize;
-									totalSize += fSize;
-								}
-							} else {
-								for (final FieldNameInfo f : fields) {
-									// Record field offset for use while copying
-									// Get field we will copy out of the kernel member object
-									final Field rfield = getFieldFromClassHierarchy(c.getClassWeAreModelling(), f.name);
+								long fieldOffset = UnsafeWrapper.objectFieldOffset(rfield);
+								final String fieldType = f.desc;
 
-									long fieldOffset = UnsafeWrapper.objectFieldOffset(rfield);
-									final String fieldType = f.desc;
+								c.addStructMember(fieldOffset, TypeSpec.valueOf(fieldType), f.name);
 
-									c.addStructMember(fieldOffset, TypeSpec.valueOf(fieldType), f.name);
-
-									final int fSize = getSizeOf(fieldType);
-									if (fSize > alignTo)
-										alignTo = fSize;
-
-									totalSize += fSize;
-								}
+								final int fSize = getSizeOf(fieldType);
+								if (fSize > alignTo)
+									alignTo = fSize;
+								totalSize += fSize;
 							}
 
 							// compute total size for OpenCL buffer
 							int totalStructSize = 0;
-							// if ((totalSize % alignTo) == 0) {
 							totalStructSize = totalSize;
-							// } else {
-							//    // Pad up if necessary
-							//    totalStructSize = ((totalSize / alignTo) + 1) * alignTo;
-							// }
 							c.setTotalStructSize(totalStructSize);
 						}
 					}
@@ -1150,6 +1085,19 @@ public class Entrypoint implements Cloneable {
 		return (referencedFieldNames);
 	}
 
+	public String getArgumentTypeHint(String name) {		
+		String pureName = Utils.cleanClassName(name);
+		if (argumentNames.containsKey(pureName))
+			return (argumentNames.get(pureName));
+		else
+			return null;
+	}
+
+	public Map<String, String> getArgumentNames() {
+		return (argumentNames);
+	}
+
+
 	public Set<String> getArrayFieldAssignments() {
 		return (arrayFieldAssignments);
 	}
@@ -1181,6 +1129,109 @@ public class Entrypoint implements Cloneable {
 			throw new RuntimeException(a);
 		}
 		return null;
+	}
+
+	private String findTypeHintForHardCodedClass(
+		String fieldName, 
+		String signature, 
+		Instruction inst,
+		boolean isReference
+	) {
+		String typeHint = null;
+		boolean fetchDirectly = false;
+
+		if (!(inst instanceof I_INVOKEVIRTUAL)) // No type info.
+			return null;
+		else {
+			MethodEntry methodEntry = ((I_INVOKEVIRTUAL) inst).getConstantPoolMethodEntry();
+			String methodName = Utils.cleanMethodName(signature, methodEntry.getNameAndTypeEntry()
+													.getNameUTF8Entry().getUTF8());
+			String returnType = methodEntry.getNameAndTypeEntry().getDescriptorUTF8Entry()
+													.getUTF8().replace("()", "");
+		
+			// Method returns a primitve type so fetch directly.
+			if (!returnType.startsWith("L"))
+				fetchDirectly = true;
+		}
+
+		if (fetchDirectly || inst.getNextPC() instanceof I_CHECKCAST) { // Cast for array or object type
+			I_CHECKCAST cast = null;
+			if (!fetchDirectly) {
+				inst = inst.getNextPC();
+				cast = (I_CHECKCAST) inst;
+
+				// Get generic type information by guessing the next cast instruction.
+				// Example: generic type scala.Tuple2 for BlazeBroadcast[Tuple2[_,_]]
+				typeHint = cast.getConstantPoolClassEntry().getNameUTF8Entry().getUTF8();
+			}
+			else
+				typeHint = signature;
+			String genericType = typeHint;
+
+			if (genericType.startsWith("[")) {
+				genericType = genericType.substring(1);
+				arrayFieldArrayLengthUsed.add(fieldName);
+			}
+			if (Utils.isHardCodedClass(genericType)) {
+				String curFieldType = null;
+	
+				if (isReference)
+					curFieldType = getReferencedFieldTypeHint(fieldName);
+				else
+					curFieldType = getArgumentTypeHint(fieldName);
+
+				if (curFieldType == null) {
+					// Add field type mapping to genericType for later used.
+					// Example: scala.Tuple2 -> scala.Tuple2<_1, _2>
+					curFieldType = Utils.addHardCodedFieldTypeMapping(genericType);
+				}
+
+				if (fetchDirectly || cast.getParentExpr() instanceof I_INVOKEVIRTUAL) {
+					I_INVOKEVIRTUAL accessor = null;
+					if (!fetchDirectly)
+						accessor = (I_INVOKEVIRTUAL) cast.getParentExpr();
+					else
+						accessor = (I_INVOKEVIRTUAL) inst;
+					final MethodEntry methodEntry = accessor.getConstantPoolMethodEntry();
+					final String methodName = methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();;
+					final String methodDesc = methodEntry.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();;
+
+					final String pureMethodName = Utils.cleanMethodName(genericType, methodName);
+					if (pureMethodName == null)
+						throw new RuntimeException("Method " + methodName + " doesn't be modeled in class " + genericType);
+			
+					// Get field type by consulting the method call.
+					// Example: scala/Tuple2._2$mcD$sp:()D has type D
+					String realFieldType = null;
+					if (accessor.getParentExpr() instanceof I_CHECKCAST) { // FIXME: Not be verified yet.
+						I_CHECKCAST cast_to_real = (I_CHECKCAST) accessor.getParentExpr();
+						realFieldType = cast_to_real.getConstantPoolClassEntry().getNameUTF8Entry().getUTF8();
+					} else
+						realFieldType = methodDesc.substring(methodDesc.lastIndexOf(')') + 1);
+			
+					typeHint = curFieldType.replace(pureMethodName, realFieldType);
+				}
+				else
+					throw new RuntimeException("Expectede aload and invokevirtual to find generic types, but not found.");
+			}
+		}
+		else if (inst.getNextPC() instanceof I_INVOKESTATIC) { // Boxed for scalar type
+			inst = inst.getNextPC();
+			I_INVOKESTATIC unbox = (I_INVOKESTATIC) inst;
+			typeHint = unbox.getConstantPoolMethodEntry().getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+			if (typeHint.contains("Int"))
+				typeHint = "I";
+			else if (typeHint.contains("Double"))
+				typeHint = "D";
+			else if (typeHint.contains("Float"))
+				typeHint = "F";
+			else if (typeHint.contains("Long"))
+				typeHint = "J";
+		}
+		else
+			throw new RuntimeException("Expected cast/unbox, but found " + inst);
+
+		return typeHint;
 	}
 
 	/*

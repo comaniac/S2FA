@@ -57,8 +57,8 @@ public class ScalaTuple2Parameter extends ScalaParameter {
 		if (dir != DIRECTION.IN)
 			throw new RuntimeException("getAssignString can only be applied for input paramter.");
 
-		String firstName = name + "_" + Utils.getTransformedClassMethod(type, 0);
-		String secondName = name + "_" + Utils.getTransformedClassMethod(type, 1);
+		String firstName = name + Utils.getHardCodedClassMethod(type, 0);
+		String secondName = name + Utils.getHardCodedClassMethod(type, 1);
 
 		StringBuilder sb = new StringBuilder();
 		sb.append("this->" + firstName + " = " + firstName + "; ");

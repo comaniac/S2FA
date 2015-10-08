@@ -650,32 +650,23 @@ public abstract class KernelWriter extends BlockWriter {
 	}
 
 	@Override public void write(Entrypoint _entryPoint,
-	                            Collection<ScalaArrayParameter> params) throws CodeGenException {
+	                            Collection<ScalaParameter> params) throws CodeGenException {
 		final List<String> thisStruct = new ArrayList<String>();
 		final List<String> argLines = new ArrayList<String>();
 		final List<String> assigns = new ArrayList<String>();
 
 		entryPoint = _entryPoint;
 
+		// Add reference fields (broadcast) to 1) "this", 2) argument of main, 3) "this" assignment
 		for (final ClassModelField field : _entryPoint.getReferencedClassModelFields()) {
 			final StringBuilder thisStructLine = new StringBuilder();
 			final StringBuilder argLine = new StringBuilder();
 			final StringBuilder assignLine = new StringBuilder();
 
 			String signature = field.getDescriptor();
-System.err.println("Field: " + field.getName() + ", sig: " + signature);
+//System.err.println("Field: " + field.getName() + ", sig: " + signature);
 
-			ScalaParameter param = null;
-			
-			if (signature.contains("scala/Tuple2")) {
-				param = new ScalaTuple2Parameter(signature, 
-																				field.getName(), ScalaParameter.DIRECTION.IN);
-			}
-			else if (signature.startsWith("[")) {
-				param = new ScalaArrayParameter(signature,
-				                                field.getName(), ScalaParameter.DIRECTION.IN);
-			} else
-				param = new ScalaScalarParameter(signature, field.getName());
+			ScalaParameter param = Utils.createScalaParameter(signature, field.getName(), ScalaParameter.DIRECTION.IN);
 
 			// check the suffix
 
@@ -871,16 +862,16 @@ System.err.println("Field: " + field.getName() + ", sig: " + signature);
 					// 2. The argument of "call" method must be (this, input, <output>)
 					// Based on the assumptions we are able to allow different type parameter for the same class
 					// of input and output. For example input Tuple2[Int, Float]; output Tuple2[Double, Double]
-					if (mm.getName().contains("call") && Utils.isTransformedClass(clazzDesc)) {
-						for (ScalaArrayParameter p : params) {
+					if (mm.getName().contains("call") && Utils.isHardCodedClass(clazzDesc)) {
+						for (ScalaParameter p : params) {
 						  String paramString = null;
-						  if (p.getDir() == ScalaArrayParameter.DIRECTION.IN) {
+						  if (p.getDir() == ScalaParameter.DIRECTION.IN) {
 						    String [] descArray = p.getDescArray();
 								for (int i = 0; i < descArray.length; i += 1) {
 									String desc = descArray[i];
 									descList.add(desc);
 								}
-								Set<String> fields = Utils.getTransformedClassMethods(clazzDesc);
+								Set<String> fields = Utils.getHardCodedClassMethods(clazzDesc);
 								for (String field : fields)
 									fieldList.add(field);
 								break;
@@ -1017,7 +1008,7 @@ System.err.println("Field: " + field.getName() + ", sig: " + signature);
 		}
 
 		// Start writing main function
-		ScalaArrayParameter outParam = null;
+		ScalaParameter outParam = null;
 		write("__kernel ");
 		newLine();
 		write("void run(");
@@ -1025,9 +1016,9 @@ System.err.println("Field: " + field.getName() + ", sig: " + signature);
 		in();
 		newLine();
 
-		// Argunments: (dataNum, input, output, reference)
+		// Main method argunments: (dataNum, input, output, reference)
 		boolean first = true;
-		for (ScalaArrayParameter p : params) {
+		for (ScalaParameter p : params) {
 			if (first) {
 				first = false;
 				write("int N");
@@ -1037,7 +1028,7 @@ System.err.println("Field: " + field.getName() + ", sig: " + signature);
 
 			// Find output parameter
 			String paramString = null;
-			if (p.getDir() == ScalaArrayParameter.DIRECTION.OUT) {
+			if (p.getDir() == ScalaParameter.DIRECTION.OUT) {
 				assert(outParam == null); // Expect only one output parameter.
 				outParam = p;
 				paramString = p.getOutputParameterString(this);
@@ -1051,7 +1042,7 @@ System.err.println("Field: " + field.getName() + ", sig: " + signature);
 				newLine();
 
 				// Currently only support one-to-one mapping so output item # is same as N.
-				// if (p.getDir() == ScalaArrayParameter.DIRECTION.OUT) {
+				// if (p.getDir() == ScalaParameter.DIRECTION.OUT) {
 				//	 write("int " + p.getName() + "_item_num, ");
 				//	 newLine();
 				// }
@@ -1098,13 +1089,13 @@ System.err.println("Field: " + field.getName() + ", sig: " + signature);
 			write(_entryPoint.getMethodModel().getName() + "(this");
 		}
 
-		for (ScalaArrayParameter p : params) {
+		for (ScalaParameter p : params) {
 			if (p.getDir() == ScalaParameter.DIRECTION.IN) {
 				if (p.getName().contains("ary")) { // Deserialized access
 					if (p.getClazz() == null) // Primitive type
 						write(", &" + p.getName() + "[idx * " + p.getName() + "_item_length]");
-					else if (Utils.isTransformedClass(p.getClazz().getName())) {
-						Set<String> fields = Utils.getTransformedClassMethods(p.getClazz().getName());
+					else if (Utils.isHardCodedClass(p.getClazz().getName())) {
+						Set<String> fields = Utils.getHardCodedClassMethods(p.getClazz().getName());
 						for (String field : fields)
 							write(", &" + p.getName() + field + "[idx " + p.getName() + "_item_length]");
 					}
@@ -1114,8 +1105,8 @@ System.err.println("Field: " + field.getName() + ", sig: " + signature);
 				else {
 					if (p.getClazz() == null) // Primitive type
 						write(", " + p.getName() + "[idx]");
-					else if (Utils.isTransformedClass(p.getClazz().getName())) {
-						Set<String> fields = Utils.getTransformedClassMethods(p.getClazz().getName());
+					else if (Utils.isHardCodedClass(p.getClazz().getName())) {
+						Set<String> fields = Utils.getHardCodedClassMethods(p.getClazz().getName());
 						for (String field : fields)
 							write(", " + p.getName() + field + "[idx]");
 					}
@@ -1128,8 +1119,8 @@ System.err.println("Field: " + field.getName() + ", sig: " + signature);
 		if (isArrayTypeOutput) { // Issue #40: Add another argument for output array.
 			if (outParam.getClazz() == null) // Primitive type
 				write(", &" + outParam.getName() + "[idx * " + outParam.getName() + "_item_length]");
-			else if (Utils.isTransformedClass(outParam.getClazz().getName())) {
-				Set<String> fields = Utils.getTransformedClassMethods(outParam.getClazz().getName());
+			else if (Utils.isHardCodedClass(outParam.getClazz().getName())) {
+				Set<String> fields = Utils.getHardCodedClassMethods(outParam.getClazz().getName());
 				for (String field : fields)
 					write(", &" + outParam.getName() + field + "[idx " + outParam.getName() + "_item_length]");
 			}
@@ -1212,7 +1203,7 @@ System.err.println("Field: " + field.getName() + ", sig: " + signature);
 	}
 
 	public static WriterAndKernel writeToString(Entrypoint _entrypoint,
-	    Collection<ScalaArrayParameter> params) throws CodeGenException, AparapiException {
+	    Collection<ScalaParameter> params) throws CodeGenException, AparapiException {
 
 		final StringBuilder openCLStringBuilder = new StringBuilder();
 		final KernelWriter openCLWriter = new KernelWriter() {

@@ -43,7 +43,7 @@ import com.amd.aparapi.internal.model.HardCodedClassModels.ShouldNotCallMatcher
 import com.amd.aparapi.internal.model.Entrypoint
 import com.amd.aparapi.internal.writer.KernelWriter
 import com.amd.aparapi.internal.writer.KernelWriter.WriterAndKernel
-import com.amd.aparapi.internal.writer.ScalaArrayParameter
+import com.amd.aparapi.internal.writer._
 import com.amd.aparapi.internal.writer.ScalaParameter.DIRECTION
 
 /**
@@ -524,8 +524,7 @@ class AccRDD[U: ClassTag, T: ClassTag](
     System.setProperty("com.amd.aparapi.enable.NEW", "true")
     System.setProperty("com.amd.aparapi.enable.INVOKEINTERFACE", "true")
     val kernelPath : String = "/tmp/blaze_kernel_" + id + ".cl" 
-    // TODO:  1. Should be a shared path e.g. HDFS
-    //        2. Should check if the kernel is existed in advance
+    // TODO: Should be a shared path e.g. HDFS
 
     if (new File(kernelPath).exists) {
       logWarning("Kernel exists, skip generating")
@@ -538,10 +537,6 @@ class AccRDD[U: ClassTag, T: ClassTag](
                     else classModel.getPrimitiveCallPartitionsMethod
 
       try {
-//        if (isMapPartitions && method != null) { // FIXME
-//          throw new RuntimeException("Currently we don't support MapPartitions")
-//        }
-
         if (method == null)
           throw new RuntimeException("Cannot find available call method.")
         val descriptor : String = method.getDescriptor
@@ -555,7 +550,7 @@ class AccRDD[U: ClassTag, T: ClassTag](
           throw new RuntimeException("Multi-dimensional array cannot be an input argument." +
             " Stop generating OpenCL kernel.")
         }
-        val params : LinkedList[ScalaArrayParameter] = paramsWithDim._1
+        val params : LinkedList[ScalaParameter] = paramsWithDim._1
 
         // Parse output type.
         val returnWithDim = CodeGenUtil.getReturnObjsFromMethodDescriptor(descriptor)
@@ -601,7 +596,7 @@ class AccRDD[U: ClassTag, T: ClassTag](
   def createHardCodedClassModel(
     obj: Tuple2[_, _],
     hardCodedClassModels: HardCodedClassModels, 
-    param: ScalaArrayParameter
+    param: ScalaParameter
   ) {
     val inputClassType1 = obj._1.getClass
     val inputClassType2 = obj._2.getClass

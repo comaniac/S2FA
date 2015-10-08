@@ -13,7 +13,7 @@ import com.amd.aparapi.internal.model.HardCodedClassModel.TypeParameters;
 import com.amd.aparapi.internal.model.HardCodedClassModel.AllFieldInfo;
 import com.amd.aparapi.internal.model.HardCodedClassModels.HardCodedClassModelMatcher;
 import com.amd.aparapi.internal.model.HardCodedClassModels.DescMatcher;
-import com.amd.aparapi.internal.writer.ScalaArrayParameter;
+import com.amd.aparapi.internal.writer.*;
 
 import java.io.*;
 import java.lang.reflect.*;
@@ -2904,7 +2904,7 @@ public abstract class ClassModel {
 	});
 
 	public Entrypoint getEntrypoint(String _entrypointName, String _descriptor,
-	                                Object _k, Collection<ScalaArrayParameter> params,
+	                                Object _k, Collection<ScalaParameter> params,
 	                                HardCodedClassModels hardCodedClassModels) throws AparapiException {
 		if (CacheEnabler.areCachesEnabled()) {
 			EntrypointKey key = EntrypointKey.of(_entrypointName, _descriptor, params, hardCodedClassModels);

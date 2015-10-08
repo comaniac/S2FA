@@ -1,6 +1,8 @@
 package com.amd.aparapi.internal.util;
 
 import java.util.*;
+import com.amd.aparapi.internal.writer.*;
+import com.amd.aparapi.internal.writer.ScalaParameter.DIRECTION;
 
 /**
  * This utility class encapsulates the necessary actions required when processing and generating the kernel.
@@ -11,23 +13,23 @@ public class Utils {
 		STATUS_CHECK
 	}
 
-	static private final Map<String, Map<String, METHODTYPE>> transformedClasses = 
+	static private final Map<String, Map<String, METHODTYPE>> hardCodedClasses = 
 		new HashMap<String, Map<String, METHODTYPE>>(); 
 
 	static {
 		LinkedHashMap<String, METHODTYPE> tuple2Methods = new LinkedHashMap<String, METHODTYPE>();
 		tuple2Methods.put("_1", METHODTYPE.VAR_ACCESS);
 		tuple2Methods.put("_2", METHODTYPE.VAR_ACCESS);
-		transformedClasses.put("scala/Tuple2", tuple2Methods);
+		hardCodedClasses.put("scala/Tuple2", tuple2Methods);
 
 		LinkedHashMap<String, METHODTYPE> blazeBroadcastMethods = new LinkedHashMap<String, METHODTYPE>();
 		blazeBroadcastMethods.put("value", METHODTYPE.VAR_ACCESS);
-		transformedClasses.put("org/apache/spark/blaze/BlazeBroadcast", blazeBroadcastMethods);
+		hardCodedClasses.put("org/apache/spark/blaze/BlazeBroadcast", blazeBroadcastMethods);
 
 	 	LinkedHashMap<String, METHODTYPE> iterMethods = new LinkedHashMap<String, METHODTYPE>();
 		iterMethods.put("hasNext", METHODTYPE.STATUS_CHECK);
 		iterMethods.put("next", METHODTYPE.VAR_ACCESS);
-		transformedClasses.put("scala/collection/Iterator", iterMethods);
+		hardCodedClasses.put("scala/collection/Iterator", iterMethods);
 	}
 
 	public static String cleanClassName(String clazz) {
@@ -37,46 +39,46 @@ public class Utils {
 		return tname;
 	}
 
-	public static boolean isTransformedClass(String name) {
+	public static boolean isHardCodedClass(String name) {
 		// TODO: DenseVector, etc
 		String tname = cleanClassName(name);
-		if(transformedClasses.containsKey(tname))
+		if(hardCodedClasses.containsKey(tname))
 			return true;
 		else
 			return false;
 	}
 
-	public static Set<String> getTransformedClassMethods(String clazz) {
+	public static Set<String> getHardCodedClassMethods(String clazz) {
 		String tname = cleanClassName(clazz);
-		if (transformedClasses.containsKey(tname))
-			return (transformedClasses.get(tname).keySet());
+		if (hardCodedClasses.containsKey(tname))
+			return (hardCodedClasses.get(tname).keySet());
 		else
 			return null;
 	}
 
-	public static String getTransformedClassMethod(String clazz, int idx) {
+	public static String getHardCodedClassMethod(String clazz, int idx) {
 		String tname = cleanClassName(clazz);
-		if (transformedClasses.containsKey(tname)) {
-			ArrayList<String> methodList = new ArrayList<String>(transformedClasses.get(tname).keySet());
+		if (hardCodedClasses.containsKey(tname)) {
+			ArrayList<String> methodList = new ArrayList<String>(hardCodedClasses.get(tname).keySet());
 			return methodList.get(idx);
 		}
 		else
 			return null;
 	}
 
-	public static int getTransformedClassMethodNum(String clazz) {
+	public static int getHardCodedClassMethodNum(String clazz) {
 		String tname = cleanClassName(clazz);
-		if (transformedClasses.containsKey(tname))
-			return (transformedClasses.get(tname).size());
+		if (hardCodedClasses.containsKey(tname))
+			return (hardCodedClasses.get(tname).size());
 		return 0;
 	}
 
 	public static boolean hasMethod(String clazz, String methodName) {
 		String clazzName = cleanClassName(clazz);
-		if(!transformedClasses.containsKey(clazzName))
+		if(!hardCodedClasses.containsKey(clazzName))
 			return false;
 		else {
-			for (String s: transformedClasses.get(clazzName).keySet()) {
+			for (String s: hardCodedClasses.get(clazzName).keySet()) {
 				if (methodName.contains(s))
 					return true;
 			}
@@ -86,10 +88,10 @@ public class Utils {
 
 	public static String cleanMethodName(String clazz, String methodName) {
 		String clazzName = cleanClassName(clazz);
-		if(!transformedClasses.containsKey(clazzName))
+		if(!hardCodedClasses.containsKey(clazzName))
 			return null;
 		else {
-			for (String s: transformedClasses.get(clazzName).keySet()) {
+			for (String s: hardCodedClasses.get(clazzName).keySet()) {
 				if (methodName.contains(s))
 					return s;
 			}
@@ -97,13 +99,13 @@ public class Utils {
 		}
 	}
 
-	public static String addTransformedFieldTypeMapping(String clazz) {
+	public static String addHardCodedFieldTypeMapping(String clazz) {
 		String clazzName = cleanClassName(clazz);
-		if(!transformedClasses.containsKey(clazzName))
+		if(!hardCodedClasses.containsKey(clazzName))
 			return clazzName;
 		else {
 			boolean first = true;
-			Map<String, METHODTYPE> modeledClazz = transformedClasses.get(clazzName);
+			Map<String, METHODTYPE> modeledClazz = hardCodedClasses.get(clazzName);
 			clazzName += "<";
 			for (Map.Entry<String, METHODTYPE> field: modeledClazz.entrySet()) {
 				if (field.getValue() == METHODTYPE.VAR_ACCESS) {
@@ -116,5 +118,18 @@ public class Utils {
 			clazzName += ">";
 			return clazzName;
 		}
+	}
+
+	public static ScalaParameter createScalaParameter(String signature, String name, DIRECTION dir) {
+		ScalaParameter param = null;
+
+		if (signature.contains("scala/Tuple2"))
+			param = new ScalaTuple2Parameter(signature, name, dir);
+		else if (signature.startsWith("["))
+			param = new ScalaArrayParameter(signature, name, dir);
+		else
+			param = new ScalaScalarParameter(signature, name);
+
+		return param;
 	}
 }

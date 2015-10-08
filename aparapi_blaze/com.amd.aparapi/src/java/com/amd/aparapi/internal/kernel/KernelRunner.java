@@ -1093,7 +1093,7 @@ public class KernelRunner extends KernelRunnerJNI {
 					entryPoint = classModel.getEntrypoint(_entrypointName, kernel);
 					String openCL = null;
 					openCL = KernelWriter.writeToString(entryPoint,
-					                                    new java.util.LinkedList<ScalaArrayParameter>()).kernel;
+					                                    new java.util.LinkedList<ScalaParameter>()).kernel;
 					FileWriter kernelFile = new FileWriter(kernel_filename + ".cl");
 					kernelFile.write(openCL.replace("$", "___"));
 					kernelFile.flush();
@@ -1362,7 +1362,7 @@ public class KernelRunner extends KernelRunnerJNI {
 						String openCL = null;
 						try {
 							openCL = KernelWriter.writeToString(entryPoint,
-							                                    new java.util.LinkedList<ScalaArrayParameter>()).kernel;
+							                                    new java.util.LinkedList<ScalaParameter>()).kernel;
 						} catch (final CodeGenException codeGenException) {
 							return warnFallBackAndExecute(_entrypointName, _range, _passes, codeGenException);
 						} catch (final AparapiException e) {

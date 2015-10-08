@@ -137,15 +137,14 @@ public abstract class ScalaParameter {
 		if (!typeParameterIsObject(field)) {
 			param = "__global " + ClassModel.convert(
 			          typeParameterDescs.get(field), "", true) + "* " 
-								+ name + "_" + Utils.getTransformedClassMethod(type, field);
+								+ name + Utils.getHardCodedClassMethod(type, field);
 		} else {
 			String fieldDesc = typeParameterDescs.get(field);
 			if (fieldDesc.charAt(0) != 'L' ||
 			    fieldDesc.charAt(fieldDesc.length() - 1) != ';')
 				throw new RuntimeException("Invalid object signature \"" + fieldDesc + "\"");
 			fieldDesc = fieldDesc.substring(1, fieldDesc.length() - 1);
-			param = "__global " + fieldDesc.replace('.', '_') + "* " + name +
-			        "_" + (field + 1);
+			param = "__global " + fieldDesc.replace('.', '_') + "* " + name + (field + 1);
 		}
 		return param;
 	}

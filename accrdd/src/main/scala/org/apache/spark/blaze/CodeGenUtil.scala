@@ -9,9 +9,8 @@ import java.util.LinkedList
 import com.amd.aparapi.internal.model.Entrypoint
 import com.amd.aparapi.internal.model.ClassModel
 import com.amd.aparapi.internal.writer.BlockWriter._
-import com.amd.aparapi.internal.writer.ScalaParameter
+import com.amd.aparapi.internal.writer._
 import com.amd.aparapi.internal.writer.ScalaParameter.DIRECTION
-import com.amd.aparapi.internal.writer.ScalaArrayParameter
 
 object CodeGenUtil {
 
@@ -54,7 +53,7 @@ object CodeGenUtil {
   }
 
   def getParamObjsFromMethodDescriptor(descriptor : String,
-      expectedNumParams : Int) : (LinkedList[ScalaArrayParameter], Int) = {
+      expectedNumParams : Int) : (LinkedList[ScalaParameter], Int) = {
     val arguments : String = descriptor.substring(descriptor.indexOf('(') + 1,
         descriptor.lastIndexOf(')'))
     val argumentsArr : Array[String] = arguments.split(",")
@@ -71,11 +70,10 @@ object CodeGenUtil {
       (parsedArg, arrayDim)
     })
 
-    val params = new LinkedList[ScalaArrayParameter]()
-
+    val params = new LinkedList[ScalaParameter]()
     for (i <- 0 until argumentsArr.length) {
       val argumentDesc : String = argsArrWithDim(i)._1
-
+      
       if (argsArrWithDim(i)._2 == 0)
         params.add(new ScalaArrayParameter(getTypeForDescriptor(argumentDesc),
               getClassForDescriptor(argumentDesc), "in" + i, DIRECTION.IN))
@@ -87,7 +85,7 @@ object CodeGenUtil {
     (params, maxArrayDim)
   }
 
-  def getReturnObjsFromMethodDescriptor(descriptor : String) : (ScalaArrayParameter, Int) = {
+  def getReturnObjsFromMethodDescriptor(descriptor : String) : (ScalaParameter, Int) = {
     val returnType : String = descriptor.substring(
         descriptor.lastIndexOf(')') + 1)
     val parsedType = returnType.replace("[", "")
