@@ -9,6 +9,7 @@ import com.amd.aparapi.internal.writer.ScalaParameter.DIRECTION;
  */
 public class Utils {
 	public static enum METHODTYPE {
+		UNKNOWN,
 		VAR_ACCESS,
 		STATUS_CHECK
 	}
@@ -39,6 +40,14 @@ public class Utils {
 		return tname;
 	}
 
+	public static boolean isPrimitive(String type) {
+		if (type.startsWith("I") || type.startsWith("F") || 
+				type.startsWith("D") ||type.startsWith("J"))
+			return true;
+		else
+			return false;
+	}
+
 	public static boolean isHardCodedClass(String name) {
 		// TODO: DenseVector, etc
 		String tname = cleanClassName(name);
@@ -54,6 +63,15 @@ public class Utils {
 			return (hardCodedClasses.get(tname).keySet());
 		else
 			return null;
+	}
+
+	public static METHODTYPE getHardCodedClassMethodUsage(String clazz, String methodName) {
+		String tname = cleanClassName(clazz);
+		if (hardCodedClasses.containsKey(tname)) {
+			return hardCodedClasses.get(tname).get(methodName);
+		}
+		else
+			return METHODTYPE.UNKNOWN;
 	}
 
 	public static String getHardCodedClassMethod(String clazz, int idx) {

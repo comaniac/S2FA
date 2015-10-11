@@ -775,7 +775,7 @@ public abstract class KernelWriter extends BlockWriter {
 
 			final String fullReturnType;
 			final String convertedReturnType = convertType(returnType, true);
-			if (returnType.startsWith("L")) {
+			if (returnType.startsWith("L")) { // FIXME: hardcoded class model
 				SignatureEntry sigEntry =
 				  mm.getMethod().getAttributePool().getSignatureEntry();
 				final TypeSignature sig;
@@ -783,6 +783,7 @@ public abstract class KernelWriter extends BlockWriter {
 					sig = new FullMethodSignature(sigEntry.getSignature()).getReturnType();
 				else
 					sig = new TypeSignature(returnType);
+
 				ClassModel cm = entryPoint.getModelFromObjectArrayFieldsClasses(
 				                  convertedReturnType.trim(), new SignatureMatcher(sig));
 				fullReturnType = cm.getMangledClassName();
@@ -852,7 +853,7 @@ public abstract class KernelWriter extends BlockWriter {
 			final LocalVariableTableEntry<LocalVariableInfo> lvte = mm.getLocalVariableTableEntry();
 			for (final LocalVariableInfo lvi : lvte) {
 				if ((lvi.getStart() == 0) && ((lvi.getVariableIndex() != 0) ||
-				                              mm.getMethod().isStatic())) { // full scope but skip this
+				                              mm.getMethod().isStatic())) { // full scope but skip this FIXME: hardcoded class model
 					final String clazzDesc = lvi.getVariableDescriptor();
 					List<String> descList = new LinkedList<String>();
 					List<String> fieldList = new LinkedList<String>();

@@ -53,19 +53,20 @@ class ArrayTest(v: BlazeBroadcast[Array[Double]])
   }
 
   override def call(in: Iterator[Array[Double]]): Iterator[Array[Double]] = {
-    val inAry = in.toArray
-    val length: Int = inAry.length
-    val itemLength: Int = inAry(0).length
-    val outAry = new Array[Array[Double]](length)
     val s = v.value
+    val out = new Array[Array[Double]](1)
+    val ary = new Array[Double](15)
 
-    for (i <- 0 until length) {
-      outAry(i) = new Array[Double](itemLength)
-      for (j <- 0 until itemLength)
-        outAry(i)(j) = inAry(i)(j) + s(0)
+    while (in.hasNext) {
+      val data = in.next
+      var i = 0
+      while (i < 15) {
+        ary(i) = data(i) + s(0)
+        i += 1
+      }
     }
-
-    outAry.iterator
+    out(0) = ary
+    out.iterator
   }
 }
 
@@ -84,11 +85,11 @@ object TestApp {
       val rdd = sc.parallelize(data, 10)
       val rdd_acc = acc.wrap(rdd)    
       val brdcst_v = acc.wrap(sc.broadcast(v))
-      val rdd2 = rdd_acc.map_acc(new ArrayTest(brdcst_v))
-      val res0 = rdd2.collect
-      println("Map result: " + res0(0)(0))
-//      val res1 = rdd_acc.mapPartitions_acc(new ArrayTest(brdcst_v)).collect
-//      println("MapPartitions result: " + res1(0)(0))
+//      val rdd2 = rdd_acc.map_acc(new ArrayTest(brdcst_v))
+//      val res0 = rdd2.collect
+//      println("Map result: " + res0(0)(0))
+      val res1 = rdd_acc.mapPartitions_acc(new ArrayTest(brdcst_v)).collect
+      println("MapPartitions result: " + res1(0)(0))
       val res2 = rdd.map(e => e.map(ee => ee + v(0))).collect
       println("CPU result: " + res2(0)(0))
 
