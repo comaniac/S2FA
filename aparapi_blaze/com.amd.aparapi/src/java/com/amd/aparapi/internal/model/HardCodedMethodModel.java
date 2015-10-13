@@ -28,7 +28,7 @@ public class HardCodedMethodModel extends MethodModel {
 
 	@Override
 	public String getName() {
-		return getOwnerClassMangledName() + "__" + name.replace('<', '_').replace('>', '_');
+		return getOwnerClassMangledName();
 	}
 
 	@Override

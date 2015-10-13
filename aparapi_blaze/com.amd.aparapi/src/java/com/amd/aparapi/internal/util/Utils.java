@@ -146,7 +146,7 @@ public class Utils {
 		else if (signature.startsWith("["))
 			param = new ScalaArrayParameter(signature, name, dir);
 		else
-			param = new ScalaScalarParameter(signature, name);
+			param = new ScalaScalarParameter(signature, name, dir);
 
 		return param;
 	}

@@ -5,6 +5,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.LinkedList;
 import com.amd.aparapi.internal.model.ClassModel;
+import com.amd.aparapi.internal.model.HardCodedClassModel;
 import com.amd.aparapi.internal.util.Utils;
 
 public abstract class ScalaParameter {
@@ -12,17 +13,19 @@ public abstract class ScalaParameter {
 		IN, OUT
 	}
 
+	protected HardCodedClassModel clazzModel;
+	protected Class<?> clazz;
 	protected final String type;
 	protected final String name;
-	protected final Class<?> clazz;
 	protected final DIRECTION dir;
 	protected final List<String> typeParameterDescs;
 	protected final List<Boolean> typeParameterIsObject;
-	protected final boolean isArray;
+	protected final boolean arrayOrNot;
 
 	public ScalaParameter(String fullSig, String name, DIRECTION dir) {
 		this.name = name;
 		this.clazz = null;
+		this.clazzModel = null;
 		this.dir = dir;
 
 		this.typeParameterDescs = new LinkedList<String>();
@@ -31,11 +34,11 @@ public abstract class ScalaParameter {
 		String eleSig = null;
 		if (fullSig.charAt(0) != '[') {
 			eleSig = fullSig;
-			isArray = false;
+			arrayOrNot = false;
 		}
 		else {
 			eleSig = fullSig.substring(1);
-			isArray = true;
+			arrayOrNot = true;
 		}
 
 		if (eleSig.indexOf('<') != -1) {
@@ -76,14 +79,15 @@ public abstract class ScalaParameter {
 	public ScalaParameter(String type, Class<?> clazz, String name, DIRECTION dir) {
 		this.type = type.trim();
 		this.clazz = clazz;
+		this.clazzModel = null;
 		this.name = name;
 		this.dir = dir;
 		this.typeParameterDescs = new LinkedList<String>();
 		this.typeParameterIsObject = new LinkedList<Boolean>();
 		if (type.charAt(0) != '[')
-			isArray = false;
+			arrayOrNot = false;
 		else
-			isArray = true;
+			arrayOrNot = true;
 	}
 
 	public ScalaParameter(String fullSig, String name) {
@@ -157,8 +161,16 @@ public abstract class ScalaParameter {
 		return clazz;
 	}
 
+	public HardCodedClassModel getClazzModel() {
+		return clazzModel;
+	}
+
 	public DIRECTION getDir() {
 		return dir; 
+	}
+
+	public boolean isArray() {
+		return arrayOrNot;
 	}
 
 	/*

@@ -8,8 +8,8 @@ import com.amd.aparapi.internal.model.ClassModel;
 
 public class ScalaScalarParameter extends ScalaParameter {
 
-	public ScalaScalarParameter(String fullSig, String name) {
-		super(fullSig, name);
+	public ScalaScalarParameter(String fullSig, String name, DIRECTION dir) {
+		super(fullSig, name, dir);
 	}
 
 	@Override
@@ -19,7 +19,8 @@ public class ScalaScalarParameter extends ScalaParameter {
 
 	@Override
 	public String getOutputParameterString(KernelWriter writer) {
-		throw new UnsupportedOperationException();
+		// Output argument must be pointer type
+		return "__global " + type + " * " + name;
 	}
 
 	@Override

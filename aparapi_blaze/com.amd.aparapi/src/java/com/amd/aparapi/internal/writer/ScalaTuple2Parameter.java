@@ -5,6 +5,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.LinkedList;
 import com.amd.aparapi.internal.model.ClassModel;
+import com.amd.aparapi.internal.model.Tuple2ClassModel;
 import com.amd.aparapi.internal.util.*;
 
 public class ScalaTuple2Parameter extends ScalaParameter {
@@ -13,6 +14,14 @@ public class ScalaTuple2Parameter extends ScalaParameter {
 
 	public ScalaTuple2Parameter(String fullSig, String name, DIRECTION dir) {
 		super(fullSig, name, dir);
+//		String firstType = getTypeParameter(0);
+//		String secondType = getTypeParameter(1);
+		try {
+			clazz = Class.forName("scala.Tuple2");
+		} catch (ClassNotFoundException c) {
+			throw new RuntimeException(c);
+		}
+//		clazzModel = Tuple2ClassModel.create(firstType, secondType, dir != DIRECTION.IN);
 		setParameterString();
 	}
 
@@ -70,7 +79,7 @@ public class ScalaTuple2Parameter extends ScalaParameter {
 	@Override
 	public String toString() {
 		String str = null;
-		if (isArray)
+		if (isArray())
 			str += "[";
 		str += " scala.Tuple2<" + this.typeParameterDescs.get(0) + ", ";
 		str += this.typeParameterDescs.get(1) + "> " + name;

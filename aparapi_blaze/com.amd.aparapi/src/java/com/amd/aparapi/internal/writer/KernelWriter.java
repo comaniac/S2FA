@@ -1038,7 +1038,7 @@ public abstract class KernelWriter extends BlockWriter {
 			write(paramString);
 
 			// comaniac: Add length and item number for 1-D array I/O.
-			if (paramString.contains("ary")) {
+			if (p.isArray()) {
 				write(", ");
 				newLine();
 
@@ -1085,14 +1085,16 @@ public abstract class KernelWriter extends BlockWriter {
 			write("__global " + outParam.getType() + "* result = " +
 			      _entryPoint.getMethodModel().getName() + "(this");
 		} else {
-			if (!outParam.getName().contains("ary")) // Issue #40: We don't use return value for array type
+			if (!outParam.isArray()) // Issue #40: We don't use return value for array type
 				write(outParam.getName() + "[idx] = ");
 			write(_entryPoint.getMethodModel().getName() + "(this");
+
+			// TODO: mapPartitions
 		}
 
 		for (ScalaParameter p : params) {
 			if (p.getDir() == ScalaParameter.DIRECTION.IN) {
-				if (p.getName().contains("ary")) { // Deserialized access
+				if (p.isArray()) { // Deserialized access
 					if (p.getClazz() == null) // Primitive type
 						write(", &" + p.getName() + "[idx * " + p.getName() + "_item_length]");
 					else if (Utils.isHardCodedClass(p.getClazz().getName())) {

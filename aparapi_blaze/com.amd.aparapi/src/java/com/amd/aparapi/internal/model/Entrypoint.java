@@ -87,20 +87,13 @@ public class Entrypoint implements Cloneable {
 	 */
 	private final Map<String, String> referencedFieldNames = new HashMap<String, String>();
 	private void addToReferencedFieldNames(String name, String hint) {
-		if (referencedFieldNames.containsKey(name)) {
-			if (hint != null)
-				referencedFieldNames.put(name, hint);
-		} else
-			referencedFieldNames.put(name, hint);
+		referencedFieldNames.put(name, hint);
 	}
 
-	private final Map<String, String> argumentNames = new HashMap<String, String>();
-	private void addToArgumentNames(String name, String hint) {
-		if (argumentNames.containsKey(name)) {
-			if (hint != null)
-				argumentNames.put(name, hint);
-		} else
-			argumentNames.put(name, hint);
+	private final HashMap<String, String> argumentList = new HashMap<String, String>();
+
+	private void addToArguments(String name, String hint) {
+		argumentList.put(name, hint);
 	}
 
 
@@ -580,7 +573,7 @@ public class Entrypoint implements Cloneable {
 			hardCodedClassModels = new HardCodedClassModels();
 		else
 			hardCodedClassModels = setHardCodedClassModels;
-
+/*
 		for (HardCodedClassModel model : hardCodedClassModels) {
 			for (String desc : model.getNestedTypeDescs()) {
 				// Convert object desc to class name
@@ -603,7 +596,7 @@ public class Entrypoint implements Cloneable {
 				}
 			}
 		}
-
+*/
 		final Map<ClassModelMethod, MethodModel> methodMap = new
 		LinkedHashMap<ClassModelMethod, MethodModel>();
 
@@ -876,7 +869,7 @@ public class Entrypoint implements Cloneable {
 							addToReferencedFieldNames(getterField.getNameAndTypeEntry().getNameUTF8Entry().getUTF8(), null);
 						else {
 							final MethodEntry methodEntry = invokeInstruction.getConstantPoolMethodEntry();
-							if (Kernel.isMappedMethod(methodEntry)) { //only do this for intrinsics
+							if (Kernel.isMappedMethod(methodEntry)) { // only do this for intrinsics
 
 								if (Kernel.usesAtomic32(methodEntry)) {
 									throw new RuntimeException("We don't support atomic builtin functions.");
@@ -896,9 +889,66 @@ public class Entrypoint implements Cloneable {
 										throw new ClassParseException(ClassParseException.TYPE.ACCESSEDOBJECTSETTERARRAY);
 								}
 							}
-							// TODO: Check argument and find type
-//							else if () {
-//							}
+							else if (instruction.getPrevPC() instanceof AccessLocalVariable) { 
+								// Check if we want type hint from this instruction
+								// Pattern: aload -> invokevirtual
+
+								Instruction inst = instruction.getPrevPC();
+								int loadIdx = ((AccessLocalVariable) inst).getLocalVariableTableIndex();
+								if (loadIdx <= 1) // Skip "this" and input data
+									continue;
+
+								// Backtrack to find corresponding astore
+								while (inst != null) {
+									if (inst instanceof AssignToLocalVariable) {
+										int storeIdx = ((AccessLocalVariable) inst).getLocalVariableTableIndex();
+											if (loadIdx == storeIdx)
+												break;
+									}
+									inst = inst.getPrevPC();
+								}
+								if (inst == null)
+									throw new RuntimeException("Cannot find aload/astore pair.");
+
+								// Focus on pattern "invokevirtual/interface -> checkcast -> astore"
+								if (!(inst.getPrevPC() instanceof I_CHECKCAST) ||
+										(!(inst.getPrevPC().getPrevPC() instanceof I_INVOKEVIRTUAL) &&
+										 !(inst.getPrevPC().getPrevPC() instanceof I_INVOKEINTERFACE))) {
+									continue;
+								}
+
+								Instruction varInst = inst.getPrevPC().getPrevPC().getPrevPC();
+								String varName = null;
+								String typeHint = null;
+								if (varInst instanceof I_ALOAD_1) {
+									varName = ((I_ALOAD_1) varInst).getLocalVariableInfo().getVariableName();
+									typeHint = getArgumentTypeHint(varName);
+								}
+								else if (varInst instanceof AccessField) {
+									varName = ((AccessField) varInst).getConstantPoolFieldEntry()
+															.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+									typeHint = getReferencedFieldTypeHint(varName);
+								}
+								else
+									throw new RuntimeException("Expecting aload1 or getfield, but found " + varInst);
+								
+								if (typeHint == null)
+									throw new RuntimeException("Variable " + varName + " is neither field nor argument.");
+
+								final String clazzName = methodEntry.getClassEntry().getNameUTF8Entry().getUTF8();
+								final String methodName = methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+								final String methodDesc = methodEntry.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
+								final String realType = methodDesc.substring(methodDesc.lastIndexOf(')') + 1);
+								final String pureMethodName = Utils.cleanMethodName(clazzName, methodName);
+								if (pureMethodName == null)
+									throw new RuntimeException("Method " + methodName + " doesn't be modeled in class " + clazzName);
+			
+								typeHint = typeHint.replace(pureMethodName, realType);
+								if (varInst instanceof I_ALOAD_1)
+									addToArguments(varName, typeHint);
+								else
+									addToReferencedFieldNames(varName, typeHint);
+							}
 						}
 					} else if (instruction instanceof I_NEWARRAY) {
 						Instruction child = instruction.getFirstChild();
@@ -919,6 +969,7 @@ public class Entrypoint implements Cloneable {
 							continue;
 						String clazz = varInfo.getVariableDescriptor().replace(";", "");
 						String fieldName = varInfo.getVariableName();
+						String methodName = null;
 						String typeHint = null;
 						boolean isArray = false;
 
@@ -936,11 +987,11 @@ public class Entrypoint implements Cloneable {
 								typeHint = findTypeHintForHardCodedClass(fieldName, clazz, next, false);
 							else if (next instanceof I_INVOKEINTERFACE) { // Arg type is an extended class (e.g. Iterator)
 								InterfaceMethodEntry entry = ((I_INVOKEINTERFACE) next).getConstantPoolInterfaceMethodEntry();
-								String name = Utils.cleanMethodName(clazz, entry.getNameAndTypeEntry()
+								methodName = Utils.cleanMethodName(clazz, entry.getNameAndTypeEntry()
 												.getNameUTF8Entry().getUTF8());
 
-								if(Utils.getHardCodedClassMethodUsage(clazz, name) != METHODTYPE.VAR_ACCESS) {
-									//System.err.println("Skip method " + name);
+								if(Utils.getHardCodedClassMethodUsage(clazz, methodName) != METHODTYPE.VAR_ACCESS) {
+									//System.err.println("Skip method " + methodName);
 									continue;
 								}
 
@@ -967,8 +1018,8 @@ public class Entrypoint implements Cloneable {
 
 						if (isArray && !typeHint.startsWith("["))
 							typeHint = '[' + typeHint;
-						addToArgumentNames(fieldName, typeHint);
-						System.err.println("call arg typeHint: " + typeHint);
+						addToArguments(fieldName, typeHint);
+//						System.err.println("call arg typeHint: " + fieldName + "." + methodName + ": " + typeHint);
 					}
 					else if (instruction instanceof Return) {
 						// Parse output data generic type [Experiment]
@@ -1035,12 +1086,13 @@ public class Entrypoint implements Cloneable {
 							}
 
 						}
-						addToArgumentNames(outFieldName, typeHint);
+						addToArguments(outFieldName, typeHint); // FIXME: Only support primitive now
 						System.err.println("call output typeHint: " + typeHint);
 					}
 				}
 			}
 
+			// Process referenced fields to a list for KernelWriter
 			for (final Map.Entry<String, String> referencedField : referencedFieldNames.entrySet()) {
 				String referencedFieldName = referencedField.getKey();
 				String typeHint = referencedField.getValue(); // may be null
@@ -1058,6 +1110,21 @@ public class Entrypoint implements Cloneable {
 				} catch (final SecurityException e) {
 					e.printStackTrace();
 				}
+			}
+
+			// Process input/output arguments to parameters for KernelWriter
+			for (final Map.Entry<String, String> argument : argumentList.entrySet()) {
+				String argName = argument.getKey();
+				String typeHint = argument.getValue();
+
+				ScalaParameter param = null;
+
+				if (argName.contains("blazeOut"))
+					param = Utils.createScalaParameter(typeHint, argName, ScalaParameter.DIRECTION.OUT);			
+				else
+					param = Utils.createScalaParameter(typeHint, argName, ScalaParameter.DIRECTION.IN);
+
+				params.add(param);
 			}
 
 			// Build data needed for oop form transforms if necessary
@@ -1177,9 +1244,9 @@ public class Entrypoint implements Cloneable {
 	}
 
 	public String getReferencedFieldTypeHint(String name) {		
-		String pureName = Utils.cleanClassName(name);
-		if (referencedFieldNames.containsKey(pureName))
-			return (referencedFieldNames.get(pureName));
+		if (referencedFieldNames.containsKey(name)) {
+			return referencedFieldNames.get(name);
+		}
 		else
 			return null;
 	}
@@ -1188,18 +1255,16 @@ public class Entrypoint implements Cloneable {
 		return (referencedFieldNames);
 	}
 
-	public String getArgumentTypeHint(String name) {		
-		String pureName = Utils.cleanClassName(name);
-		if (argumentNames.containsKey(pureName))
-			return (argumentNames.get(pureName));
+	public String getArgumentTypeHint(String name) {
+		if (argumentList.containsKey(name))
+			return argumentList.get(name);
 		else
 			return null;
 	}
 
-	public Map<String, String> getArgumentNames() {
-		return (argumentNames);
+	public HashMap<String, String> getArguments() {
+		return (argumentList);
 	}
-
 
 	public Set<String> getArrayFieldAssignments() {
 		return (arrayFieldAssignments);
@@ -1290,12 +1355,12 @@ public class Entrypoint implements Cloneable {
 				}
 
 				// Expect: invokevirtual/interface -> cast -> invokevirtual.
-				if (fetchDirectly || cast.getParentExpr() instanceof I_INVOKEVIRTUAL) {
+				if (fetchDirectly || cast.getNextPC() instanceof I_INVOKEVIRTUAL) {
 					I_INVOKEVIRTUAL accessor = null;
 					if (fetchDirectly)
 						accessor = (I_INVOKEVIRTUAL) inst;
 					else
-						accessor = (I_INVOKEVIRTUAL) cast.getParentExpr();
+						accessor = (I_INVOKEVIRTUAL) cast.getNextPC();
 
 					final MethodEntry methodEntry = accessor.getConstantPoolMethodEntry();
 					final String methodName = methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();;
@@ -1318,8 +1383,10 @@ public class Entrypoint implements Cloneable {
 						curFieldType = '[' + curFieldType;
 					typeHint = curFieldType.replace(pureMethodName, realFieldType);
 				}
+				else if (cast.getNextPC() instanceof AssignToLocalVariable) // Do nothing at this time
+					typeHint = curFieldType;
 				else
-					throw new RuntimeException("Expecting invokevirtual, but found " + cast.getParentExpr());
+					throw new RuntimeException("Expecting invokevirtual, but found " + cast.getNextPC());
 			}
 		}
 		else if (inst.getNextPC() instanceof I_INVOKESTATIC) { // Boxed for scalar type

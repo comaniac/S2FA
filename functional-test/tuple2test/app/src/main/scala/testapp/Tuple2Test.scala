@@ -41,15 +41,17 @@ class Tuple2Test(b: BlazeBroadcast[Tuple2[Double, Double]])
   }
 
   override def call(in: Tuple2[Double, Double]): Double = {
-    val v1 = (b.value)._1
-    val v2 = (b.value)._2
+    val v = b.value
+    val v1 = v._1
+    val v2 = v._2
     in._1 + in._2 + v1
   }
 
   override def call(in: Iterator[Tuple2[Double, Double]]): Iterator[Double] = {
     var s: Double = 0.0
-    val b1 = (b.value)._1
-    val b2 = (b.value)._2
+    val bk = b.value
+    val b1 = bk._1
+    val b2 = bk._2
 
     while (in.hasNext) {
       val v = in.next
@@ -74,8 +76,8 @@ object TestApp {
       val b_data = (1.1, 2.2)
       val brdcst = acc.wrap(sc.broadcast(b_data))
 
-//      println("map Result: " + rdd_acc.map_acc(new Tuple2Test(brdcst)).reduce((a, b) => (a + b)))
-      println("mapPartition Result: " + rdd_acc.mapPartitions_acc(new Tuple2Test(brdcst)).reduce((a, b) => (a + b)))
+      println("map Result: " + rdd_acc.map_acc(new Tuple2Test(brdcst)).reduce((a, b) => (a + b)))
+//      println("mapPartition Result: " + rdd_acc.mapPartitions_acc(new Tuple2Test(brdcst)).reduce((a, b) => (a + b)))
       println("CPU Result: " + rdd_acc.map({case (a, b) => (a + b)}).reduce((a, b) => (a + b)))
 
       acc.stop()

@@ -540,39 +540,7 @@ class AccRDD[U: ClassTag, T: ClassTag](
         if (method == null)
           throw new RuntimeException("Cannot find available call method.")
         val descriptor : String = method.getDescriptor
-
-        // Parse input type: Expect 1 input argument for map function.
-        val paramsWithDim = CodeGenUtil.getParamObjsFromMethodDescriptor(descriptor, 1)
-        if (paramsWithDim._2 == 1)
-          logWarning("[CodeGen] Input argument is 1-D array. This may cause huge overhead since" +
-            " data will be serialized during the runtime.")
-        else if (paramsWithDim._2 > 1) {
-          throw new RuntimeException("Multi-dimensional array cannot be an input argument." +
-            " Stop generating OpenCL kernel.")
-        }
-        val params : LinkedList[ScalaParameter] = paramsWithDim._1
-
-        // Parse output type.
-        val returnWithDim = CodeGenUtil.getReturnObjsFromMethodDescriptor(descriptor)
-        if (returnWithDim._2 == 1)
-          logWarning("[CodeGen] Output argument is 1-D array. This may cause huge overhead since" +
-            " data will be deserialized during the runtime.")
-        else if (returnWithDim._2 > 1) {
-          throw new RuntimeException("Multi-dimensional array cannot be an output argument." +
-            " Stop generating OpenCL kernel.")
-        }
-        params.add(returnWithDim._1)
-
-        if (modeledType == ModeledType.ScalaTuple2) {
-          require (sample.isDefined)
-          createHardCodedClassModel(sample.get.asInstanceOf[Tuple2[_,_]], 
-            hardCodedClassModels, params.get(0))
-          val sampledOut = acc.call(sample.get.asInstanceOf[T])
-          if (sampledOut.isInstanceOf[Tuple2[_,_]]) {
-            createHardCodedClassModel(sampledOut.asInstanceOf[Tuple2[_,_]], 
-              hardCodedClassModels, params.get(1))
-          }
-        }
+        val params : LinkedList[ScalaParameter] = new LinkedList[ScalaParameter] // = paramsWithDim._1
 
         val fun: T => U = acc.call
         entryPoint = classModel.getEntrypoint("call", descriptor, fun, params, hardCodedClassModels)
