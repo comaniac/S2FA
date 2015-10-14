@@ -14,14 +14,11 @@ public class ScalaTuple2Parameter extends ScalaParameter {
 
 	public ScalaTuple2Parameter(String fullSig, String name, DIRECTION dir) {
 		super(fullSig, name, dir);
-//		String firstType = getTypeParameter(0);
-//		String secondType = getTypeParameter(1);
 		try {
 			clazz = Class.forName("scala.Tuple2");
 		} catch (ClassNotFoundException c) {
 			throw new RuntimeException(c);
 		}
-//		clazzModel = Tuple2ClassModel.create(firstType, secondType, dir != DIRECTION.IN);
 		setParameterString();
 	}
 

@@ -137,11 +137,13 @@ public abstract class ScalaParameter {
 	}
 
 	protected String getParameterStringFor(int field) {
-		final String param;
+		String param;
 		if (!typeParameterIsObject(field)) {
 			param = "__global " + ClassModel.convert(
-			          typeParameterDescs.get(field), "", true) + "* " 
-								+ name + Utils.getHardCodedClassMethod(type, field);
+			          typeParameterDescs.get(field), "", true);
+			if (arrayOrNot)
+				param = param + "* ";
+			param = param + name + Utils.getHardCodedClassMethod(type, field);
 		} else {
 			String fieldDesc = typeParameterDescs.get(field);
 			if (fieldDesc.charAt(0) != 'L' ||

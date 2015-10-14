@@ -62,6 +62,12 @@ import java.util.*;
 
 public abstract class BlockWriter {
 
+	protected Entrypoint entryPoint = null;
+
+	public Entrypoint getEntryPoint() {
+		return entryPoint;
+	}
+
 	protected final boolean useFPGAStyle = true;
 
 	public final static String arrayLengthMangleSuffix = "__javaArrayLength";
@@ -440,36 +446,77 @@ public abstract class BlockWriter {
 			final AssignToLocalVariable assignToLocalVariable = (AssignToLocalVariable) _instruction;
 
 			final LocalVariableInfo localVariableInfo = assignToLocalVariable.getLocalVariableInfo();
+			if (localVariableInfo == null)
+				throw new CodeGenException("outOfScope" + _instruction.getThisPC() + " = ");
+
 			final String varName = localVariableInfo.getVariableName();
-			boolean promoteLocal = false;
-			int maxLength = 0;
-			boolean fixedLength = false;
 
 			if (assignToLocalVariable.isDeclaration()) {
 				final String descriptor = localVariableInfo.getVariableDescriptor();
 
 				String localType = convertType(descriptor, true);
-				if (descriptor.startsWith("L"))
-					localType = localType.replace('.', '_');
+				if (Utils.isHardCodedClass(localType)) {
+					Set<String> accessMethods = Utils.getHardCodedClassMethods(localType);
 
-				// Use local variable based on user hint
-				if (useFPGAStyle && varName.contains("blazeLocal") && descriptor.startsWith("["))
-					promoteLocal = writeLocalArrayAssign(_instruction, varName, localType);
+					// Match pattern: aload/getfield -> invokevirtual -> checkcast -> astore
+					if (!(_instruction.getFirstChild() instanceof I_CHECKCAST))
+						throw new CodeGenException(
+							"Expecting checkcast after hard coded class type local variable assign, but found "
+							 + _instruction.getFirstChild()
+						);
 
-				if (!promoteLocal) {
-					if (descriptor.startsWith("[") || descriptor.startsWith("L"))
-						write(" __global ");
-					write(localType);
+					Instruction loadInst = _instruction.getFirstChild();
+					while (loadInst != null && 
+								!(loadInst instanceof AccessLocalVariable) && 
+								!(loadInst instanceof AccessField)) {
+						loadInst = loadInst.getFirstChild();
+					}
+					String assignName = null;
 
-					if (descriptor.startsWith("L")) {
-						write("*"); // All local assigns to object-typed variables should be a constructor
+					if (loadInst instanceof AccessLocalVariable) {
+						assignName = ((AccessLocalVariable) loadInst)
+									.getLocalVariableInfo()
+									.getVariableName();
+					}
+					else {
+						assignName = ((AccessField) loadInst)
+									.getConstantPoolFieldEntry()
+									.getNameAndTypeEntry()
+									.getNameUTF8Entry().getUTF8();
+					}
+
+					localType = entryPoint.getReferencedFieldTypeHint(assignName);
+					localType = localType.substring(localType.indexOf('<') + 1, localType.indexOf('>'));
+					for (String m : accessMethods) {
+						String type = null;
+						if (localType.indexOf(',') != -1)
+							type = localType.substring(0, localType.indexOf(','));
+						else
+							type = localType;
+						write("__local " + Utils.mapPrimitiveType(type) + " " + varName + m + " = ");
+						write(assignName + m + ";");
+						newLine();
+						localType = localType.substring(localType.indexOf(',') + 1);
 					}
 				}
-			}
+				else { // Primitive or non-modeled type
+					if (descriptor.startsWith("L"))
+						localType = localType.replace('.', '_');
 
-			if (localVariableInfo == null)
-				throw new CodeGenException("outOfScope" + _instruction.getThisPC() + " = ");
-			else if (!promoteLocal) { // Promote local variable should be read-only
+					if (descriptor.startsWith("[") || descriptor.startsWith("L"))
+						write(" __local ");
+					write(localType);
+
+					if (descriptor.startsWith("L"))
+						write("*"); // All local assigns to object-typed variables should be a constructor
+
+					write(varName + " = ");
+					for (Instruction operand = _instruction.getFirstChild(); operand != null;
+					     operand = operand.getNextExpr())
+						writeInstruction(operand);
+				}
+			}
+			else {
 				write(varName + " = ");
 				for (Instruction operand = _instruction.getFirstChild(); operand != null;
 				     operand = operand.getNextExpr())
@@ -693,7 +740,7 @@ public abstract class BlockWriter {
 			if (!Utils.isHardCodedClass(clazzName))
 				writeCheck = writeMethod(methodCall, methodEntry);
 			else {
-				writeTransformMethod(methodCall, methodEntry);
+				writeHardCodedMethod(methodCall, methodEntry);
 				writeCheck = false;
 			}
 		} else if (_instruction.getByteCode().equals(ByteCode.CLONE)) {
@@ -912,7 +959,7 @@ public abstract class BlockWriter {
 
 		write("for (int localAryCpy = 0; localAryCpy < ");
 		if (isBrdcstVariable && varName.contains("Max")) {
-			writeTransformMethod(methodCall, methodEntry);
+			writeHardCodedMethod(methodCall, methodEntry);
 			write(arrayLengthMangleSuffix);
 		} else
 			write(maxLength);
@@ -924,7 +971,7 @@ public abstract class BlockWriter {
 			write(type + ";");
 		else {
 			if (isBrdcstVariable)
-				writeTransformMethod(methodCall, methodEntry);
+				writeHardCodedMethod(methodCall, methodEntry);
 			else
 				write("_" + varName);
 			write("[localAryCpy];");
@@ -936,34 +983,28 @@ public abstract class BlockWriter {
 		return true;
 	}
 
-	public void writeTransformMethod(MethodCall _methodCall,
+	public void writeHardCodedMethod(MethodCall _methodCall,
 	                           MethodEntry _methodEntry) throws CodeGenException {
 		assert(_methodCall instanceof I_INVOKEVIRTUAL);
-		// Issue #34: Instead of writing method "value", we traverse its child instruction,
-		// which should be getField, to know the broadcast variable name.
+		// Issue #34: Instead of writing variable access method, we traverse its previous instruction,
+		// which should be getField/aload, to know the variable name.
 
-		Instruction c = ((I_INVOKEVIRTUAL) _methodCall).getFirstChild();
-		while (c != null && !(c instanceof AccessField))
-			c = c.getFirstChild();
+		Instruction c = ((I_INVOKEVIRTUAL) _methodCall).getPrevPC();
 
-		String fieldName = null;
-		if (c != null) { // Reference transformed object access. e.q. BlazeBroadcast
-			fieldName = ((AccessField) c)
+		if (c instanceof AccessField) { // Reference transformed object access. e.q. BlazeBroadcast
+			String fieldName = ((AccessField) c)
 									.getConstantPoolFieldEntry()
 									.getNameAndTypeEntry()
 									.getNameUTF8Entry().getUTF8();
 			write("this->" + fieldName);
 		}
-		else { // Argument transformed object access. e.q. Tuple2/Vector
-			Instruction l = ((I_INVOKEVIRTUAL) _methodCall).getFirstChild();
-			while (l != null && !(l instanceof AccessLocalVariable))
-				l = l.getFirstChild();
-
-			assert(l != null && (l instanceof AccessLocalVariable));
-			final AccessLocalVariable localVariableLoadInstruction = (AccessLocalVariable) l;
+		else if (c instanceof AccessLocalVariable) { // Argument transformed object access. e.q. Tuple2/Vector
+			final AccessLocalVariable localVariableLoadInstruction = (AccessLocalVariable) c;
 			final LocalVariableInfo localVariable = localVariableLoadInstruction.getLocalVariableInfo();
 			write(localVariable.getVariableName());
 		}
+		else
+			throw new RuntimeException("Expecting getfield/aload, but found " + c);
 
 		final String fullName = _methodEntry.toString();
 		String methodName = fullName.substring(fullName.indexOf(".") + 1, fullName.indexOf("("));

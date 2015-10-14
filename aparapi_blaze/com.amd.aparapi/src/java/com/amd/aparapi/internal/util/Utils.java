@@ -34,7 +34,7 @@ public class Utils {
 	}
 
 	public static String cleanClassName(String clazz) {
-		String tname = clazz.replace('.', '/').replace(";", "");
+		String tname = clazz.replace('.', '/').replace(";", "").replace(" ", "");
 		if (tname.startsWith("L"))
 			tname = tname.substring(1);
 		return tname;
@@ -46,6 +46,24 @@ public class Utils {
 			return true;
 		else
 			return false;
+	}
+
+	public static String mapPrimitiveType(String type) {
+		String newType = "";
+
+		if (type.startsWith("["))
+			newType = " * ";
+
+		if (type.equals("I"))
+			newType = newType + "int";
+		else if (type.equals("F"))
+			newType = newType + "float";
+		else if (type.equals("D"))
+			newType = newType + "double";
+		else if (type.equals("J"))
+			newType = newType + "long";
+
+		return newType;
 	}
 
 	public static boolean isHardCodedClass(String name) {

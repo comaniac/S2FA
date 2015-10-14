@@ -79,12 +79,6 @@ public abstract class KernelWriter extends BlockWriter {
 
 	// private static Logger logger = Logger.getLogger(Config.getLoggerName());
 
-	private Entrypoint entryPoint = null;
-
-	public Entrypoint getEntryPoint() {
-		return entryPoint;
-	}
-
 	private boolean processingConstructor = false;
 
 	private boolean isArrayTypeOutput = false;
@@ -664,7 +658,7 @@ public abstract class KernelWriter extends BlockWriter {
 			final StringBuilder assignLine = new StringBuilder();
 
 			String signature = field.getDescriptor();
-//System.err.println("Field: " + field.getName() + ", sig: " + signature);
+System.err.println("Field: " + field.getName() + ", sig: " + signature);
 
 			ScalaParameter param = Utils.createScalaParameter(signature, field.getName(), ScalaParameter.DIRECTION.IN);
 
@@ -853,7 +847,7 @@ public abstract class KernelWriter extends BlockWriter {
 			final LocalVariableTableEntry<LocalVariableInfo> lvte = mm.getLocalVariableTableEntry();
 			for (final LocalVariableInfo lvi : lvte) {
 				if ((lvi.getStart() == 0) && ((lvi.getVariableIndex() != 0) ||
-				                              mm.getMethod().isStatic())) { // full scope but skip this FIXME: hardcoded class model
+				                              mm.getMethod().isStatic())) { // full scope but skip this
 					final String clazzDesc = lvi.getVariableDescriptor();
 					List<String> descList = new LinkedList<String>();
 					List<String> fieldList = new LinkedList<String>();
