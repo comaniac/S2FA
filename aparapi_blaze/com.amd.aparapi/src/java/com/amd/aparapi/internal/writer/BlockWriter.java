@@ -74,6 +74,8 @@ public abstract class BlockWriter {
 
 	public final static String arrayDimMangleSuffix = "__javaArrayDimension";
 
+	public final static String arrayItemLengthMangleSuffix = "__javaItemLength";
+
 	public abstract void write(String _string);
 
 	public abstract void writeBeforeCurrentLine(String _string);
@@ -455,7 +457,7 @@ public abstract class BlockWriter {
 				final String descriptor = localVariableInfo.getVariableDescriptor();
 
 				String localType = convertType(descriptor, true);
-				if (Utils.isHardCodedClass(localType)) {
+				if (Utils.isHardCodedClass(localType)) { // Assign to a hardcoded class type variable
 					Set<String> accessMethods = Utils.getHardCodedClassMethods(localType);
 
 					// Match pattern: aload/getfield -> invokevirtual -> checkcast -> astore
@@ -465,6 +467,7 @@ public abstract class BlockWriter {
 							 + _instruction.getFirstChild()
 						);
 
+					// Expect aload/getfield to get the variable at RHS
 					Instruction loadInst = _instruction.getFirstChild();
 					while (loadInst != null && 
 								!(loadInst instanceof AccessLocalVariable) && 
@@ -473,18 +476,21 @@ public abstract class BlockWriter {
 					}
 					String assignName = null;
 
+					boolean isReference = false;
 					if (loadInst instanceof AccessLocalVariable) {
 						assignName = ((AccessLocalVariable) loadInst)
 									.getLocalVariableInfo()
 									.getVariableName();
 					}
 					else {
+						isReference = true;
 						assignName = ((AccessField) loadInst)
 									.getConstantPoolFieldEntry()
 									.getNameAndTypeEntry()
 									.getNameUTF8Entry().getUTF8();
 					}
 
+					// Get exact type name instead of hardcoded class type name and write
 					localType = entryPoint.getReferencedFieldTypeHint(assignName);
 					localType = localType.substring(localType.indexOf('<') + 1, localType.indexOf('>'));
 					for (String m : accessMethods) {
@@ -493,7 +499,14 @@ public abstract class BlockWriter {
 							type = localType.substring(0, localType.indexOf(','));
 						else
 							type = localType;
-						write("__local " + Utils.mapPrimitiveType(type) + " " + varName + m + " = ");
+
+						// TODO: Promote local here
+						if (type.startsWith("["))
+							write("__local ");
+
+						write(Utils.mapPrimitiveType(type) + " " + varName + m + " = ");
+						if (isReference)
+							write("this->");
 						write(assignName + m + ";");
 						newLine();
 						localType = localType.substring(localType.indexOf(',') + 1);
@@ -915,21 +928,15 @@ public abstract class BlockWriter {
 
 		// Issue #37: When promoting input argument, we don't have the assignment instruction.
 		// Instead, we rename input argument name with a prefix "_" and assign it to the local variable.
-		if (_instruction == null) {
+		if (_instruction == null)
 			isBrdcstVariable = false;
-			if (varName.contains("Max")) {
-				write("/* [Blaze CodeGen] We don't support dynamic local variable promotion for input argument */");
-				newLine();
-				return false;
-			}
-		}
 
 		if (varName.contains("Max"))
 			maxLength = varName.substring(varName.indexOf("Max") + 3);
 		else if (varName.contains("blazeLocal"))
 			maxLength = varName.substring(varName.indexOf("blazeLocal") + 10);
-		else   // Must be array type output argument
-			maxLength = "this->ary_out_item_length";
+		else // Argument with unknown size
+			maxLength = varName + arrayItemLengthMangleSuffix;
 
 		if (isBrdcstVariable) {
 			child = _instruction.getFirstChild();
@@ -963,7 +970,7 @@ public abstract class BlockWriter {
 			write(arrayLengthMangleSuffix);
 		} else
 			write(maxLength);
-		write("; localAryCpy++) {");
+		write("; localAryCpy++)");
 		in();
 		newLine();
 		write(varName + "[localAryCpy] = ");
@@ -977,7 +984,6 @@ public abstract class BlockWriter {
 			write("[localAryCpy];");
 		}
 		newLine();
-		write("}");
 		out();
 
 		return true;

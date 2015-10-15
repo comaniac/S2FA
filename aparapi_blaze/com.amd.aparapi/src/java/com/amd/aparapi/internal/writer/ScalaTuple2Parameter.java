@@ -19,13 +19,11 @@ public class ScalaTuple2Parameter extends ScalaParameter {
 		} catch (ClassNotFoundException c) {
 			throw new RuntimeException(c);
 		}
-		setParameterString();
 	}
 
 	public ScalaTuple2Parameter(String type, Class<?> clazz, String name,
 	                           DIRECTION dir) {
 		super(type, clazz, name, dir);
-		setParameterString();
 	}
 
 	public void setParameterString() {
@@ -34,6 +32,7 @@ public class ScalaTuple2Parameter extends ScalaParameter {
 	}
 
 	public String getParameterString() {
+		setParameterString();
 		return firstParam + ", " + secondParam;
 	}
 
@@ -55,6 +54,7 @@ public class ScalaTuple2Parameter extends ScalaParameter {
 
 	@Override
 	public String getStructString(KernelWriter writer) {
+		setParameterString();
 		return firstParam + "; " + secondParam + ";";
 	}
 

@@ -661,6 +661,7 @@ public abstract class KernelWriter extends BlockWriter {
 System.err.println("Field: " + field.getName() + ", sig: " + signature);
 
 			ScalaParameter param = Utils.createScalaParameter(signature, field.getName(), ScalaParameter.DIRECTION.IN);
+			param.setAsReference();
 
 			// check the suffix
 
@@ -769,7 +770,7 @@ System.err.println("Field: " + field.getName() + ", sig: " + signature);
 
 			final String fullReturnType;
 			final String convertedReturnType = convertType(returnType, true);
-			if (returnType.startsWith("L")) { // FIXME: hardcoded class model
+			if (returnType.startsWith("L")) { // FIXME: hardcoded class model for return type
 				SignatureEntry sigEntry =
 				  mm.getMethod().getAttributePool().getSignatureEntry();
 				final TypeSignature sig;
@@ -803,7 +804,7 @@ System.err.println("Field: " + field.getName() + ", sig: " + signature);
 					newLine();
 					write("   or the kernel might not be synthesized or compiled. */");
 					newLine();
-//					write("static void ");
+					write("static void ");
 					isArrayTypeOutput = true;
 				} else {
 					write("static ");
@@ -852,11 +853,8 @@ System.err.println("Field: " + field.getName() + ", sig: " + signature);
 					List<String> descList = new LinkedList<String>();
 					List<String> fieldList = new LinkedList<String>();
 
-					// Issue #49: Here we made several assumptions to support the argument with type parameter.
-					// 1. Only "call" method has the argument with type parameter.
-					// 2. The argument of "call" method must be (this, input, <output>)
-					// Based on the assumptions we are able to allow different type parameter for the same class
-					// of input and output. For example input Tuple2[Int, Float]; output Tuple2[Double, Double]
+					// Issue #49: Support the argument with type parameter.
+					// NOTICE: Only support "call" method with the argument has type parameter.
 					if (mm.getName().contains("call") && Utils.isHardCodedClass(clazzDesc)) {
 						for (ScalaParameter p : params) {
 						  String paramString = null;
@@ -883,7 +881,7 @@ System.err.println("Field: " + field.getName() + ", sig: " + signature);
 							write(", ");
 
 						if (descriptor.startsWith("["))
-							write(" __local ");
+							write(" __global ");
 
 						// FIXME: We haven't create a programming model for user-defined classes.
 						if (descriptor.startsWith("L"))
@@ -923,6 +921,10 @@ System.err.println("Field: " + field.getName() + ", sig: " + signature);
 							promoteLocalArguments.put(varName, convertedType.toString());
 						} else
 							write(varName);
+
+						// Add item length argument for input array.
+						if (descriptor.startsWith("["))
+							write(", int " + lvi.getVariableName() + BlockWriter.arrayItemLengthMangleSuffix);
 						alreadyHasFirstArg = true;
 					}
 				}
@@ -932,6 +934,7 @@ System.err.println("Field: " + field.getName() + ", sig: " + signature);
 			if (isArrayTypeOutput) {
 
 				// Find the local variable name used for the return value in Java.
+				// It must be load since this method returns an array.
 				// aload 		<- the 2nd instruction from the last
 				// areturn
 				Instruction retVar = mm.getPCHead();
@@ -948,9 +951,11 @@ System.err.println("Field: " + field.getName() + ", sig: " + signature);
 					promoteLocalArguments.put(varName, "0");
 
 				// Skip return value when writing method body
+				// since we want to assign the value to the output argument directly
 				retVar.setByteCode(ByteCode.NONE);
 
 				// Skip local variable declaration when writing method body
+				// since we want to send this through argument
 				Instruction newArrayInst = mm.getPCHead();
 				while (newArrayInst.getNextPC() != null) {
 					if (newArrayInst instanceof I_NEWARRAY) {
@@ -971,6 +976,7 @@ System.err.println("Field: " + field.getName() + ", sig: " + signature);
 					System.err.println("WARNING: Cannot find local variable declaration for array type output.");
 
 				write(", __global " + fullReturnType + varName);
+				write(", int " + varName + BlockWriter.arrayItemLengthMangleSuffix);
 			}
 
 			write(")");
@@ -1031,17 +1037,11 @@ System.err.println("Field: " + field.getName() + ", sig: " + signature);
 				paramString = p.getInputParameterString(this);
 			write(paramString);
 
-			// comaniac: Add length and item number for 1-D array I/O.
+			// Add length and item number for 1-D array I/O.
 			if (p.isArray()) {
 				write(", ");
 				newLine();
-
-				// Currently only support one-to-one mapping so output item # is same as N.
-				// if (p.getDir() == ScalaParameter.DIRECTION.OUT) {
-				//	 write("int " + p.getName() + "_item_num, ");
-				//	 newLine();
-				// }
-				write("int " + p.getName() + "_item_length");
+				write("int " + p.getName() + BlockWriter.arrayItemLengthMangleSuffix);
 			}
 		}
 		for (final String line : argLines) {
@@ -1090,14 +1090,16 @@ System.err.println("Field: " + field.getName() + ", sig: " + signature);
 			if (p.getDir() == ScalaParameter.DIRECTION.IN) {
 				if (p.isArray()) { // Deserialized access
 					if (p.getClazz() == null) // Primitive type
-						write(", &" + p.getName() + "[idx * " + p.getName() + "_item_length]");
+						write(", &" + p.getName() + "[idx * " + p.getName() + BlockWriter.arrayItemLengthMangleSuffix + "]");
 					else if (Utils.isHardCodedClass(p.getClazz().getName())) {
 						Set<String> fields = Utils.getHardCodedClassMethods(p.getClazz().getName());
 						for (String field : fields)
-							write(", &" + p.getName() + field + "[idx " + p.getName() + "_item_length]");
+							write(", &" + p.getName() + field + "[idx " + p.getName() + 
+								BlockWriter.arrayItemLengthMangleSuffix + "]");
 					}
 					else // Object array is not allowed.
 						throw new RuntimeException();
+					write(", " + p.getName() + BlockWriter.arrayItemLengthMangleSuffix);
 				}
 				else {
 					if (p.getClazz() == null) // Primitive type
@@ -1115,12 +1117,15 @@ System.err.println("Field: " + field.getName() + ", sig: " + signature);
 
 		if (isArrayTypeOutput) { // Issue #40: Add another argument for output array.
 			if (outParam.getClazz() == null) // Primitive type
-				write(", &" + outParam.getName() + "[idx * " + outParam.getName() + "_item_length]");
+				write(", &" + outParam.getName() + "[idx * " + outParam.getName() + 
+					BlockWriter.arrayItemLengthMangleSuffix + "]");
 			else if (Utils.isHardCodedClass(outParam.getClazz().getName())) {
 				Set<String> fields = Utils.getHardCodedClassMethods(outParam.getClazz().getName());
 				for (String field : fields)
-					write(", &" + outParam.getName() + field + "[idx " + outParam.getName() + "_item_length]");
+					write(", &" + outParam.getName() + field + "[idx " + outParam.getName() + 
+						BlockWriter.arrayItemLengthMangleSuffix + "]");
 			}
+			write(", " + outParam.getName() + BlockWriter.arrayItemLengthMangleSuffix);
 		}
 
 		write(");");

@@ -15,18 +15,20 @@ public abstract class ScalaParameter {
 
 	protected HardCodedClassModel clazzModel;
 	protected Class<?> clazz;
+	protected boolean isReference;
+	protected final boolean arrayOrNot;
 	protected final String type;
 	protected final String name;
 	protected final DIRECTION dir;
 	protected final List<String> typeParameterDescs;
 	protected final List<Boolean> typeParameterIsObject;
-	protected final boolean arrayOrNot;
 
 	public ScalaParameter(String fullSig, String name, DIRECTION dir) {
 		this.name = name;
 		this.clazz = null;
 		this.clazzModel = null;
 		this.dir = dir;
+		this.isReference = false;
 
 		this.typeParameterDescs = new LinkedList<String>();
 		this.typeParameterIsObject = new LinkedList<Boolean>();
@@ -82,6 +84,7 @@ public abstract class ScalaParameter {
 		this.clazzModel = null;
 		this.name = name;
 		this.dir = dir;
+		this.isReference = false;
 		this.typeParameterDescs = new LinkedList<String>();
 		this.typeParameterIsObject = new LinkedList<Boolean>();
 		if (type.charAt(0) != '[')
@@ -141,7 +144,7 @@ public abstract class ScalaParameter {
 		if (!typeParameterIsObject(field)) {
 			param = "__global " + ClassModel.convert(
 			          typeParameterDescs.get(field), "", true);
-			if (arrayOrNot)
+			if (!isReference) // Arguments must be array type
 				param = param + "* ";
 			param = param + name + Utils.getHardCodedClassMethod(type, field);
 		} else {
@@ -153,6 +156,10 @@ public abstract class ScalaParameter {
 			param = "__global " + fieldDesc.replace('.', '_') + "* " + name + (field + 1);
 		}
 		return param;
+	}
+
+	public void setAsReference() {
+		this.isReference = true;
 	}
 
 	public String getName() {

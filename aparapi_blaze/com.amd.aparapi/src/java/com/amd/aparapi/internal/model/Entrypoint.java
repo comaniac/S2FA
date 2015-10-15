@@ -1002,7 +1002,6 @@ public class Entrypoint implements Cloneable {
 
 								if (typeHint.startsWith("[")) {
 									typeHint = typeHint.substring(1);
-									// arrayFieldArrayLengthUsed.add(fieldName); TODO: Maybe useful in the future
 									isArray = true;
 								}
 								if(!Utils.isHardCodedClass(typeHint) && !Utils.isPrimitive(typeHint))
