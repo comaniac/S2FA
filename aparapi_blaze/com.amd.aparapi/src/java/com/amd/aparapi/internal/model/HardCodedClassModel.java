@@ -1,43 +1,102 @@
 package com.amd.aparapi.internal.model;
 
-import java.util.List;
-import java.util.LinkedList;
-import java.util.Iterator;
+import java.util.*;
+import com.amd.aparapi.internal.model.HardCodedMethodModel.METHODTYPE;
 
 import com.amd.aparapi.internal.instruction.InstructionSet.TypeSpec;
 import com.amd.aparapi.internal.exception.AparapiException;
 
 public abstract class HardCodedClassModel extends ClassModel {
-	private final List<HardCodedMethodModel> methods;
+	protected final LinkedHashMap<String, HardCodedMethodModel> methods;
 	protected final TypeParameters paramDescs;
+	protected final String clazzName;
+	protected boolean arrayBasedOrNot;
 
-	public HardCodedClassModel(Class<?> clazz,
-	                           List<HardCodedMethodModel> methods, List<AllFieldInfo> fields,
-	                           String... paramDescs) {
-		this.clazz = clazz;
-		this.methods = methods;
-		this.paramDescs = new TypeParameters(paramDescs);
+	public HardCodedClassModel(String clazzName) {
+		this.clazzName = clazzName;
+		this.clazz = null;
+		this.paramDescs = null;
+		this.methods = new LinkedHashMap<String, HardCodedMethodModel>();
+		this.arrayBasedOrNot = false;
+	}
 
-		int id = 0;
-		for (AllFieldInfo f : fields) {
-			this.structMembers.add(new FieldNameInfo(f.name, f.desc, f.className));
-			this.structMemberInfo.add(new FieldDescriptor(id, f.typ, f.name, f.offset));
-			id++;
+	public String getClassName() {
+		return clazzName;
+	}
+
+	public boolean isArrayBased() {
+		return arrayBasedOrNot;
+	}
+
+	// Method related methods
+
+	public Map<String, HardCodedMethodModel> getMethods() {
+		return methods;
+	}
+
+	public int getMethodNum() {
+		return methods.size();
+	}
+
+	public boolean hasMethod(String methodName) {
+		return methods.containsKey(methodName);
+	}
+
+	public String getPureMethodName(String methodName) {
+		for (String pureName : methods.keySet()) {
+			if (methodName.contains(pureName))
+				return pureName;
 		}
+		return null;
 	}
 
-	// All subclasses must call this at the end of their constructor
-	protected void initMethodOwners() {
-		for (HardCodedMethodModel m : methods)
-			m.setOwnerMangledName(getMangledClassName());
+	public Set<String> getMethodNames(METHODTYPE type) {
+		Set<String> methodNames = new HashSet<String>();
+		for (String name : methods.keySet()) {
+			if (methods.get(name).getMethodType() == type)
+				methodNames.add(name);
+		}
+		return methodNames;
 	}
+
+	public String getMethodNameByIdx(int idx) {
+		List<String> l = new ArrayList<String>(methods.keySet());
+		return l.get(idx);
+	}
+
+	public METHODTYPE getMethodType(String methodName) {
+		if (methods.containsKey(methodName))
+			return methods.get(methodName).getMethodType();
+		else
+			return METHODTYPE.UNKNOWN;
+	}
+
+	public String getMethodAccessString(String varName, String methodName) {
+		if (methods.containsKey(methodName))
+			return methods.get(methodName).getAccessString(varName);
+		else
+			return null;
+	}
+
+	public String getMethodDeclareString(String varName, String methodName) {
+		if (methods.containsKey(methodName))
+			return methods.get(methodName).getDeclareString(varName);
+		else
+			return null;
+	}
+
+	public abstract class thisHardCodedMethodModel extends HardCodedMethodModel {
+		public thisHardCodedMethodModel(String name, METHODTYPE methodType) {
+			super(name, methodType);
+		}
+		public abstract String getAccessString(String varName);
+		public abstract String getDeclareString(String varName);
+	}
+
+	// Old methods FIXME
 
 	public TypeParameters getTypeParamDescs() {
 		return paramDescs;
-	}
-
-	public List<HardCodedMethodModel> getMethods() {
-		return methods;
 	}
 
 	public abstract String getDescriptor();
@@ -94,11 +153,6 @@ public abstract class HardCodedClassModel extends ClassModel {
 	@Override
 	public MethodModel getMethodModel(String _name, String _signature)
 	throws AparapiException {
-		for (HardCodedMethodModel method : methods) {
-			if (method.getOriginalName().equals(_name) &&
-			    areSignaturesCompatible(method.getDescriptor(), _signature, _name))
-				return method;
-		}
 		return null;
 	}
 

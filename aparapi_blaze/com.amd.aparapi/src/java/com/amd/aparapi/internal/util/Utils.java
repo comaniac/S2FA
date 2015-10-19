@@ -1,6 +1,8 @@
 package com.amd.aparapi.internal.util;
 
 import java.util.*;
+import com.amd.aparapi.internal.model.HardCodedMethodModel.METHODTYPE;
+import com.amd.aparapi.internal.model.*;
 import com.amd.aparapi.internal.writer.*;
 import com.amd.aparapi.internal.writer.ScalaParameter.DIRECTION;
 
@@ -8,36 +10,48 @@ import com.amd.aparapi.internal.writer.ScalaParameter.DIRECTION;
  * This utility class encapsulates the necessary actions required when processing and generating the kernel.
  */
 public class Utils {
-	public static enum METHODTYPE {
-		UNKNOWN,
-		VAR_ACCESS,
-		STATUS_CHECK
-	}
 
-	static private final Map<String, Map<String, METHODTYPE>> hardCodedClasses = 
-		new HashMap<String, Map<String, METHODTYPE>>(); 
+	static private final Map<String, HardCodedClassModel> hardCodedClasses = 
+		new HashMap<String, HardCodedClassModel>(); 
 
 	static {
-		LinkedHashMap<String, METHODTYPE> tuple2Methods = new LinkedHashMap<String, METHODTYPE>();
-		tuple2Methods.put("_1", METHODTYPE.VAR_ACCESS);
-		tuple2Methods.put("_2", METHODTYPE.VAR_ACCESS);
-		hardCodedClasses.put("scala/Tuple2", tuple2Methods);
-
-		LinkedHashMap<String, METHODTYPE> blazeBroadcastMethods = new LinkedHashMap<String, METHODTYPE>();
-		blazeBroadcastMethods.put("value", METHODTYPE.VAR_ACCESS);
-		hardCodedClasses.put("org/apache/spark/blaze/BlazeBroadcast", blazeBroadcastMethods);
-
-	 	LinkedHashMap<String, METHODTYPE> iterMethods = new LinkedHashMap<String, METHODTYPE>();
-		iterMethods.put("hasNext", METHODTYPE.STATUS_CHECK);
-		iterMethods.put("next", METHODTYPE.VAR_ACCESS);
-		hardCodedClasses.put("scala/collection/Iterator", iterMethods);
+		hardCodedClasses.put("scala/Tuple2", new Tuple2ClassModel());
+		hardCodedClasses.put("org/apache/spark/blaze/BlazeBroadcast", new BlazeBroadcastClassModel());
+		hardCodedClasses.put("scala/collection/Iterator", new IteratorClassModel());
+		hardCodedClasses.put("scala/collection/mutable/ArrayOps", new ArrayOpsClassModel());
 	}
 
 	public static String cleanClassName(String clazz) {
 		String tname = clazz.replace('.', '/').replace(";", "").replace(" ", "");
+		if (tname.contains("$")) // Get rid of inner class names
+			tname = tname.substring(0, tname.indexOf("$"));
 		if (tname.startsWith("L"))
 			tname = tname.substring(1);
 		return tname;
+	}
+
+	public static String cleanMethodName(String clazz, String methodName) {
+		String clazzName = cleanClassName(clazz);
+		if(!hardCodedClasses.containsKey(clazzName))
+			return null;
+		else
+			return hardCodedClasses.get(clazzName).getPureMethodName(methodName);
+	}
+
+	public static boolean isArrayBasedClass(String clazz) {
+		String pClazzName = cleanClassName(clazz);
+		if (hardCodedClasses.containsKey(pClazzName))
+			return hardCodedClasses.get(pClazzName).isArrayBased();
+		else
+			return false;
+	}
+
+	public static boolean isIteratorClass(String clazz) {
+		String pClazzName = cleanClassName(clazz);
+		if (hardCodedClasses.containsKey(pClazzName))
+			return (hardCodedClasses.get(pClazzName) instanceof IteratorClassModel);
+		else
+			return false;
 	}
 
 	public static boolean isPrimitive(String type) {
@@ -75,10 +89,10 @@ public class Utils {
 			return false;
 	}
 
-	public static Set<String> getHardCodedClassMethods(String clazz) {
+	public static Set<String> getHardCodedClassMethods(String clazz, METHODTYPE methodType) {
 		String tname = cleanClassName(clazz);
 		if (hardCodedClasses.containsKey(tname))
-			return (hardCodedClasses.get(tname).keySet());
+			return (hardCodedClasses.get(tname).getMethodNames(methodType));
 		else
 			return null;
 	}
@@ -86,17 +100,50 @@ public class Utils {
 	public static METHODTYPE getHardCodedClassMethodUsage(String clazz, String methodName) {
 		String tname = cleanClassName(clazz);
 		if (hardCodedClasses.containsKey(tname)) {
-			return hardCodedClasses.get(tname).get(methodName);
+			return hardCodedClasses.get(tname).getMethodType(methodName);
 		}
 		else
 			return METHODTYPE.UNKNOWN;
 	}
 
+	public static String getAccessHardCodedMethodString(String clazz, String methodName, String varName) {
+		String pClazzName = cleanClassName(clazz);
+		String pMethodName = cleanMethodName(pClazzName, methodName);
+
+		if (hardCodedClasses.containsKey(pClazzName)) {
+			if (hardCodedClasses.get(pClazzName).hasMethod(pMethodName)) {
+				return hardCodedClasses
+								.get(pClazzName)
+								.getMethodAccessString(varName, pMethodName);
+			}
+			else
+				throw new RuntimeException("Class " + pClazzName + " has no method " + pMethodName);
+		}
+		else
+			throw new RuntimeException("No hard coded class " + pClazzName);
+	}
+
+	public static String getDeclareHardCodedMethodString(String clazz, String methodName, String varName) {
+		String pClazzName = cleanClassName(clazz);
+		String pMethodName = cleanMethodName(pClazzName, methodName);
+
+		if (hardCodedClasses.containsKey(pClazzName)) {
+			if (hardCodedClasses.get(pClazzName).hasMethod(pMethodName)) {
+				return hardCodedClasses
+								.get(pClazzName)
+								.getMethodDeclareString(varName, pMethodName);
+			}
+			else
+				throw new RuntimeException("Class " + pClazzName + " has no method " + pMethodName);
+		}
+		else
+			throw new RuntimeException("No hard coded class " + pClazzName);
+	}
+
 	public static String getHardCodedClassMethod(String clazz, int idx) {
 		String tname = cleanClassName(clazz);
 		if (hardCodedClasses.containsKey(tname)) {
-			ArrayList<String> methodList = new ArrayList<String>(hardCodedClasses.get(tname).keySet());
-			return methodList.get(idx);
+			return hardCodedClasses.get(tname).getMethodNameByIdx(idx);
 		}
 		else
 			return null;
@@ -105,54 +152,39 @@ public class Utils {
 	public static int getHardCodedClassMethodNum(String clazz) {
 		String tname = cleanClassName(clazz);
 		if (hardCodedClasses.containsKey(tname))
-			return (hardCodedClasses.get(tname).size());
+			return (hardCodedClasses.get(tname).getMethodNum());
 		return 0;
 	}
 
 	public static boolean hasMethod(String clazz, String methodName) {
-		String clazzName = cleanClassName(clazz);
-		if(!hardCodedClasses.containsKey(clazzName))
+		String pClazzName = cleanClassName(clazz);
+		if(!hardCodedClasses.containsKey(pClazzName))
 			return false;
 		else {
-			for (String s: hardCodedClasses.get(clazzName).keySet()) {
-				if (methodName.contains(s))
-					return true;
-			}
-			return false;
-		}
-	}
-
-	public static String cleanMethodName(String clazz, String methodName) {
-		String clazzName = cleanClassName(clazz);
-		if(!hardCodedClasses.containsKey(clazzName))
-			return null;
-		else {
-			for (String s: hardCodedClasses.get(clazzName).keySet()) {
-				if (methodName.contains(s))
-					return s;
-			}
-			return null;
+			String pMethodName = cleanMethodName(pClazzName, methodName);
+			return hardCodedClasses.get(pClazzName).hasMethod(methodName);
 		}
 	}
 
 	public static String addHardCodedFieldTypeMapping(String clazz) {
-		String clazzName = cleanClassName(clazz);
-		if(!hardCodedClasses.containsKey(clazzName))
-			return clazzName;
+		String pClazzName = cleanClassName(clazz);
+		if(!hardCodedClasses.containsKey(pClazzName))
+			return pClazzName;
 		else {
 			boolean first = true;
-			Map<String, METHODTYPE> modeledClazz = hardCodedClasses.get(clazzName);
-			clazzName += "<";
-			for (Map.Entry<String, METHODTYPE> field: modeledClazz.entrySet()) {
-				if (field.getValue() == METHODTYPE.VAR_ACCESS) {
+			HardCodedClassModel modeledClazz = hardCodedClasses.get(pClazzName);
+			pClazzName += "<";
+			Map<String, HardCodedMethodModel> modeledClazzMethods = modeledClazz.getMethods();
+			for (Map.Entry<String, HardCodedMethodModel> method: modeledClazzMethods.entrySet()) {
+				if (method.getValue().getMethodType() == METHODTYPE.VAR_ACCESS) {
 					if (!first)
-						clazzName += ",";
-					clazzName += field.getKey();
+						pClazzName += ",";
+					pClazzName += method.getKey();
 					first = false;
 				}
 			}
-			clazzName += ">";
-			return clazzName;
+			pClazzName += ">";
+			return pClazzName;
 		}
 	}
 
@@ -161,6 +193,8 @@ public class Utils {
 
 		if (signature.contains("scala/Tuple2"))
 			param = new ScalaTuple2Parameter(signature, name, dir);
+		else if (signature.contains("scala/collection/Iterator"))
+			param = new ScalaIteratorParameter(signature, name, dir);
 		else if (signature.startsWith("["))
 			param = new ScalaArrayParameter(signature, name, dir);
 		else

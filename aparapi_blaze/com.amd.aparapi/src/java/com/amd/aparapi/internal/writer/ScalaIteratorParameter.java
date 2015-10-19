@@ -6,13 +6,13 @@ import java.util.List;
 import java.util.LinkedList;
 import com.amd.aparapi.internal.model.ClassModel;
 
-public class ScalaArrayParameter extends ScalaParameter {
+public class ScalaIteratorParameter extends ScalaParameter {
 
-	public ScalaArrayParameter(String fullSig, String name, DIRECTION dir) {
+	public ScalaIteratorParameter(String fullSig, String name, DIRECTION dir) {
 		super(fullSig, name, dir);
 	}
 
-	public ScalaArrayParameter(String type, Class<?> clazz, String name,
+	public ScalaIteratorParameter(String type, Class<?> clazz, String name,
 	                           DIRECTION dir) {
 		super(type, clazz, name, dir);
 	}
@@ -22,7 +22,7 @@ public class ScalaArrayParameter extends ScalaParameter {
 		if (dir != DIRECTION.IN)
 			throw new RuntimeException("getInputParameterString can only be applied for input paramter.");
 
-		return "__global " + type.replace('.', '_') + "* " + name;
+		return getParameterStringFor(0);
 	}
 
 	@Override
@@ -30,12 +30,12 @@ public class ScalaArrayParameter extends ScalaParameter {
 		if (dir != DIRECTION.OUT)
 			throw new RuntimeException("getOutputParameterString can only be applied for output paramter.");
 
-		return "__global " + type.replace('.', '_') + "* " + name;
+		return getParameterStringFor(0);
 	}
 
 	@Override
 	public String getStructString(KernelWriter writer) {
-		return "__global " + type.replace('.', '_') + "* " + name;
+		return getParameterStringFor(0);
 	}
 
 	@Override

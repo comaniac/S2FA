@@ -2,59 +2,58 @@ package com.amd.aparapi.internal.model;
 
 import com.amd.aparapi.internal.writer.KernelWriter;
 
-public class HardCodedMethodModel extends MethodModel {
-	private final String name;
-	private final String sig;
-	private final MethodDefGenerator methodDef;
-	private final String getterFieldName;
-	private String ownerMangledName;
+public abstract class HardCodedMethodModel extends MethodModel {
+	public static enum METHODTYPE {
+		UNKNOWN,
+		VAR_ACCESS,
+		STATUS_CHECK,
+		CONSTRUCTOR
+	}
 
-	public HardCodedMethodModel(String name, String sig,
-	                            MethodDefGenerator methodDef, boolean isGetter, String getterFieldName) {
+	protected final String name;
+	protected METHODTYPE methodType;
+
+	public HardCodedMethodModel(String name, METHODTYPE methodType) {
 		this.name = name;
-		this.sig = sig;
-		this.methodDef = methodDef;
-		this.methodIsGetter = isGetter;
-		this.getterFieldName = getterFieldName;
+		this.methodIsGetter = false; // TODO: For customized classes
+		this.methodType = methodType;
 	}
 
-	public void setOwnerMangledName(String s) {
-		this.ownerMangledName = s;
-	}
-
-	public String getOriginalName() {
+	public String getMethodName() {
 		return name;
+	}
+
+	public METHODTYPE getMethodType() {
+		return methodType;
 	}
 
 	@Override
 	public String getName() {
-		return getOwnerClassMangledName();
+		return name;
+	}
+
+	@Override 
+	public String getOwnerClassMangledName() {
+		return null;
 	}
 
 	@Override
 	public String getDescriptor() {
-		return sig;
-	}
-
-	public String getMethodDef(HardCodedClassModel classModel, KernelWriter writer) {
-		return methodDef.getMethodDef(this, classModel, writer).toString();
+		return null;
 	}
 
 	@Override
 	public String getGetterField() {
-		if (methodIsGetter)
-			return getterFieldName;
-		else
-			return null;
+		return null;
 	}
 
-	@Override
-	public String getOwnerClassMangledName() {
-		return ownerMangledName;
-	}
+	/*
+	 *	Generate method access string
+	 */
+	public abstract String getAccessString(String varName);
 
-	public abstract static class MethodDefGenerator<T extends HardCodedClassModel> {
-		public abstract String getMethodDef(HardCodedMethodModel method,
-		                                    T classModel, KernelWriter writer);
-	}
+	/*
+	 * Generate method declaration string
+	 */
+	public abstract String getDeclareString(String varName);
 }

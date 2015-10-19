@@ -146,7 +146,7 @@ public abstract class ScalaParameter {
 			          typeParameterDescs.get(field), "", true);
 			if (!isReference) // Arguments must be array type
 				param = param + "* ";
-			param = param + name + Utils.getHardCodedClassMethod(type, field);
+			param = param + name + mapIdxToMethod(field);
 		} else {
 			String fieldDesc = typeParameterDescs.get(field);
 			if (fieldDesc.charAt(0) != 'L' ||
@@ -181,6 +181,11 @@ public abstract class ScalaParameter {
 	public boolean isArray() {
 		return arrayOrNot;
 	}
+
+	/*
+	 * Map method name to index
+	 */
+	public abstract String mapIdxToMethod(int idx);
 
 	/*
 	 * Generate the string for method argument.

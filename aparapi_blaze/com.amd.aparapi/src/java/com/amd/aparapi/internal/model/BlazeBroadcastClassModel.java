@@ -3,14 +3,11 @@ package com.amd.aparapi.internal.model;
 import java.util.*;
 import com.amd.aparapi.internal.model.HardCodedMethodModel.METHODTYPE;
 
-public class Tuple2ClassModel extends HardCodedClassModel {
-
-	public Tuple2ClassModel() {
-		super("scala/Tuple2");
+public class BlazeBroadcastClassModel extends HardCodedClassModel {
+	public BlazeBroadcastClassModel() {
+		super("org/apache/spark/blaze/BlazeBroadcast");
 		arrayBasedOrNot = false;
-		methods.put("<init>", new thisHardCodedMethodModel("<init>", METHODTYPE.CONSTRUCTOR));
-		methods.put("_1", new thisHardCodedMethodModel("_1", METHODTYPE.VAR_ACCESS));
-		methods.put("_2", new thisHardCodedMethodModel("_2", METHODTYPE.VAR_ACCESS));
+		methods.put("value", new thisHardCodedMethodModel("value", METHODTYPE.VAR_ACCESS));
 	}
 
 	@Override
@@ -25,12 +22,12 @@ public class Tuple2ClassModel extends HardCodedClassModel {
 
 	@Override
 	public boolean classNameMatches(String className) {
-		return className.contains("Tuple2");
+		return className.contains("BlazeBroadcast");
 	}
 
 	@Override
 	public String toString() {
-		return "scala/Tuple2";
+		return "org/apache/spark/blaze/BlazeBroadcast";
 	}
 
 	@Override
@@ -45,17 +42,13 @@ public class Tuple2ClassModel extends HardCodedClassModel {
 
 		public String getAccessString(String varName) {
 			if (methodType == METHODTYPE.VAR_ACCESS)
-				return name;
+				return "";
 			else
 				return null;
 		}
 
 		public String getDeclareString(String varName) {
-			if (methodType == METHODTYPE.VAR_ACCESS)
-				return name;
-			else
-				return null;
+			return "";
 		}
-
 	}
 }

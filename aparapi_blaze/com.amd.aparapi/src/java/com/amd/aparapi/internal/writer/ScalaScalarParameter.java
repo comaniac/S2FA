@@ -32,4 +32,9 @@ public class ScalaScalarParameter extends ScalaParameter {
 	public String getStructString(KernelWriter writer) {
 		return type + " " + name;
 	}
+
+	@Override
+	public String mapIdxToMethod(int idx) {
+		return "";
+	}
 }

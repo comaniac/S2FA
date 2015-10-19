@@ -45,7 +45,6 @@ import com.amd.aparapi.internal.model.ClassModel.*;
 import com.amd.aparapi.internal.model.ClassModel.ConstantPool.*;
 import com.amd.aparapi.internal.model.ClassModel.ConstantPool.MethodReferenceEntry.*;
 import com.amd.aparapi.internal.util.*;
-import com.amd.aparapi.internal.util.Utils.METHODTYPE;
 
 import com.amd.aparapi.internal.writer.*;
 import com.amd.aparapi.internal.writer.ScalaParameter.DIRECTION;
@@ -53,6 +52,7 @@ import com.amd.aparapi.internal.model.HardCodedClassModels.HardCodedClassModelMa
 import com.amd.aparapi.internal.model.HardCodedClassModels.DescMatcher;
 import com.amd.aparapi.internal.model.HardCodedClassModels.ShouldNotCallMatcher;
 import com.amd.aparapi.internal.model.HardCodedClassModel.TypeParameters;
+import com.amd.aparapi.internal.model.HardCodedMethodModel.METHODTYPE;
 
 import java.lang.reflect.*;
 import java.util.*;
@@ -973,6 +973,7 @@ public class Entrypoint implements Cloneable {
 						String typeHint = null;
 						boolean isArray = false;
 
+
 						System.err.println("call arg type: " + clazz);
 
 						if (clazz.startsWith("[")) {
@@ -995,10 +996,31 @@ public class Entrypoint implements Cloneable {
 									continue;
 								}
 
-								if (!(next.getNextPC() instanceof I_CHECKCAST))
-									throw new RuntimeException("Expecting invokeinterface -> cast, but found " + next.getNextPC());
-								I_CHECKCAST cast = (I_CHECKCAST) next.getNextPC();
-								typeHint = cast.getConstantPoolClassEntry().getNameUTF8Entry().getUTF8();
+								String curTypeHint = getArgumentTypeHint(fieldName);
+								if (curTypeHint == null) {
+									// Add field type mapping to genericType for later used.
+									// Example: scala.Tuple2 -> scala.Tuple2<_1, _2>
+									curTypeHint = Utils.addHardCodedFieldTypeMapping(clazz);
+								}
+
+								if (next.getNextPC() instanceof I_CHECKCAST) {
+									I_CHECKCAST cast = (I_CHECKCAST) next.getNextPC();
+									typeHint = cast.getConstantPoolClassEntry().getNameUTF8Entry().getUTF8();
+								}
+								else if (next.getNextPC() instanceof I_INVOKESTATIC) {
+									I_INVOKESTATIC unbox = (I_INVOKESTATIC) next.getNextPC();
+									typeHint = unbox.getConstantPoolMethodEntry().getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+									if (typeHint.contains("Int"))
+										typeHint = "I";
+									else if (typeHint.contains("Double"))
+										typeHint = "D";
+									else if (typeHint.contains("Float"))
+										typeHint = "F";
+									else if (typeHint.contains("Long"))
+										typeHint = "J";
+								}
+								else
+									throw new RuntimeException("Expecting invoke -> cast/unbox, but found " + next.getNextPC());
 
 								if (typeHint.startsWith("[")) {
 									typeHint = typeHint.substring(1);
@@ -1006,7 +1028,7 @@ public class Entrypoint implements Cloneable {
 								}
 								if(!Utils.isHardCodedClass(typeHint) && !Utils.isPrimitive(typeHint))
 									throw new RuntimeException("Generic type is not hard coded or primitive: " + typeHint);
-								typeHint = Utils.addHardCodedFieldTypeMapping(typeHint);
+								typeHint = curTypeHint.replace(methodName, typeHint);
 							}
 							else
 								throw new RuntimeException("Expecting method call for hardcoded class, but found " + next);
@@ -1017,8 +1039,10 @@ public class Entrypoint implements Cloneable {
 
 						if (isArray && !typeHint.startsWith("["))
 							typeHint = '[' + typeHint;
-						addToArguments(fieldName, typeHint);
-//						System.err.println("call arg typeHint: " + fieldName + "." + methodName + ": " + typeHint);
+
+						if (typeHint != "")
+							addToArguments(fieldName, typeHint);
+						System.err.println("call arg typeHint: " + fieldName + "." + methodName + ": " + typeHint);
 					}
 					else if (instruction instanceof Return) {
 						// Parse output data generic type [Experiment]
@@ -1037,55 +1061,96 @@ public class Entrypoint implements Cloneable {
 						else if (instruction instanceof I_LRETURN)
 							typeHint = "J";
 						else if (instruction instanceof I_ARETURN) { // Object type
-							Instruction prev = instruction.getPrevPC();
-							Instruction curr = null;
+							Instruction curr = instruction.getPrevPC();
+							String clazz = null;
+							boolean isArray = false;
 
-							if (prev instanceof LocalVariableConstIndexAccessor)
-								curr = prev;
-							else if (prev instanceof I_INVOKEVIRTUAL || prev instanceof I_INVOKEINTERFACE) {
-								// Return an object from interface or instance method.
-								// Ex: Array.iterator (We only consider this case currently).
-								// Acquire type hint by guessing the wrapped local variable.
+							if (curr instanceof AccessLocalVariable) {
+								// Case 1: Return a local variable
 
-								Instruction loadInst = prev.getPrevPC();
-								while (loadInst != null && !(loadInst instanceof LocalVariableConstIndexAccessor))
-									loadInst = loadInst.getPrevPC();
-								if (loadInst instanceof I_ALOAD_0)
-									throw new RuntimeException("Expecting load a local variable, but only found \"this\"");
-								curr = loadInst;
+								LocalVariableInfo varInfo = ((AccessLocalVariable) curr).getLocalVariableInfo();
+								clazz = varInfo.getVariableDescriptor().replace(";", "");
 							}
-							else if (prev instanceof I_INVOKESPECIAL || prev instanceof I_INVOKESTATIC) {
-								// Return an object from static or superclass method.
-								// TODO Ex: <init>
-								// Acquire type hint by fetching signature of the method.
-								;
-							}
+							else if (curr instanceof MethodCall) {
+								// Case 2: Return an object by calling a method (invokevirtual, invokespecial, invokestatic).
+								// Ex: Array.iterator, Tuple2._1
+								// Find return type of the method, and make the corresponding action.
 
-							if (curr instanceof LocalVariableConstIndexAccessor) { // Return a local variable
-								LocalVariableInfo varInfo = ((LocalVariableConstIndexAccessor) curr).getLocalVariableInfo();
-								String clazz = varInfo.getVariableDescriptor().replace(";", "");
-								String fieldName = varInfo.getVariableName();
-								boolean isArray = false;
+								MethodEntry fieldMethodEntry = ((MethodCall) curr).getConstantPoolMethodEntry();
+								String caller = Utils.cleanClassName(fieldMethodEntry.getClassEntry()
+																	.getNameUTF8Entry().getUTF8());
+								String fieldMethodName = Utils.cleanMethodName(caller, fieldMethodEntry
+											.getNameAndTypeEntry().getNameUTF8Entry().getUTF8());
 
-								System.err.println("call output class type: " + clazz);
+								System.err.println("caller: " + caller + "; method: " + fieldMethodName);
 
-								if (clazz.startsWith("[")) {
-									isArray = true;
-									clazz = clazz.substring(1);
+								if (fieldMethodName.equals("<init>")) { // Constructor
+									clazz = caller;
+
+									// Find type from signature
+									boolean isFirstType = true;
+									String sig = fieldMethodEntry.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
+									sig = sig.substring(1, sig.indexOf(")"));
+									typeHint = clazz + "<";
+									for (char ch : sig.toCharArray()) {
+										if (!isFirstType)
+											typeHint = typeHint + ",";
+										typeHint = typeHint + ch;
+										isFirstType = false;
+									}
+									typeHint = typeHint + ">";
 								}
+								else
+									clazz = fieldMethodEntry.getNameAndTypeEntry().getDescriptorUTF8Entry()
+															.getUTF8().replace("()", "");
+							}
+							else if (curr instanceof I_INVOKEINTERFACE) {
+								// Case 3: Return an object by calling a method
+								// Ex: ArrayOps.iterator
+								// Find return type of the method, and make the corresponding action.
 
+								InterfaceMethodEntry entry = ((I_INVOKEINTERFACE) curr).getConstantPoolInterfaceMethodEntry();
+								clazz = entry.getNameAndTypeEntry().getDescriptorUTF8Entry()
+														.getUTF8().replace("()", "");
+							}
+							else if (curr instanceof I_CHECKCAST) {
+								// Case 4: Cast the object before return
+								clazz = ((I_CHECKCAST) curr).getConstantPoolClassEntry().getNameUTF8Entry().getUTF8();
+							}
+							else
+								throw new RuntimeException("Expecting invoke/cast, but found " + curr);
+
+							System.err.println("call output class type: " + clazz);
+
+							if (clazz.startsWith("[")) {
+								isArray = true;
+								clazz = clazz.substring(1);
+							}
+
+							if (typeHint == null) {
 								if (clazz.startsWith("L") && Utils.isHardCodedClass(clazz.substring(1))) {
-									// TODO
+									// FIXME: Currently we just leverage the nearest aload to guess the type.
+									Instruction aloadInst = curr.getPrevPC();
+									while(!(aloadInst instanceof AccessLocalVariable))
+										aloadInst = aloadInst.getPrevPC();
+
+									if (aloadInst instanceof I_ALOAD_0)
+										throw new RuntimeException("Cannot return this");
+
+									typeHint = ((AccessLocalVariable) aloadInst).getLocalVariableInfo().getVariableDescriptor();
+
+									// FIXME: Iterator eliminates an array, but this is not general
+									if (typeHint.startsWith("["))
+										typeHint = typeHint.substring(1);
 								}
 								else // Primitive type
 									typeHint = clazz;
-								
-								if (isArray && !typeHint.startsWith("["))
-									typeHint = '[' + typeHint;
 							}
-
+								
+							if (isArray && !typeHint.startsWith("["))
+								typeHint = '[' + typeHint;
 						}
-						addToArguments(outFieldName, typeHint); // FIXME: Only support primitive now
+						addToArguments(outFieldName, typeHint);
 						System.err.println("call output typeHint: " + typeHint);
 					}
 				}
@@ -1308,6 +1373,11 @@ public class Entrypoint implements Cloneable {
 		boolean isArray = false;
 		boolean fetchDirectly = false;
 
+		// Search for the following pattern to find the type hint:
+		// Primitive type: - invokevirtual
+		// Hardcoded type: - invokevirutal -> cast -> invokevirtual
+		//								 - invokevirtual -> cast -> astore
+
 		assert (inst instanceof I_INVOKEVIRTUAL);
 
 		MethodEntry fieldMethodEntry = ((I_INVOKEVIRTUAL) inst).getConstantPoolMethodEntry();
@@ -1315,6 +1385,11 @@ public class Entrypoint implements Cloneable {
 												.getNameUTF8Entry().getUTF8());
 		String returnType = fieldMethodEntry.getNameAndTypeEntry().getDescriptorUTF8Entry()
 												.getUTF8().replace("()", "");
+
+		if(Utils.getHardCodedClassMethodUsage(signature, fieldMethodName) != METHODTYPE.VAR_ACCESS) {
+			//System.err.println("Skip method " + methodName);
+			return "";
+		}
 
 		// Method returns a primitve type so fetch directly.
 		if (Utils.isPrimitive(returnType))

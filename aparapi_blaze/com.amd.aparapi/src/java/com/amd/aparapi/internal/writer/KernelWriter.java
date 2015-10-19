@@ -47,6 +47,7 @@ import com.amd.aparapi.internal.model.ClassModel.AttributePool.*;
 import com.amd.aparapi.internal.model.ClassModel.AttributePool.RuntimeAnnotationsEntry.*;
 import com.amd.aparapi.internal.model.ClassModel.*;
 import com.amd.aparapi.internal.model.HardCodedClassModel.TypeParameters;
+import com.amd.aparapi.internal.model.HardCodedMethodModel.METHODTYPE;
 import com.amd.aparapi.internal.model.ClassModel.ConstantPool.*;
 import com.amd.aparapi.internal.model.FullMethodSignature;
 import com.amd.aparapi.internal.model.FullMethodSignature.TypeSignature;
@@ -658,7 +659,7 @@ public abstract class KernelWriter extends BlockWriter {
 			final StringBuilder assignLine = new StringBuilder();
 
 			String signature = field.getDescriptor();
-System.err.println("Field: " + field.getName() + ", sig: " + signature);
+//System.err.println("Field: " + field.getName() + ", sig: " + signature);
 
 			ScalaParameter param = Utils.createScalaParameter(signature, field.getName(), ScalaParameter.DIRECTION.IN);
 			param.setAsReference();
@@ -749,6 +750,7 @@ System.err.println("Field: " + field.getName() + ", sig: " + signature);
 		for (final MethodModel mm : merged)
 			doesHeapAllocation(mm, mayFailHeapAllocation);
 
+/* For customized class, not supported now
 		for (HardCodedClassModel model : _entryPoint.getHardCodedClassModels()) {
 			for (HardCodedMethodModel method : model.getMethods()) {
 				if (!method.isGetter()) {
@@ -759,7 +761,7 @@ System.err.println("Field: " + field.getName() + ", sig: " + signature);
 				}
 			}
 		}
-
+*/
 		for (final MethodModel mm : merged) {
 			// write declaration :)
 			if (mm.isPrivateMemoryGetter())
@@ -781,7 +783,10 @@ System.err.println("Field: " + field.getName() + ", sig: " + signature);
 
 				ClassModel cm = entryPoint.getModelFromObjectArrayFieldsClasses(
 				                  convertedReturnType.trim(), new SignatureMatcher(sig));
-				fullReturnType = cm.getMangledClassName();
+				if (cm != null)
+					fullReturnType = cm.getMangledClassName();
+				else
+					fullReturnType = Utils.mapPrimitiveType(_entryPoint.getArgumentTypeHint("blazeOut"));
 			} else
 				fullReturnType = convertedReturnType;
 
@@ -844,6 +849,7 @@ System.err.println("Field: " + field.getName() + ", sig: " + signature);
 			// Map<Name, Type>. Type "0" means we just want to initalize the argument.
 			@SuppressWarnings("unchecked")
 			final Map<String, String> promoteLocalArguments = new HashMap();
+			final Set<String> iterArguments = new HashSet<String>();
 
 			final LocalVariableTableEntry<LocalVariableInfo> lvte = mm.getLocalVariableTableEntry();
 			for (final LocalVariableInfo lvi : lvte) {
@@ -864,9 +870,10 @@ System.err.println("Field: " + field.getName() + ", sig: " + signature);
 									String desc = descArray[i];
 									descList.add(desc);
 								}
-								Set<String> fields = Utils.getHardCodedClassMethods(clazzDesc);
-								for (String field : fields)
+								Set<String> fields = Utils.getHardCodedClassMethods(clazzDesc, METHODTYPE.VAR_ACCESS);
+								for (String field : fields) {
 									fieldList.add(field);
+								}
 								break;
 							}
 						}
@@ -910,9 +917,13 @@ System.err.println("Field: " + field.getName() + ", sig: " + signature);
 						write(convertedType);
 
 						String varName = lvi.getVariableName();
-						if (fieldList.size() != 0) {
-							varName = varName + fieldList.get(i);
+						if (fieldList.size() != 0) { // Explicit hard coded class method as variable name
+							if (Utils.isArrayBasedClass(clazzDesc))
+								write ("* ");
+							varName = varName + Utils.getDeclareHardCodedMethodString(clazzDesc, fieldList.get(i), varName);
 						}
+						if (Utils.isIteratorClass(clazzDesc)) // Add iterator variable
+							iterArguments.add(varName + BlockWriter.iteratorIndexSuffix);
 
 						// Issue #39: Replace variable name with "_" for local variable promotion
 						// FIXME: How about promoting output?
@@ -980,10 +991,17 @@ System.err.println("Field: " + field.getName() + ", sig: " + signature);
 			}
 
 			write(")");
+			newLine();
+			write("{");
+			newLine();
+
+			// Write iterator variables
+			for (String arg : iterArguments) {
+				write("int " + arg + " = 0");
+				newLine();
+			}
 
 			if (useFPGAStyle) {
-				newLine();
-				write("{");
 
 				// Issue #37: Local variable promotion for input arguments
 				// Issue #40: Inialize array type output
@@ -1001,10 +1019,8 @@ System.err.println("Field: " + field.getName() + ", sig: " + signature);
 				}
 			}
 			writeMethodBody(mm);
-			if (useFPGAStyle) {
-				newLine();
-				write("}");
-			}
+			newLine();
+			write("}");
 			newLine();
 		}
 
@@ -1044,6 +1060,8 @@ System.err.println("Field: " + field.getName() + ", sig: " + signature);
 				write("int " + p.getName() + BlockWriter.arrayItemLengthMangleSuffix);
 			}
 		}
+
+		// Write reference data
 		for (final String line : argLines) {
 			write(", ");
 			write(line);
@@ -1092,7 +1110,7 @@ System.err.println("Field: " + field.getName() + ", sig: " + signature);
 					if (p.getClazz() == null) // Primitive type
 						write(", &" + p.getName() + "[idx * " + p.getName() + BlockWriter.arrayItemLengthMangleSuffix + "]");
 					else if (Utils.isHardCodedClass(p.getClazz().getName())) {
-						Set<String> fields = Utils.getHardCodedClassMethods(p.getClazz().getName());
+						Set<String> fields = Utils.getHardCodedClassMethods(p.getClazz().getName(), METHODTYPE.VAR_ACCESS);
 						for (String field : fields)
 							write(", &" + p.getName() + field + "[idx " + p.getName() + 
 								BlockWriter.arrayItemLengthMangleSuffix + "]");
@@ -1105,7 +1123,7 @@ System.err.println("Field: " + field.getName() + ", sig: " + signature);
 					if (p.getClazz() == null) // Primitive type
 						write(", " + p.getName() + "[idx]");
 					else if (Utils.isHardCodedClass(p.getClazz().getName())) {
-						Set<String> fields = Utils.getHardCodedClassMethods(p.getClazz().getName());
+						Set<String> fields = Utils.getHardCodedClassMethods(p.getClazz().getName(), METHODTYPE.VAR_ACCESS);
 						for (String field : fields)
 							write(", " + p.getName() + field + "[idx]");
 					}
@@ -1120,7 +1138,7 @@ System.err.println("Field: " + field.getName() + ", sig: " + signature);
 				write(", &" + outParam.getName() + "[idx * " + outParam.getName() + 
 					BlockWriter.arrayItemLengthMangleSuffix + "]");
 			else if (Utils.isHardCodedClass(outParam.getClazz().getName())) {
-				Set<String> fields = Utils.getHardCodedClassMethods(outParam.getClazz().getName());
+				Set<String> fields = Utils.getHardCodedClassMethods(outParam.getClazz().getName(), METHODTYPE.VAR_ACCESS);
 				for (String field : fields)
 					write(", &" + outParam.getName() + field + "[idx " + outParam.getName() + 
 						BlockWriter.arrayItemLengthMangleSuffix + "]");

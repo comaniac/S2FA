@@ -49,6 +49,7 @@ import com.amd.aparapi.internal.model.ClassModel.ConstantPool.*;
 import com.amd.aparapi.internal.model.ClassModel.*;
 import com.amd.aparapi.internal.model.*;
 import com.amd.aparapi.internal.model.ClassModel.ConstantPool.NameAndTypeEntry;
+import com.amd.aparapi.internal.model.HardCodedMethodModel.METHODTYPE;
 
 import java.util.*;
 
@@ -69,6 +70,8 @@ public abstract class BlockWriter {
 	}
 
 	protected final boolean useFPGAStyle = true;
+
+	public final static String iteratorIndexSuffix = "_iterIdx";
 
 	public final static String arrayLengthMangleSuffix = "__javaArrayLength";
 
@@ -458,7 +461,7 @@ public abstract class BlockWriter {
 
 				String localType = convertType(descriptor, true);
 				if (Utils.isHardCodedClass(localType)) { // Assign to a hardcoded class type variable
-					Set<String> accessMethods = Utils.getHardCodedClassMethods(localType);
+					Set<String> accessMethods = Utils.getHardCodedClassMethods(localType, METHODTYPE.VAR_ACCESS);
 
 					// Match pattern: aload/getfield -> invokevirtual -> checkcast -> astore
 					if (!(_instruction.getFirstChild() instanceof I_CHECKCAST))
@@ -500,7 +503,6 @@ public abstract class BlockWriter {
 						else
 							type = localType;
 
-						// TODO: Promote local here
 						if (type.startsWith("["))
 							write("__local ");
 
@@ -512,7 +514,7 @@ public abstract class BlockWriter {
 						localType = localType.substring(localType.indexOf(',') + 1);
 					}
 				}
-				else { // Primitive or non-modeled type
+				else { // Primitive or non-modeled generic type
 					if (descriptor.startsWith("L"))
 						localType = localType.replace('.', '_');
 
@@ -744,7 +746,7 @@ public abstract class BlockWriter {
 		} else if (_instruction instanceof Return) {
 			writeReturn((Return) _instruction);
 		} else if (_instruction instanceof MethodCall) {
-//			write("/*methodcall*/");
+//			write("/* methodcall */");
 			final MethodCall methodCall = (MethodCall) _instruction;
 			final MethodEntry methodEntry = methodCall.getConstantPoolMethodEntry();
 			final String clazzName = methodEntry.toString().substring(0, methodEntry.toString().indexOf("."));
@@ -752,10 +754,20 @@ public abstract class BlockWriter {
 			// Issue #34: Ignore modeled method. This should be an argument.
 			if (!Utils.isHardCodedClass(clazzName))
 				writeCheck = writeMethod(methodCall, methodEntry);
-			else {
-				writeHardCodedMethod(methodCall, methodEntry);
-				writeCheck = false;
-			}
+			else
+				writeHardCodedMethod(_instruction, methodEntry.toString());
+		} else if (_instruction instanceof I_INVOKEINTERFACE) {
+			final I_INVOKEINTERFACE interfaceMethodCall = (I_INVOKEINTERFACE) _instruction;
+			final InterfaceMethodEntry methodEntry = interfaceMethodCall.getConstantPoolInterfaceMethodEntry();
+			final String clazzName = methodEntry.getClassEntry().getNameUTF8Entry().getUTF8();
+			final String methodName = methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+			final String fullName = clazzName + "." + methodName + "()";
+			
+			if (!Utils.isHardCodedClass(clazzName))
+				throw new RuntimeException("Interface method call " + interfaceMethodCall + 
+						" is not from a hard coded class: " + fullName);
+			else
+				writeHardCodedMethod(_instruction, fullName);
 		} else if (_instruction.getByteCode().equals(ByteCode.CLONE)) {
 //					write("/* clone */");
 			final CloneInstruction cloneInstruction = (CloneInstruction) _instruction;
@@ -966,7 +978,7 @@ public abstract class BlockWriter {
 
 		write("for (int localAryCpy = 0; localAryCpy < ");
 		if (isBrdcstVariable && varName.contains("Max")) {
-			writeHardCodedMethod(methodCall, methodEntry);
+			writeHardCodedMethod(child, methodEntry.toString());
 			write(arrayLengthMangleSuffix);
 		} else
 			write(maxLength);
@@ -978,7 +990,7 @@ public abstract class BlockWriter {
 			write(type + ";");
 		else {
 			if (isBrdcstVariable)
-				writeHardCodedMethod(methodCall, methodEntry);
+				writeHardCodedMethod(child, methodEntry.toString());
 			else
 				write("_" + varName);
 			write("[localAryCpy];");
@@ -989,13 +1001,18 @@ public abstract class BlockWriter {
 		return true;
 	}
 
-	public void writeHardCodedMethod(MethodCall _methodCall,
-	                           MethodEntry _methodEntry) throws CodeGenException {
-		assert(_methodCall instanceof I_INVOKEVIRTUAL);
+	public void writeHardCodedMethod(Instruction _instruction, String fullName) throws CodeGenException {
+
 		// Issue #34: Instead of writing variable access method, we traverse its previous instruction,
 		// which should be getField/aload, to know the variable name.
+		Instruction c = _instruction.getPrevPC();
+		String clazzName = fullName.substring(0, fullName.indexOf("."));
 
-		Instruction c = ((I_INVOKEVIRTUAL) _methodCall).getPrevPC();
+		String varName = null;
+
+		// FIXME
+		if (c instanceof I_INVOKEVIRTUAL)
+			c = c.getPrevPC();
 
 		if (c instanceof AccessField) { // Reference transformed object access. e.q. BlazeBroadcast
 			String fieldName = ((AccessField) c)
@@ -1003,20 +1020,27 @@ public abstract class BlockWriter {
 									.getNameAndTypeEntry()
 									.getNameUTF8Entry().getUTF8();
 			write("this->" + fieldName);
+			varName = fieldName;
 		}
 		else if (c instanceof AccessLocalVariable) { // Argument transformed object access. e.q. Tuple2/Vector
 			final AccessLocalVariable localVariableLoadInstruction = (AccessLocalVariable) c;
 			final LocalVariableInfo localVariable = localVariableLoadInstruction.getLocalVariableInfo();
-			write(localVariable.getVariableName());
+			varName = localVariable.getVariableName();
+			write(varName);
+		}
+		else if (c instanceof MethodCall) { // Consecutive method call, TODO
+			;
+		}
+		else if (c instanceof I_CHECKCAST) { // Consecutive method call, TODO
+			;
 		}
 		else
-			throw new RuntimeException("Expecting getfield/aload, but found " + c);
+			throw new RuntimeException("Expecting getfield/aload for " + _instruction + ", but found " + c);
 
-		final String fullName = _methodEntry.toString();
 		String methodName = fullName.substring(fullName.indexOf(".") + 1, fullName.indexOf("("));
 		if (methodName.contains("$")) // Special case: Scala/Tuple2._1$mcD$sp()D (why?
 			methodName = methodName.substring(0, methodName.indexOf("$"));
-		write(methodName);
+		write(Utils.getAccessHardCodedMethodString(clazzName, methodName, varName));
 
 		return ;
 	}

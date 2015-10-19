@@ -37,10 +37,8 @@ import org.apache.spark.scheduler._
 import org.apache.spark.util.random._
 
 import com.amd.aparapi.internal.model.ClassModel
-import com.amd.aparapi.internal.model.Tuple2ClassModel
-import com.amd.aparapi.internal.model.HardCodedClassModels
-import com.amd.aparapi.internal.model.HardCodedClassModels.ShouldNotCallMatcher
 import com.amd.aparapi.internal.model.Entrypoint
+import com.amd.aparapi.internal.model.HardCodedClassModels.ShouldNotCallMatcher
 import com.amd.aparapi.internal.writer.KernelWriter
 import com.amd.aparapi.internal.writer.KernelWriter.WriterAndKernel
 import com.amd.aparapi.internal.writer._
@@ -531,7 +529,6 @@ class AccRDD[U: ClassTag, T: ClassTag](
     }
     else {
       val classModel : ClassModel = ClassModel.createClassModel(acc.getClass, null, new ShouldNotCallMatcher())
-      val hardCodedClassModels : HardCodedClassModels = new HardCodedClassModels()
       var isMapPartitions: Boolean = if (this.getClass.getName.contains("AccMapPartitionsRDD")) true else false
       var method =  if (!isMapPartitions) classModel.getPrimitiveCallMethod 
                     else classModel.getPrimitiveCallPartitionsMethod
@@ -540,10 +537,10 @@ class AccRDD[U: ClassTag, T: ClassTag](
         if (method == null)
           throw new RuntimeException("Cannot find available call method.")
         val descriptor : String = method.getDescriptor
-        val params : LinkedList[ScalaParameter] = new LinkedList[ScalaParameter] // = paramsWithDim._1
+        val params : LinkedList[ScalaParameter] = new LinkedList[ScalaParameter]
 
         val fun: T => U = acc.call
-        entryPoint = classModel.getEntrypoint("call", descriptor, fun, params, hardCodedClassModels)
+        entryPoint = classModel.getEntrypoint("call", descriptor, fun, params, null)
         val writerAndKernel = KernelWriter.writeToString(entryPoint, params)
         val openCL = writerAndKernel.kernel
         val kernelFile = new PrintWriter(new File(kernelPath))
@@ -559,29 +556,6 @@ class AccRDD[U: ClassTag, T: ClassTag](
           logWarning("[CodeGen] OpenCL kernel generated failed: " + sw.toString)
       }
     }
-  }
-
-  def createHardCodedClassModel(
-    obj: Tuple2[_, _],
-    hardCodedClassModels: HardCodedClassModels, 
-    param: ScalaParameter
-  ) {
-    val inputClassType1 = obj._1.getClass
-    val inputClassType2 = obj._2.getClass
-
-    val inputClassType1Name = CodeGenUtil.cleanClassName(
-        inputClassType1.getName)
-    val inputClassType2Name = CodeGenUtil.cleanClassName(
-        inputClassType2.getName)
-
-    val tuple2ClassModel : Tuple2ClassModel = Tuple2ClassModel.create(
-        inputClassType1Name, inputClassType2Name, param.getDir != DIRECTION.IN)
-    hardCodedClassModels.addClassModelFor(obj.getClass, tuple2ClassModel)
-
-    param.addTypeParameter(inputClassType1Name,
-        !CodeGenUtil.isPrimitive(inputClassType1Name))
-    param.addTypeParameter(inputClassType2Name,
-        !CodeGenUtil.isPrimitive(inputClassType2Name))
   }
 }
 

@@ -5,7 +5,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.LinkedList;
 import com.amd.aparapi.internal.model.ClassModel;
-import com.amd.aparapi.internal.model.Tuple2ClassModel;
 import com.amd.aparapi.internal.util.*;
 
 public class ScalaTuple2Parameter extends ScalaParameter {
@@ -63,14 +62,26 @@ public class ScalaTuple2Parameter extends ScalaParameter {
 		if (dir != DIRECTION.IN)
 			throw new RuntimeException("getAssignString can only be applied for input paramter.");
 
-		String firstName = name + Utils.getHardCodedClassMethod(type, 0);
-		String secondName = name + Utils.getHardCodedClassMethod(type, 1);
+		String firstName = name + "_1";
+		String secondName = name + "_2";
 
 		StringBuilder sb = new StringBuilder();
 		sb.append("this->" + firstName + " = " + firstName + "; ");
 		sb.append("this->" + secondName + " = " + secondName);
 
 		return sb.toString();
+	}
+
+	@Override 
+	public String mapIdxToMethod(int idx) {
+		switch (idx) {
+			case 0: 
+				return "_1";
+			case 1:
+				return "_2";
+			default:
+				return "";
+		}
 	}
 
 	@Override
