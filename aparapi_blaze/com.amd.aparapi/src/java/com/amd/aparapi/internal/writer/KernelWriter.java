@@ -770,9 +770,9 @@ public abstract class KernelWriter extends BlockWriter {
 			final String returnType = mm.getReturnType();
 			this.currentReturnType = returnType;
 
-			final String fullReturnType;
-			final String convertedReturnType = convertType(returnType, true);
-			if (returnType.startsWith("L")) { // FIXME: hardcoded class model for return type
+			String fullReturnType;
+			String convertedReturnType = convertType(returnType, true);
+			if (returnType.startsWith("L")) {
 				SignatureEntry sigEntry =
 				  mm.getMethod().getAttributePool().getSignatureEntry();
 				final TypeSignature sig;
@@ -785,24 +785,28 @@ public abstract class KernelWriter extends BlockWriter {
 				                  convertedReturnType.trim(), new SignatureMatcher(sig));
 				if (cm != null)
 					fullReturnType = cm.getMangledClassName();
-				else
-					fullReturnType = Utils.mapPrimitiveType(_entryPoint.getArgumentTypeHint("blazeOut"));
+				else {
+					String returnTypeHint = _entryPoint.getArgumentTypeHint("blazeOut");
+					// FIXME: Tuple2 <T, U> ?
+					returnTypeHint = returnTypeHint.substring(returnTypeHint.indexOf("<") + 1, returnTypeHint.indexOf(">"));
+					fullReturnType = Utils.mapPrimitiveType(returnTypeHint);
+				}
 			} else
 				fullReturnType = convertedReturnType;
-
+ 
 			if (mm.getSimpleName().equals("<init>")) {
 				// Transform constructors to return a reference to their object type
 				ClassModel owner = mm.getMethod().getClassModel();
 				write("static __global " + owner.getClassWeAreModelling().getName().replace('.', '_') + " * ");
 				processingConstructor = true;
-			} else if (returnType.startsWith("L")) {
+			} else if (returnType.startsWith("L") && !Utils.isHardCodedClass(returnType)) {
 				write("static __global " + fullReturnType);
 				write(" *");
 				processingConstructor = false;
 			} else {
 				// Issue #40 Array type output support:
 				// Change the return type to void
-				if (returnType.startsWith("[")) {
+				if (returnType.startsWith("[") || Utils.isArrayBasedClass(returnType)) {
 					write("/* [Blaze CodeGen] WARNING: This method tries to return an array in ByteCode.");
 					newLine();
 					write("   This function must be called by the main function of the kernel, ");
@@ -934,7 +938,7 @@ public abstract class KernelWriter extends BlockWriter {
 							write(varName);
 
 						// Add item length argument for input array.
-						if (descriptor.startsWith("["))
+						if (descriptor.startsWith("[") || Utils.isArrayBasedClass(clazzDesc))
 							write(", int " + lvi.getVariableName() + BlockWriter.arrayItemLengthMangleSuffix);
 						alreadyHasFirstArg = true;
 					}
@@ -949,9 +953,11 @@ public abstract class KernelWriter extends BlockWriter {
 				// aload 		<- the 2nd instruction from the last
 				// areturn
 				Instruction retVar = mm.getPCHead();
-				while (retVar.getNextPC().getNextPC() != null)
+				while (retVar.getNextPC() != null) // Find the last
 					retVar = retVar.getNextPC();
-				assert(retVar instanceof AccessLocalVariable);
+				while (!(retVar instanceof AccessLocalVariable))
+					retVar = retVar.getPrevPC();
+
 				final LocalVariableInfo localVariable = ((AccessLocalVariable) retVar).getLocalVariableInfo();
 				String varName = localVariable.getVariableName();
 				if (fullReturnType.contains("float"))
@@ -986,7 +992,10 @@ public abstract class KernelWriter extends BlockWriter {
 				if (newArrayInst == null)
 					System.err.println("WARNING: Cannot find local variable declaration for array type output.");
 
-				write(", __global " + fullReturnType + varName);
+				write(", __global " + fullReturnType);
+				if (Utils.isArrayBasedClass(returnType))
+					write("* ");
+				write(varName);
 				write(", int " + varName + BlockWriter.arrayItemLengthMangleSuffix);
 			}
 

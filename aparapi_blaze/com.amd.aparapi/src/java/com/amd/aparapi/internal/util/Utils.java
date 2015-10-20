@@ -69,13 +69,13 @@ public class Utils {
 			newType = " * ";
 
 		if (type.equals("I"))
-			newType = newType + "int";
+			newType = newType + "int ";
 		else if (type.equals("F"))
-			newType = newType + "float";
+			newType = newType + "float ";
 		else if (type.equals("D"))
-			newType = newType + "double";
+			newType = newType + "double ";
 		else if (type.equals("J"))
-			newType = newType + "long";
+			newType = newType + "long ";
 
 		return newType;
 	}

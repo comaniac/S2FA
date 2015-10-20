@@ -1129,6 +1129,7 @@ public class Entrypoint implements Cloneable {
 
 							if (typeHint == null) {
 								if (clazz.startsWith("L") && Utils.isHardCodedClass(clazz.substring(1))) {
+									clazz = clazz.substring(1).replace(";", "");
 									// FIXME: Currently we just leverage the nearest aload to guess the type.
 									Instruction aloadInst = curr.getPrevPC();
 									while(!(aloadInst instanceof AccessLocalVariable))
@@ -1142,6 +1143,7 @@ public class Entrypoint implements Cloneable {
 									// FIXME: Iterator eliminates an array, but this is not general
 									if (typeHint.startsWith("["))
 										typeHint = typeHint.substring(1);
+									typeHint = clazz + "<" + typeHint + ">";
 								}
 								else // Primitive type
 									typeHint = clazz;

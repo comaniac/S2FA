@@ -33,13 +33,18 @@ public abstract class ScalaParameter {
 		this.typeParameterDescs = new LinkedList<String>();
 		this.typeParameterIsObject = new LinkedList<Boolean>();
 
+		boolean isArrayBased = false;
+		if (fullSig.indexOf('<') != -1)
+			isArrayBased = Utils.isArrayBasedClass(fullSig.substring(0, fullSig.indexOf("<")));
+
 		String eleSig = null;
-		if (fullSig.charAt(0) != '[') {
+
+		if (fullSig.charAt(0) != '[' && !isArrayBased) {
 			eleSig = fullSig;
 			arrayOrNot = false;
 		}
 		else {
-			eleSig = fullSig.substring(1);
+			eleSig = fullSig.replace("[", "");
 			arrayOrNot = true;
 		}
 
