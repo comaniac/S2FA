@@ -38,9 +38,7 @@ import org.apache.spark.broadcast._
 class BlazeRuntime(sc: SparkContext) extends Logging {
 
   // The application signature generated based on Spark application ID.
-  val appSignature: Int = Math
-    .abs(("""\d+""".r findAllIn sc.applicationId)
-    .addString(new StringBuilder).toLong.toInt)
+  val appSignature: String = sc.applicationId
 
   var BroadcastList: List[BlazeBroadcast[_]] = List()
 
@@ -59,9 +57,10 @@ class BlazeRuntime(sc: SparkContext) extends Logging {
         .distinct
         .map(w => (w, 1027))
 
-      logInfo("Releasing broadcast blocks from workers (" + WorkerList.length + "): " + WorkerList.map(w => w._1).mkString(", "))
+      logInfo("Releasing broadcast blocks from workers (" + WorkerList.length + "): " + 
+        WorkerList.map(w => w._1).mkString(", "))
 
-      val msg = DataTransmitter.buildMessage(AccMessage.MsgType.ACCBROADCAST)
+      val msg = DataTransmitter.buildMessage(appSignature, AccMessage.MsgType.ACCTERM)
   
       for (e <- BroadcastList) {
         DataTransmitter.addBroadcastData(msg, e.brdcst_id)
@@ -89,7 +88,10 @@ class BlazeRuntime(sc: SparkContext) extends Logging {
         }
       }
     }
-    sc.stop
+    // do not shutdown SparkContext here since BlazeRuntime does not construct
+    // a SparkContext
+    // sc.stop
+    // logInfo("Application " + appSignature + " shutdown.")
   }
 
   /**

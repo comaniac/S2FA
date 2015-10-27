@@ -41,13 +41,13 @@ friend class BlazeTest;
 public:
   Task(int _num_input): 
     status(NOTREADY), 
+    estimated_time(-1),
     num_input(_num_input),
     num_ready(0)
   {; }
 
-  void setPlatform(Platform *_platform) {
-    platform = _platform;  
-  }
+  virtual int estimateTime() { return -1; }
+  virtual int estimateSpeedup() { return -1; }
 
   // main function to be overwritten by accelerator implementations
   virtual void compute() {;}
@@ -63,25 +63,10 @@ public:
     }
   }
   
-  std::string getConfig(int64_t id, std::string key) {
-
-    // search input_blocks for matching partition
-    int idx;
-    for (idx=0; idx<input_blocks.size(); idx++) {
-      if (input_blocks[idx] == id) {
-        break;
-      } 
-    }
-    // matching block is not found
-    if (idx == input_blocks.size()) {
-      return std::string(); 
-    }
-    if (config_table[idx].find(key) != config_table[idx].end()) {
-      return config_table[idx][key];
-    } else {
-      return std::string();
-    }
-  }
+  // get config for input blocks
+  // TODO: need a way to specify general configs
+  // or config for output block
+  std::string getConfig(int idx, std::string key);
 
 protected:
 
@@ -97,75 +82,21 @@ protected:
     return NULL;
   }
 
-  TaskEnv* getEnv() {
-    return platform->getEnv();  
-  }
+  TaskEnv* getEnv() { return platform->getEnv();  }
 
-  char* getOutput(
-      int idx, 
-      int item_length, 
-      int num_items,
-      int data_width) 
-  {
-    if (idx < output_blocks.size()) {
-      // if output already exists, return the pointer 
-      // to the existing block
-      return output_blocks[idx]->getData();
-    }
-    else {
-      // if output does not exist, create one
-      
-      int length = num_items*item_length;
-
-      // create platform-specific block object
-      DataBlock_ptr block = platform->createBlock(length, length*data_width);
-     
-      block->setNumItems(num_items);
-
-      output_blocks.push_back(block);
-
-      return block->getData();
-    }
-  }
-
-  int getInputLength(int idx) { 
-    if (idx < input_blocks.size()) {
-      return input_table[input_blocks[idx]]->getLength(); 
-    }
-    else {
-      throw std::runtime_error("getInputLength out of bound idx");
-    }
-  }
-
-  int getInputNumItems(int idx) { 
-    if (idx < input_blocks.size()) {
-      return input_table[input_blocks[idx]]->getNumItems() ; 
-    }
-    else {
-      throw std::runtime_error("getInputNumItems out of bound idx");
-    }
-  }
-
-  char* getInput(int idx) {
-    
-    if (idx < input_blocks.size()) {
-      return input_table[input_blocks[idx]]->getData();      
-    }
-    else {
-      throw std::runtime_error("getInput out of bound idx");
-    }
-  }
+  char* getOutput(int idx, int item_length, int num_items, int data_width);
+  
+  int getInputLength(int idx);
+  int getInputNumItems(int idx);
+  char* getInput(int idx);
 
   // add a configuration for a dedicated block 
-  void addConfig(int idx, std::string key, std::string val) {
-
-    config_table[idx][key] = val;
-  }
+  void addConfig(int idx, std::string key, std::string val);
 
 private:
 
+  // used by CommManager
   void addInputBlock(int64_t partition_id, DataBlock_ptr block);
-
   void inputBlockReady(int64_t partition_id, DataBlock_ptr block);
 
   DataBlock_ptr getInputBlock(int64_t block_id);
@@ -176,6 +107,9 @@ private:
    
   DataBlock_ptr onDataReady(const DataMsg &blockInfo);
 
+  void setPlatform(Platform *_platform) { platform = _platform;  }
+
+
   bool isReady();
 
   enum {
@@ -185,6 +119,11 @@ private:
     FAILED,
     COMMITTED
   } status;
+
+  // an unique id within each TaskQueue
+  int task_id;
+
+  int estimated_time;
 
   // pointer to the platform
   Platform *platform;

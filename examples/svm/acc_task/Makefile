@@ -24,7 +24,7 @@ COMPILE= $(CFLAGS) \
 				 -I$(BOOST_DIR)/include \
 				 -I$(PROTOBUF_DIR)/include 
 
-ACC = LogisticGradientWithLoss_base
+ACC = HingeGradient_base
 
 OBJS= $(addsuffix .so, $(addprefix ../, $(ACC)))
 

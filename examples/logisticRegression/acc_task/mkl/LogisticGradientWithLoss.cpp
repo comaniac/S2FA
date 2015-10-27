@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <sys/time.h>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -18,13 +19,13 @@
 
 using namespace blaze;
 
-class LogisticGradientWithLoss : public Task {
+class LogisticGradientWithLoss_mkl : public Task {
 public:
 
   // extends the base class constructor
   // to indicate how many input blocks
   // are required
-  LogisticGradientWithLoss(): Task(2) {;}
+  LogisticGradientWithLoss_mkl(): Task(2) {;}
 
   // overwrites the compute function
   // Input data:
@@ -33,6 +34,8 @@ public:
   // Output data:
   // - gradient plus loss: [double[] gradient, double loss]
   virtual void compute() {
+
+    struct	timeval t1, t2, tr;
 
     // get input data length
     int data_length = getInputLength(0);
@@ -65,38 +68,10 @@ public:
 
     memset(output, 0, sizeof(double)*(weight_length+1));
 
-#ifdef USEMKL
-		int m = L;
-		int n = D;
-		int inc = 1;
-		float alpha = 1.0f;
-		float beta = .0f;
-
-    for(int k = 0; k < nsample; k++ ) {
-
-      cblas_sgemv(
-          CblasRowMajor, CblasNoTrans, 
-          m, n, alpha, 
-          weights, n, 
-          data+k*(D+1)+1, 
-          inc, beta, 
-          label, inc);
-
-      for (int i=0; i<L; i++) {
-        float coeff = (1. / 
-            (1. + exp(-data[k*(D+L)+i]*label[i] )) 
-            - 1.)* data[k*(D+L)+i];
-
-        cblas_saxpy(
-            n, coeff, 
-            data+k*(D+L)+L, inc, 
-            gradient+i*(D+1), inc);
-      }
-    }
-#else
-    // TODO: is it really L-1 not L?
     double* margins = new double[L-1];
 
+    gettimeofday(&t1, NULL);
+    //for (int k = 0; k < 100; k++ ) {
     for(int k = 0; k < num_samples; k++ ) {
       
       double marginY = 0.0;
@@ -107,45 +82,76 @@ public:
       double* feature = data + k*(D+1) + 1;
 
       for (int i=0; i<L-1; i++) {
-        double margin = 0.0;
+        margins[i] = 0.0;
+      }
+
+      // gemv
+#ifdef USEMKL
+      int inc = 1;
+      int m = L-1;
+      int n = D;
+      double alpha = 1.0;
+      double beta = 0.0;
+
+      cblas_dgemv(
+          CblasRowMajor, CblasNoTrans, 
+          m, n, alpha, 
+          weights, n, 
+          feature, 
+          inc, beta, 
+          margins, inc);
+#else
+      for (int i=0; i<L-1; i++) {
         for(int j = 0; j < D; j+=1 ) {
-          margin += weights[i*D+j] * feature[j];
+          margins[i] += weights[i*D+j] * feature[j];
         }
+      }
+#endif
+      for (int i=0; i<L-1; i++) {
         if (i == (int)label - 1) {
-          marginY = margin;
+          marginY = margins[i];
         }
-        if (margin > maxMargin) {
-          maxMargin = margin;
+        if (margins[i] > maxMargin) {
+          maxMargin = margins[i];
           maxMarginIndex = i;
         }
-        margins[i] = margin;
+      }
+
+      for (int i=0; i<L-1; i++) {
+        if (maxMargin > 0) {
+          margins[i] -= maxMargin;
+        }
+        margins[i] = exp(margins[i]);
       }
 
       double sum = 0.0;
       for (int i=0; i<L-1; i++) {
-        if (maxMargin > 0) {
-          margins[i] -= maxMargin;
-          if (i == maxMarginIndex) {
-            sum += exp(-maxMargin);
-          }
-          else {
-            sum += exp(margins[i]);
-          }
-        } 
+        if (i == maxMarginIndex && maxMargin > 0) {
+          sum += exp(-maxMargin);
+        }
         else {
-          sum += exp(margins[i]);
+          sum += margins[i];
         }
       }
 
       // update gradient
       for(int i = 0; i < L-1; i++ ) {
-        double multiplier = exp(margins[i]) / (sum+1.0);
+        double multiplier =margins[i] / (sum+1.0);
         if (label != 0.0 && label == i+1) {
           multiplier -= 1.0;
         }
+
+        // axpy
+#ifdef USEMKL
+        cblas_daxpy(
+            n, multiplier, 
+            feature, inc, 
+            output+i*D, inc);
+#else
         for(int j = 0; j < D; j++ ) {
-          output[i*D+j] +=  multiplier*feature[j];
+          output[i*D+j] += multiplier*feature[j];
         }
+#endif
       }
 
       // compute loss
@@ -158,12 +164,18 @@ public:
       }
       output[weight_length] += loss;
     }
-#endif
+
+    gettimeofday(&t2, NULL);
+    timersub(&t1, &t2, &tr);
+    printf("Task execution takes %.4f ms\n", 
+        fabs(tr.tv_sec*1000.0+(double)tr.tv_usec/1000.0));
+
+    delete [] margins;
   }
 };
 
 extern "C" Task* create() {
-  return new LogisticGradientWithLoss();
+  return new LogisticGradientWithLoss_mkl();
 }
 
 extern "C" void destroy(Task* p) {

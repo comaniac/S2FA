@@ -6,8 +6,7 @@ namespace blaze {
                     std::string(__func__) +\
                     std::string("(): ")
 
-void OpenCLBlock::alloc(int64_t _size) {
-
+void OpenCLBlock::alloc() {
 
   if (!allocated) {
     //NOTE: assuming buffer allocation is thread-safe
@@ -17,78 +16,147 @@ void OpenCLBlock::alloc(int64_t _size) {
 
     data = clCreateBuffer(
         context, CL_MEM_READ_ONLY,  
-        _size, NULL, &err);
+        size, NULL, &err);
 
     if (err != CL_SUCCESS) {
       throw std::runtime_error("Failed to allocate OpenCL block");
     }
-    size = _size;
 
     allocated = true;
   }
 }
 
-/*
+void OpenCLBlock::readFromMem(std::string path) {
+
+  boost::iostreams::mapped_file_source fin;
+
+  fin.open(path, size);
+
+  if (fin.is_open()) {
+    
+    // first copy data from shared memory to a temp buffer 
+    // NOTE: here the "size" maybe aligned size, so mem size 
+    // should be calculated based on length
+    size_t memsize = length * data_width;
+
+    char* temp_data = new char[memsize];
+
+    // memcpy is parallel among all tasks
+    memcpy((void*)temp_data, (void*)fin.data(), memsize);
+
+    // then write temp buffer to FPGA, will be serialized among all tasks
+    writeData(temp_data, size);
+
+    delete [] temp_data;
+    fin.close();
+  }
+  else {
+    throw std::runtime_error(std::string("Cannot find file: ") + path);
+  }
+}
+
+void OpenCLBlock::writeToMem(std::string path) {
+
+  // lazy allocation
+  alloc();
+
+  int data_size = size;
+
+  boost::iostreams::mapped_file_params param(path); 
+  param.flags = boost::iostreams::mapped_file::mapmode::readwrite;
+  param.new_file_size = data_size;
+  param.length = data_size;
+  boost::iostreams::mapped_file_sink fout(param);
+
+  if (fout.is_open()) {
+
+    // first copy data from FPGA to a temp buffer, will be serialized among all tasks
+    char* temp_data = new char[data_size];
+    readData(temp_data, data_size);
+
+    // then copy data from temp buffer to shared memory, in parallel among all tasks
+    memcpy((void*)fout.data(), temp_data, data_size);
+
+    delete [] temp_data;
+    fout.close();
+  }
+  else {
+    throw std::runtime_error(std::string("Cannot write file: ") + path);
+  }
+}
+
 void OpenCLBlock::writeData(void* src, size_t _size) {
+  if (_size > size) {
+    throw std::runtime_error("Not enough space left in Block");
+  }
 
-  if (allocated) {
+  // lazy allocation
+  alloc();
 
-    // WriteBuffer need to be exclusive
-    // lock env for this 
-    boost::lock_guard<OpenCLEnv> guard(*env);
-
-    cl_command_queue command = env->getCmdQueue();
-    cl_event event;
-
-    int err = clEnqueueWriteBuffer(
-      command, data, CL_TRUE, 0, 
-      _size, src, 0, NULL, &event);
-
-    if (err != CL_SUCCESS) {
-      throw std::runtime_error(
-          "Failed to write to OpenCL block"+
-          std::to_string((long long)err));
-    }
-    clWaitForEvents(1, &event);
-
+  if (!aligned) {
+    writeData(src, _size, 0);
     ready = true;
   }
   else {
-    throw std::runtime_error("Block memory not allocated");
+    // get the command queue handler
+    cl_command_queue command = env->getCmdQueue();
+
+    // lock TaskEnv for exclusive access to OpenCL command queue
+    boost::lock_guard<OpenCLEnv> guard(*env);
+
+    // array of cl_event to wait until all buffer copy is finished
+    //cl_event *events = new cl_event[num_items];
+
+    // copy the data element-by-element since each element is aligned
+    for (int k=0; k<num_items; k++) {
+
+      // element size in memory
+      int data_size = item_length*data_width;
+
+      int err = clEnqueueWriteBuffer(
+          command, data, CL_TRUE, k*item_size, 
+          data_size, (void*)((char*)src+k*data_size), 
+          0, NULL, NULL);
+
+      if (err != CL_SUCCESS) {
+        throw std::runtime_error("Failed to write to OpenCL block");
+      }
+    }  
+    ready = true;
+    //delete [] events;
   }
 }
-*/
 
 void OpenCLBlock::writeData(void* src, size_t _size, size_t offset) {
 
-  if (allocated) {
-    if (offset+_size > size) {
-      throw std::runtime_error("Exists block size");
-    }
+  if (offset+_size > size) {
+    throw std::runtime_error("Exists block size");
+  }
 
-    // WriteBuffer need to be exclusive
-    // lock env for this 
-    boost::lock_guard<OpenCLEnv> guard(*env);
+  // lazy allocation
+  alloc();
 
-    // get the command queue handler
-    cl_command_queue command = env->getCmdQueue();
-    cl_event event;
+  // get the command queue handler
+  cl_command_queue command = env->getCmdQueue();
+  cl_event event;
 
-    int err = clEnqueueWriteBuffer(
+  // use a lock on TaskEnv to guarantee single-thread access to command queues
+  // NOTE: this is unnecessary if the OpenCL runtime is thread-safe
+  boost::lock_guard<OpenCLEnv> guard(*env);
+  //env->lock();
+
+  int err = clEnqueueWriteBuffer(
       command, data, CL_TRUE, offset, 
       _size, src, 0, NULL, &event);
 
-    if (err != CL_SUCCESS) {
-      throw std::runtime_error("Failed to write to OpenCL block");
-    }
-    //clWaitForEvents(1, &event);
-
-    if (offset + _size == size) {
-      ready = true;
-    }
+  if (err != CL_SUCCESS) {
+    throw std::runtime_error("Failed to write to OpenCL block");
   }
-  else {
-    throw std::runtime_error("Block memory not allocated");
+  //env->unlock();
+  //clWaitForEvents(1, &event);
+
+  if (offset + _size == size) {
+    ready = true;
   }
 }
 
@@ -96,13 +164,14 @@ void OpenCLBlock::writeData(void* src, size_t _size, size_t offset) {
 void OpenCLBlock::readData(void* dst, size_t size) {
   if (allocated) {
 
-    // ReadBuffer need to be exclusive
-    // lock env for this 
-    boost::lock_guard<OpenCLEnv> guard(*env);
-    
     // get the command queue handler
     cl_command_queue command = env->getCmdQueue();
     cl_event event;
+
+    // use a lock on TaskEnv to guarantee single-thread access to command queues
+    // NOTE: this is unnecessary if the OpenCL runtime is thread-safe
+    boost::lock_guard<OpenCLEnv> guard(*env);
+    //env->lock();
 
     int err = clEnqueueReadBuffer(
       command, data, CL_TRUE, 0, 
@@ -111,7 +180,8 @@ void OpenCLBlock::readData(void* dst, size_t size) {
     if (err != CL_SUCCESS) {
       throw std::runtime_error("Failed to write to OpenCL block");
     }
-    clWaitForEvents(1, &event);
+    //env->unlock();
+    //clWaitForEvents(1, &event);
   }
   else {
     throw std::runtime_error("Block memory not allocated");
@@ -119,9 +189,6 @@ void OpenCLBlock::readData(void* dst, size_t size) {
 }
 
 DataBlock_ptr OpenCLBlock::sample(char* mask) {
-
-  int item_length = length / num_items;
-  int item_size   = size / num_items;
 
   // count the total number of 
   int masked_items = 0;
@@ -132,13 +199,12 @@ DataBlock_ptr OpenCLBlock::sample(char* mask) {
   }
 
   OpenCLBlock* ocl_block = new OpenCLBlock(env,
-      item_length*masked_items, 
-      item_size*masked_items);
+        item_length, 
+        item_size,
+        aligned ? align_width : item_size);
 
   DataBlock_ptr block(ocl_block);
 
-  block->setNumItems(masked_items);
-  
   cl_mem masked_data = *((cl_mem*)(ocl_block->getData()));
 
   // get the command queue handler
@@ -176,7 +242,7 @@ DataBlock_ptr OpenCLBlock::sample(char* mask) {
   }
   ocl_block->ready = true;
 
-  delete events;
+  delete [] events;
 
   return block;
 }
