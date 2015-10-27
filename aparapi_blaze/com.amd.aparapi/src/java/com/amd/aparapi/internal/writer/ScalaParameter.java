@@ -16,6 +16,7 @@ public abstract class ScalaParameter {
 	protected HardCodedClassModel clazzModel;
 	protected Class<?> clazz;
 	protected boolean isReference;
+	protected final boolean primitiveOrNot;
 	protected final boolean arrayOrNot;
 	protected final String type;
 	protected final String name;
@@ -32,6 +33,11 @@ public abstract class ScalaParameter {
 
 		this.typeParameterDescs = new LinkedList<String>();
 		this.typeParameterIsObject = new LinkedList<Boolean>();
+
+		if (this instanceof ScalaScalarParameter || this instanceof ScalaArrayParameter)
+			this.primitiveOrNot = true;
+		else
+			this.primitiveOrNot = false;
 
 		boolean isArrayBased = false;
 		if (fullSig.indexOf('<') != -1)
@@ -90,6 +96,7 @@ public abstract class ScalaParameter {
 		this.name = name;
 		this.dir = dir;
 		this.isReference = false;
+		this.primitiveOrNot = false;
 		this.typeParameterDescs = new LinkedList<String>();
 		this.typeParameterIsObject = new LinkedList<Boolean>();
 		if (type.charAt(0) != '[')
@@ -130,6 +137,10 @@ public abstract class ScalaParameter {
 		return false;
 	}
 
+	public String getClassName() {
+		return type;
+	}
+
 	public String getType() {
 		StringBuilder sb = new StringBuilder();
 		sb.append(type.replace('.', '_'));
@@ -161,6 +172,10 @@ public abstract class ScalaParameter {
 			param = "__global " + fieldDesc.replace('.', '_') + "* " + name + (field + 1);
 		}
 		return param;
+	}
+
+	public boolean isPrimitive() {
+		return this.primitiveOrNot;
 	}
 
 	public void setAsReference() {

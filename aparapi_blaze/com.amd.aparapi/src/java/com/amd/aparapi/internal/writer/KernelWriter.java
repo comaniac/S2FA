@@ -95,6 +95,7 @@ public abstract class KernelWriter extends BlockWriter {
 		scalaMapped.add("scala/math/package$.sqrt(D)D");
 		scalaMapped.add("scala/math/package$.pow(D)D");
 		scalaMapped.add("scala/math/package$.exp(D)D");
+		scalaMapped.add("scala/math/package$.log(D)D");
 	}
 
 	public final static Set<String> SelfMapped = new HashSet<String>();
@@ -107,6 +108,7 @@ public abstract class KernelWriter extends BlockWriter {
 		XilinxMethodMap.put("sqrt", new String[] {"float"});
 		XilinxMethodMap.put("pow", new String[] {"float", "float"});
 		XilinxMethodMap.put("exp", new String[] {"float"});
+		XilinxMethodMap.put("log", new String[] {"float"});
 	}
 
 	public final static Map<String, String> javaToCLIdentifierMap = new HashMap<String, String>();
@@ -650,6 +652,9 @@ public abstract class KernelWriter extends BlockWriter {
 		final List<String> argLines = new ArrayList<String>();
 		final List<String> assigns = new ArrayList<String>();
 
+		// Set true if there has at least one method returns Iterator
+		boolean isMapPartitions = false;
+
 		entryPoint = _entryPoint;
 
 		// Add reference fields (broadcast) to 1) "this", 2) argument of main, 3) "this" assignment
@@ -703,6 +708,10 @@ public abstract class KernelWriter extends BlockWriter {
 
 		// Include self mapped function libaray
 		write("#include \"boko.h\"");
+		newLine();
+
+		// Macros
+		write("#define ITER_INC(x, inc) (((x)+=(inc))-(inc))");
 		newLine();
 
 		if (Config.enableDoubles || _entryPoint.requiresDoublePragma()) {
@@ -769,6 +778,9 @@ public abstract class KernelWriter extends BlockWriter {
 
 			final String returnType = mm.getReturnType();
 			this.currentReturnType = returnType;
+
+			if (returnType.contains("scala/collection/Iterator"))
+				isMapPartitions = true;
 
 			String fullReturnType;
 			String convertedReturnType = convertType(returnType, true);
@@ -891,7 +903,7 @@ public abstract class KernelWriter extends BlockWriter {
 						if (alreadyHasFirstArg)
 							write(", ");
 
-						if (descriptor.startsWith("["))
+						if (descriptor.startsWith("[") || Utils.isArrayBasedClass(clazzDesc))
 							write(" __global ");
 
 						// FIXME: We haven't create a programming model for user-defined classes.
@@ -937,6 +949,10 @@ public abstract class KernelWriter extends BlockWriter {
 						} else
 							write(varName);
 
+						// Add array length argument for mapPartitions.
+						if (isMapPartitions)
+							write(", int " + lvi.getVariableName() + BlockWriter.arrayLengthMangleSuffix);
+
 						// Add item length argument for input array.
 						if (descriptor.startsWith("[") || Utils.isArrayBasedClass(clazzDesc))
 							write(", int " + lvi.getVariableName() + BlockWriter.arrayItemLengthMangleSuffix);
@@ -949,16 +965,17 @@ public abstract class KernelWriter extends BlockWriter {
 			if (isArrayTypeOutput) {
 
 				// Find the local variable name used for the return value in Java.
-				// It must be load since this method returns an array.
-				// aload 		<- the 2nd instruction from the last
+				// aload/invoke/cast	<- the 2nd instruction from the last
 				// areturn
 				Instruction retVar = mm.getPCHead();
 				while (retVar.getNextPC() != null) // Find the last
 					retVar = retVar.getNextPC();
-				while (!(retVar instanceof AccessLocalVariable))
-					retVar = retVar.getPrevPC();
 
-				final LocalVariableInfo localVariable = ((AccessLocalVariable) retVar).getLocalVariableInfo();
+				Instruction loadVar = retVar;
+				while (!(loadVar instanceof AccessLocalVariable))
+					loadVar = loadVar.getPrevPC();
+
+				final LocalVariableInfo localVariable = ((AccessLocalVariable) loadVar).getLocalVariableInfo();
 				String varName = localVariable.getVariableName();
 				if (fullReturnType.contains("float"))
 					promoteLocalArguments.put(varName, "0.0f");
@@ -969,7 +986,13 @@ public abstract class KernelWriter extends BlockWriter {
 
 				// Skip return value when writing method body
 				// since we want to assign the value to the output argument directly
-				retVar.setByteCode(ByteCode.NONE);
+				while (loadVar != retVar) {
+					loadVar.setByteCode(ByteCode.NONE);
+					loadVar = loadVar.getNextPC();
+				}
+				
+				// Return void
+				retVar.setByteCode(ByteCode.RETURN);
 
 				// Skip local variable declaration when writing method body
 				// since we want to send this through argument
@@ -983,7 +1006,7 @@ public abstract class KernelWriter extends BlockWriter {
 							if (var.getLocalVariableInfo().getVariableName().equals(varName)) {
 								newArrayInst.setByteCode(ByteCode.NONE);
 								parent.setByteCode(ByteCode.NONE);
-								break;
+								break; 
 							}
 						}
 					}
@@ -1005,10 +1028,12 @@ public abstract class KernelWriter extends BlockWriter {
 			newLine();
 
 			// Write iterator variables
+			in();
 			for (String arg : iterArguments) {
-				write("int " + arg + " = 0");
+				write("int " + arg + " = 0;");
 				newLine();
 			}
+			out();
 
 			if (useFPGAStyle) {
 
@@ -1052,7 +1077,7 @@ public abstract class KernelWriter extends BlockWriter {
 			write(", ");
 			newLine();
 
-			// Find output parameter
+			// Write arguments and find output parameter
 			String paramString = null;
 			if (p.getDir() == ScalaParameter.DIRECTION.OUT) {
 				assert(outParam == null); // Expect only one output parameter.
@@ -1060,6 +1085,10 @@ public abstract class KernelWriter extends BlockWriter {
 				paramString = p.getOutputParameterString(this);
 			} else
 				paramString = p.getInputParameterString(this);
+
+			// I/O must be an array for kernel.run
+			if (!p.isArray())
+				paramString = "__global " + paramString.replace(" ", " * ");
 			write(paramString);
 
 			// Add length and item number for 1-D array I/O.
@@ -1069,6 +1098,9 @@ public abstract class KernelWriter extends BlockWriter {
 				write("int " + p.getName() + BlockWriter.arrayItemLengthMangleSuffix);
 			}
 		}
+
+		if (isMapPartitions && !useFPGAStyle)
+			throw new RuntimeException("MapParitions can only be adopted by FPGA kernel.");
 
 		// Write reference data
 		for (final String line : argLines) {
@@ -1094,47 +1126,60 @@ public abstract class KernelWriter extends BlockWriter {
 			writeln(";");
 		}
 
-		if (!useFPGAStyle)
-			write("for (; idx < N; idx += nthreads) {");
-		else
-			write("for (int idx = 0; idx < N; idx++) {");
-		in();
-		newLine();
+		if (!isMapPartitions) {
+			if (!useFPGAStyle)
+				write("for (; idx < N; idx += nthreads) {");
+			else
+				write("for (int idx = 0; idx < N; idx++) {");
+			in();
+			newLine();
+		}
 
 		// Call the kernel function. TODO: Double buffering
-		if (outParam.getClazz() != null) {
+		if (outParam.getClazz() != null) { // User defined class
 			write("__global " + outParam.getType() + "* result = " +
 			      _entryPoint.getMethodModel().getName() + "(this");
 		} else {
-			if (!outParam.isArray()) // Issue #40: We don't use return value for array type
+			if (!outParam.isArray() && !isMapPartitions) // Issue #40: We don't use return value for array type
 				write(outParam.getName() + "[idx] = ");
 			write(_entryPoint.getMethodModel().getName() + "(this");
-
-			// TODO: mapPartitions
 		}
 
 		for (ScalaParameter p : params) {
 			if (p.getDir() == ScalaParameter.DIRECTION.IN) {
 				if (p.isArray()) { // Deserialized access
-					if (p.getClazz() == null) // Primitive type
-						write(", &" + p.getName() + "[idx * " + p.getName() + BlockWriter.arrayItemLengthMangleSuffix + "]");
-					else if (Utils.isHardCodedClass(p.getClazz().getName())) {
-						Set<String> fields = Utils.getHardCodedClassMethods(p.getClazz().getName(), METHODTYPE.VAR_ACCESS);
-						for (String field : fields)
-							write(", &" + p.getName() + field + "[idx " + p.getName() + 
-								BlockWriter.arrayItemLengthMangleSuffix + "]");
+					if (!isMapPartitions) {
+						if (p.isPrimitive()) // Primitive type
+							write(", &" + p.getName() + "[idx * " + p.getName() + BlockWriter.arrayItemLengthMangleSuffix + "]");
+						else if (Utils.isHardCodedClass(p.getClassName())) { 
+							Set<String> fields = Utils.getHardCodedClassMethods(p.getClassName(), METHODTYPE.VAR_ACCESS);
+							for (String field : fields) {
+								write(", &" + p.getName() + Utils.getDeclareHardCodedMethodString(p.getClassName(), 
+								field, p.getName()) + "[idx " + p.getName() + BlockWriter.arrayItemLengthMangleSuffix + "]");
+							}
+						}
+						else // Object array is not allowed.
+							throw new RuntimeException();
 					}
-					else // Object array is not allowed.
-						throw new RuntimeException();
+					else { // MapPartitions
+						Set<String> fields = Utils.getHardCodedClassMethods(p.getClassName(), METHODTYPE.VAR_ACCESS);
+						for (String field : fields) {
+							write(", " + p.getName() + Utils.getDeclareHardCodedMethodString(p.getClassName(), 
+							field, p.getName()));
+						}
+						write(", N"); // Data length is necessary for mapPartitions
+					}
 					write(", " + p.getName() + BlockWriter.arrayItemLengthMangleSuffix);
 				}
 				else {
-					if (p.getClazz() == null) // Primitive type
+					if (p.isPrimitive()) // Primitive type
 						write(", " + p.getName() + "[idx]");
-					else if (Utils.isHardCodedClass(p.getClazz().getName())) {
-						Set<String> fields = Utils.getHardCodedClassMethods(p.getClazz().getName(), METHODTYPE.VAR_ACCESS);
-						for (String field : fields)
-							write(", " + p.getName() + field + "[idx]");
+					else if (Utils.isHardCodedClass(p.getClassName())) {
+						Set<String> fields = Utils.getHardCodedClassMethods(p.getClassName(), METHODTYPE.VAR_ACCESS);
+						for (String field : fields) {
+							write(", " + p.getName() + 
+								Utils.getDeclareHardCodedMethodString(p.getClassName(), field, p.getName()) + "[idx]");
+						}
 					}
 					else // User defined class
 						write(", " + p.getName() + " + i");
@@ -1143,14 +1188,27 @@ public abstract class KernelWriter extends BlockWriter {
 		}
 
 		if (isArrayTypeOutput) { // Issue #40: Add another argument for output array.
-			if (outParam.getClazz() == null) // Primitive type
+			if (outParam.isPrimitive()) // Primitive type
 				write(", &" + outParam.getName() + "[idx * " + outParam.getName() + 
 					BlockWriter.arrayItemLengthMangleSuffix + "]");
-			else if (Utils.isHardCodedClass(outParam.getClazz().getName())) {
-				Set<String> fields = Utils.getHardCodedClassMethods(outParam.getClazz().getName(), METHODTYPE.VAR_ACCESS);
-				for (String field : fields)
-					write(", &" + outParam.getName() + field + "[idx " + outParam.getName() + 
-						BlockWriter.arrayItemLengthMangleSuffix + "]");
+			else if (Utils.isHardCodedClass(outParam.getClassName())) {
+				Set<String> fields = Utils.getHardCodedClassMethods(outParam.getClassName(), METHODTYPE.VAR_ACCESS);
+				if (!isMapPartitions) {
+					for (String field : fields) {
+						write(", &" + outParam.getName() + 
+							Utils.getDeclareHardCodedMethodString(outParam.getClassName(), field, outParam.getName()) + 
+							"[idx " + outParam.getName() + BlockWriter.arrayItemLengthMangleSuffix + "]");
+					}
+				}
+				else {
+					for (String field : fields) {
+						write(", " + outParam.getName() + 
+							Utils.getDeclareHardCodedMethodString(outParam.getClassName(), field, outParam.getName()));
+					}
+				}
+			}
+			else {
+				; // TODO: User defined class
 			}
 			write(", " + outParam.getName() + BlockWriter.arrayItemLengthMangleSuffix);
 		}
@@ -1158,9 +1216,11 @@ public abstract class KernelWriter extends BlockWriter {
 		write(");");
 		newLine();
 
-		out();
-		newLine();
-		write("}");
+		if (!isMapPartitions) {
+			out();
+			newLine();
+			write("}");
+		}
 
 		out();
 		newLine();

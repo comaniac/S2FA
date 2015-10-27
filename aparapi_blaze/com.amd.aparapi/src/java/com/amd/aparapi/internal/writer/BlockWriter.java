@@ -504,7 +504,7 @@ public abstract class BlockWriter {
 							type = localType;
 
 						if (type.startsWith("["))
-							write("__local ");
+							write("__global ");
 
 						write(Utils.mapPrimitiveType(type) + " " + varName + m + " = ");
 						if (isReference)
@@ -519,7 +519,7 @@ public abstract class BlockWriter {
 						localType = localType.replace('.', '_');
 
 					if (descriptor.startsWith("[") || descriptor.startsWith("L"))
-						write(" __local ");
+						write(" __global ");
 					write(localType);
 
 					if (descriptor.startsWith("L"))

@@ -85,13 +85,13 @@ object TestApp {
       val rdd = sc.parallelize(data, 10)
       val rdd_acc = acc.wrap(rdd)    
       val brdcst_v = acc.wrap(sc.broadcast(v))
-//      val rdd2 = rdd_acc.map_acc(new ArrayTest(brdcst_v))
-//      val res0 = rdd2.collect
+      val rdd2 = rdd_acc.map_acc(new ArrayTest(brdcst_v))
+      val res0 = rdd2.collect
 //      println("Map result: " + res0(0)(0))
-      val res1 = rdd_acc.mapPartitions_acc(new ArrayTest(brdcst_v)).collect
-      println("MapPartitions result: " + res1(0)(0))
-      val res2 = rdd.map(e => e.map(ee => ee + v(0))).collect
-      println("CPU result: " + res2(0)(0))
+//      val res1 = rdd_acc.mapPartitions_acc(new ArrayTest(brdcst_v)).collect
+//      println("MapPartitions result: " + res1(0)(0))
+//      val res2 = rdd.map(e => e.map(ee => ee + v(0))).collect
+//      println("CPU result: " + res2(0)(0))
 
       acc.stop()
     }

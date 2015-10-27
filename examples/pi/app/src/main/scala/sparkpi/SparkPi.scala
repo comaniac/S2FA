@@ -29,8 +29,8 @@ object SparkPi {
     val acc = new BlazeRuntime(sc)
     val n = args(0).toInt * 100000
 
-    val count = acc.wrap(sc.parallelize(1 until n, 10))
-      .map_acc(new MonteCarlo)
+    val count = acc.wrap(sc.parallelize(0 until n, 2))
+      .mapPartitions_acc(new MonteCarlo)
       .reduce(_ + _)
     println("Pi is roughly " + 4.0 * count / n)
 
@@ -60,21 +60,23 @@ class MonteCarlo extends Accelerator[Int, Int] {
       0
   }
 
-  def myRand(seed: Int): Float = {
-    ((16807 * seed) % 65535).toFloat / 65535
-  }
-
   override def call(in: Iterator[Int]): Iterator[Int] = {
     var count: Int = 0
+    val out = new Array[Int](1)
 
     while (in.hasNext) {
+      val p = in.next
       val x = random
       val y = random
 
       if (x * x + y * y < 1.0)
         count += 1
-      in.next
     }
-    Array(count).iterator
+    out(0) = count
+    out.iterator
+  }
+
+  def myRand(seed: Int): Float = {
+    ((16807 * seed) % 65535).toFloat / 65535
   }
 }

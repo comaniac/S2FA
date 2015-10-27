@@ -45,7 +45,8 @@ public class IteratorClassModel extends HardCodedClassModel {
 
 		public String getAccessString(String varName) {
 			if (methodType == METHODTYPE.VAR_ACCESS)
-				return "[" + varName + BlockWriter.iteratorIndexSuffix + "++]";
+				return "[ITER_INC(" + varName + BlockWriter.iteratorIndexSuffix + ", " + 
+					varName + BlockWriter.arrayItemLengthMangleSuffix + ")]";
 			else if (methodType == METHODTYPE.STATUS_CHECK)
 				// NOTICE: Only argument can have Iterator type. We don't generate
 				// the condition with "this->a__javaArrayLength"

@@ -956,14 +956,18 @@ public class Entrypoint implements Cloneable {
 						    !(child instanceof ImmediateConstant)) // push
 							throw new ClassParseException(ClassParseException.TYPE.NEWDYNAMICARRAY);
 					}
-					else if (instruction instanceof I_ALOAD_1) { 
+					else if (instruction instanceof LocalVariableConstIndexLoad) { 
 						// Parse input data generic type [Experiment]
-						// Assume the only input data argument is stored in I_ALOAD_1
+						// Assume the only input data argument is stored in local variable slot 1
 						// Only focus on the main function (call method in Scala)
 						if (!methodModel.getName().contains("call"))
 							continue;
 
-						I_ALOAD_1 loadInst = (I_ALOAD_1) instruction;
+						LocalVariableConstIndexLoad loadInst = (LocalVariableConstIndexLoad) instruction;
+						int loadIdx = loadInst.getLocalVariableTableIndex();
+						if (loadIdx != 1)
+							continue;
+
 						LocalVariableInfo varInfo = loadInst.getLocalVariableInfo();
 						if (varInfo.getStart() != 0) // Make sure this is an argument of method
 							continue;
