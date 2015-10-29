@@ -36,14 +36,6 @@ import org.apache.spark.storage._
 import org.apache.spark.scheduler._
 import org.apache.spark.util.random._
 
-import com.amd.aparapi.internal.model.ClassModel
-import com.amd.aparapi.internal.model.Entrypoint
-import com.amd.aparapi.internal.model.HardCodedClassModels.ShouldNotCallMatcher
-import com.amd.aparapi.internal.writer.KernelWriter
-import com.amd.aparapi.internal.writer.KernelWriter.WriterAndKernel
-import com.amd.aparapi.internal.writer._
-import com.amd.aparapi.internal.writer.ScalaParameter.DIRECTION
-
 /**
   * A RDD that uses accelerator to accelerate the computation. The behavior of AccRDD is 
   * similar to Spark partition RDD which performs the computation for a whole partition at a
@@ -59,8 +51,6 @@ class AccRDD[U: ClassTag, T: ClassTag](
   acc: Accelerator[T, U],
   sampler: RandomSampler[Int, Int]
 ) extends RDD[U](prev) with Logging {
-
-  var entryPoint : Entrypoint = null
 
   def getPrevRDD() = prev
   def getRDD() = this
@@ -105,13 +95,9 @@ class AccRDD[U: ClassTag, T: ClassTag](
           throw new RuntimeException("RDD data type is not supported")
 
         if (split.index == 0) { // FIXME: Testing
-          if (isPrimitiveType) {
-            genOpenCLKernel(acc.id)
-          }
-          else { // Non primitive types must provide a sample object.
-            val sample = firstParent[T].iterator(split, context).next
-            genOpenCLKernel(acc.id, modeledType, Some(sample))
-          }
+          val codeGenLog = CodeGenUtil.genOpenCLKernel(acc)
+          logInfo(codeGenLog._1)
+          logWarning(codeGenLog._2)
         }
 
         // Get broadcast block IDs
@@ -177,7 +163,9 @@ class AccRDD[U: ClassTag, T: ClassTag](
             logInfo("Generating the OpenCL kernel")
             val thread = new Thread {
               override def run {
-                genOpenCLKernel(acc.id)
+                val codeGenLog = CodeGenUtil.genOpenCLKernel(acc)
+                logInfo(codeGenLog._1)
+                logWarning(codeGenLog._2)
               }
             }
             thread.start
@@ -531,49 +519,5 @@ class AccRDD[U: ClassTag, T: ClassTag](
     }
     outputList.iterator
   }  
-
-  def genOpenCLKernel(
-    id: String, 
-    modeledType: ModeledType = NotModeled, 
-    sample: Option[Any] = None
-  ) = {
-    System.setProperty("com.amd.aparapi.enable.NEW", "true")
-    System.setProperty("com.amd.aparapi.enable.INVOKEINTERFACE", "true")
-    val kernelPath : String = "/tmp/blaze_kernel_" + id + ".cl" 
-    // TODO: Should be a shared path e.g. HDFS
-
-    if (new File(kernelPath).exists) {
-      logWarning("Kernel exists, skip generating")
-    }
-    else {
-      val classModel : ClassModel = ClassModel.createClassModel(acc.getClass, null, new ShouldNotCallMatcher())
-      var isMapPartitions: Boolean = if (this.getClass.getName.contains("AccMapPartitionsRDD")) true else false
-      var method =  if (!isMapPartitions) classModel.getPrimitiveCallMethod 
-                    else classModel.getPrimitiveCallPartitionsMethod
-
-      try {
-        if (method == null)
-          throw new RuntimeException("Cannot find available call method.")
-        val descriptor : String = method.getDescriptor
-        val params : LinkedList[ScalaParameter] = new LinkedList[ScalaParameter]
-
-        val fun: T => U = acc.call
-        entryPoint = classModel.getEntrypoint("call", descriptor, fun, params, null)
-        val writerAndKernel = KernelWriter.writeToString(entryPoint, params)
-        val openCL = writerAndKernel.kernel
-        val kernelFile = new PrintWriter(new File(kernelPath))
-        kernelFile.write(KernelWriter.applyXilinxPatch(openCL))
-        kernelFile.close
-        val res = CodeGenUtil.applyBoko(kernelPath)
-        logInfo("[CodeGen] Generate and optimize the kernel successfully")
-        logWarning("[Boko] " + res)
-      } catch {
-        case e: Throwable =>
-          val sw = new StringWriter
-          e.printStackTrace(new PrintWriter(sw))
-          logWarning("[CodeGen] OpenCL kernel generated failed: " + sw.toString)
-      }
-    }
-  }
 }
 
