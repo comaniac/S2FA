@@ -43,7 +43,7 @@ class ArrayTest(v: BlazeBroadcast[Array[Double]])
 
   override def call(in: Array[Double]): Array[Double] = {
     val ary = new Array[Double](in.length)
-    val s = v.data.sum
+    val s = v.value.sum
     for (i <- 0 until in.length) {
       ary(i) = in(i) + s
     }
@@ -55,7 +55,7 @@ class ArrayTest(v: BlazeBroadcast[Array[Double]])
     val length: Int = inAry.length
     val itemLength: Int = inAry(0).length
     val outAry = new Array[Array[Double]](length)
-    val s = v.data.sum
+    val s = v.value.sum
 
     for (i <- 0 until length) {
       outAry(i) = new Array[Double](itemLength)

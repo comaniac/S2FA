@@ -39,7 +39,7 @@ class BlazeBroadcast[T: ClassTag](appId: String, bd: Broadcast[T]) extends java.
       .addString(new StringBuilder).toLong.toInt)
 
   var brdcst_id: Long = Util.getBlockID(getIntId(), bd.id.asInstanceOf[Int])
-  lazy val data = bd.value
+  lazy val value = bd.value
   var length: Int = 0
   var size: Int = 0
 }

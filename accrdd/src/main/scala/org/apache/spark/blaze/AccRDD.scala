@@ -17,7 +17,10 @@
 
 package org.apache.spark.blaze
 
+import ModeledType._
+
 import java.io._
+import java.util.LinkedList
 import java.util.ArrayList     
 import java.nio.ByteBuffer     
 import java.nio.ByteOrder      
@@ -32,6 +35,14 @@ import org.apache.spark.rdd._
 import org.apache.spark.storage._
 import org.apache.spark.scheduler._
 import org.apache.spark.util.random._
+
+import com.amd.aparapi.internal.model.ClassModel
+import com.amd.aparapi.internal.model.Entrypoint
+import com.amd.aparapi.internal.model.HardCodedClassModels.ShouldNotCallMatcher
+import com.amd.aparapi.internal.writer.KernelWriter
+import com.amd.aparapi.internal.writer.KernelWriter.WriterAndKernel
+import com.amd.aparapi.internal.writer._
+import com.amd.aparapi.internal.writer.ScalaParameter.DIRECTION
 
 /**
   * A RDD that uses accelerator to accelerate the computation. The behavior of AccRDD is 
@@ -48,6 +59,8 @@ class AccRDD[U: ClassTag, T: ClassTag](
   acc: Accelerator[T, U],
   sampler: RandomSampler[Int, Int]
 ) extends RDD[U](prev) with Logging {
+
+  var entryPoint : Entrypoint = null
 
   def getPrevRDD() = prev
   def getRDD() = this
@@ -80,7 +93,7 @@ class AccRDD[U: ClassTag, T: ClassTag](
       var outputAry: Array[U] = null // Length is unknown before reading the input
       var dataLength: Int = -1
       val isPrimitiveType: Boolean = Util.isPrimitiveTypeRDD(getRDD)
-      val isModeledType: Boolean = Util.isModeledTypeRDD(getRDD)
+      val modeledType: ModeledType = Util.whichModeledTypeRDD(getRDD.asInstanceOf[RDD[T]])
       var partitionMask: Array[Byte] = null
       var isSampled: Boolean = false
 
@@ -88,8 +101,18 @@ class AccRDD[U: ClassTag, T: ClassTag](
       var elapseTime: Long = 0
 
       try {
-        if (!isPrimitiveType && !isModeledType)
+        if (!isPrimitiveType && modeledType == ModeledType.NotModeled)
           throw new RuntimeException("RDD data type is not supported")
+
+        if (split.index == 0) { // FIXME: Testing
+          if (isPrimitiveType) {
+            genOpenCLKernel(acc.id)
+          }
+          else { // Non primitive types must provide a sample object.
+            val sample = firstParent[T].iterator(split, context).next
+            genOpenCLKernel(acc.id, modeledType, Some(sample))
+          }
+        }
 
         // Get broadcast block IDs
         for (j <- 0 until brdcstIdOrValue.length) {
@@ -122,7 +145,7 @@ class AccRDD[U: ClassTag, T: ClassTag](
         for (i <- 0 until brdcstIdOrValue.length) {
           val bcData = acc.getArg(i).get
           if (bcData.isInstanceOf[BlazeBroadcast[_]]) {
-            val arrayData = (bcData.asInstanceOf[BlazeBroadcast[Array[_]]]).data
+            val arrayData = (bcData.asInstanceOf[BlazeBroadcast[Array[_]]]).value
             brdcstBlockInfo(i) = new BlockInfo
             brdcstBlockInfo(i).id = brdcstIdOrValue(i)._1
             brdcstBlockInfo(i).numElt = arrayData.length
@@ -148,8 +171,19 @@ class AccRDD[U: ClassTag, T: ClassTag](
         elapseTime = System.nanoTime - startTime
         logInfo("Partition " + split.index + " communication latency: " + elapseTime + " ns")
 
-        if (revMsg.getType() != AccMessage.MsgType.ACCGRANT)
+        if (revMsg.getType() != AccMessage.MsgType.ACCGRANT) {
+          // TODO: Manager should return an error code
+          if (split.index == 0) { // Only let one worker to generate the kernel
+            logInfo("Generating the OpenCL kernel")
+            val thread = new Thread {
+              override def run {
+                genOpenCLKernel(acc.id)
+              }
+            }
+            thread.start
+          }
           throw new RuntimeException("Request reject.")
+        }
 
         startTime = System.nanoTime
 
@@ -225,7 +259,7 @@ class AccRDD[U: ClassTag, T: ClassTag](
             require (acc.getArg(i).get.isInstanceOf[BlazeBroadcast[_]], 
               "Uncached data is not BlazeBroadcast!")
 
-            val bcData = (acc.getArg(i).get.asInstanceOf[BlazeBroadcast[_]]).data 
+            val bcData = (acc.getArg(i).get.asInstanceOf[BlazeBroadcast[_]]).value
             if (bcData.getClass.isArray) { // Serialize array and use memory mapped file to send the data.
               val arrayData = bcData.asInstanceOf[Array[_]]
               val mappedFileInfo = new BlazeMemoryFileHandler(arrayData)
@@ -367,7 +401,9 @@ class AccRDD[U: ClassTag, T: ClassTag](
           val sw = new StringWriter
           e.printStackTrace(new PrintWriter(sw))
           logInfo("Partition " + split.index + " fails to be executed on accelerator: " + sw.toString)
+          startTime = System.nanoTime
           outputIter = computeOnJTP(split, context, partitionMask)
+          logInfo("JVM computation time: " + ((System.nanoTime - startTime) / 10e6) + " ms")
       }
 
       def hasNext(): Boolean = {
@@ -478,7 +514,7 @@ class AccRDD[U: ClassTag, T: ClassTag](
     * @return The output array
     */
   def computeOnJTP(split: Partition, context: TaskContext, partitionMask: Array[Byte]): Iterator[U] = {
-    logInfo("Compute partition " + split.index + " using CPU")
+    logInfo("Compute partition " + split.index + " using JVM")
 
     val inputAry: Array[T] = (firstParent[T].iterator(split, context)).toArray
     val dataLength = inputAry.length
@@ -494,6 +530,50 @@ class AccRDD[U: ClassTag, T: ClassTag](
       j = j + 1
     }
     outputList.iterator
+  }  
+
+  def genOpenCLKernel(
+    id: String, 
+    modeledType: ModeledType = NotModeled, 
+    sample: Option[Any] = None
+  ) = {
+    System.setProperty("com.amd.aparapi.enable.NEW", "true")
+    System.setProperty("com.amd.aparapi.enable.INVOKEINTERFACE", "true")
+    val kernelPath : String = "/tmp/blaze_kernel_" + id + ".cl" 
+    // TODO: Should be a shared path e.g. HDFS
+
+    if (new File(kernelPath).exists) {
+      logWarning("Kernel exists, skip generating")
+    }
+    else {
+      val classModel : ClassModel = ClassModel.createClassModel(acc.getClass, null, new ShouldNotCallMatcher())
+      var isMapPartitions: Boolean = if (this.getClass.getName.contains("AccMapPartitionsRDD")) true else false
+      var method =  if (!isMapPartitions) classModel.getPrimitiveCallMethod 
+                    else classModel.getPrimitiveCallPartitionsMethod
+
+      try {
+        if (method == null)
+          throw new RuntimeException("Cannot find available call method.")
+        val descriptor : String = method.getDescriptor
+        val params : LinkedList[ScalaParameter] = new LinkedList[ScalaParameter]
+
+        val fun: T => U = acc.call
+        entryPoint = classModel.getEntrypoint("call", descriptor, fun, params, null)
+        val writerAndKernel = KernelWriter.writeToString(entryPoint, params)
+        val openCL = writerAndKernel.kernel
+        val kernelFile = new PrintWriter(new File(kernelPath))
+        kernelFile.write(KernelWriter.applyXilinxPatch(openCL))
+        kernelFile.close
+        val res = CodeGenUtil.applyBoko(kernelPath)
+        logInfo("[CodeGen] Generate and optimize the kernel successfully")
+        logWarning("[Boko] " + res)
+      } catch {
+        case e: Throwable =>
+          val sw = new StringWriter
+          e.printStackTrace(new PrintWriter(sw))
+          logWarning("[CodeGen] OpenCL kernel generated failed: " + sw.toString)
+      }
+    }
   }
 }
 

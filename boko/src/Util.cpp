@@ -180,10 +180,16 @@ std::string getFirstVarType(const Stmt *stmt)
 				const ValueDecl *decl = (cast<DeclRefExpr>(tempStmt))->getDecl();
 				QualType type = decl->getType();
 				bool isPointer = (cast<Type>(type))->isPointerType();
+				bool isArray = (cast<Type>(type))->isArrayType();
+
 				if (isPointer)
 					type = (cast<Type>(type))->getPointeeType();
 				
+				if (isArray)
+					type = (cast<Type>(type))->getAsArrayTypeUnsafe()->getElementType();
+
 				if (!(cast<Type>(type))->isBuiltinType()) {
+					errs() << cast<Type>(type)->getTypeClassName() << "\n";
 					return NULL; // Not support non-builtin types.
 				}
 

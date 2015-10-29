@@ -19,8 +19,7 @@ public class ScalaScalarParameter extends ScalaParameter {
 
 	@Override
 	public String getOutputParameterString(KernelWriter writer) {
-		// Output argument must be pointer type
-		return "__global " + type + " * " + name;
+		return type + " " + name;
 	}
 
 	@Override

@@ -28,9 +28,10 @@ object SparkPi {
     val sc = new SparkContext(conf)
     val acc = new BlazeRuntime(sc)
     val n = args(0).toInt * 100000
+    val npartition = args(1).toInt
 
-    val count = acc.wrap(sc.parallelize(0 until n, 2))
-      .mapPartitions_acc(new MonteCarlo)
+    val count = acc.wrap(sc.parallelize(0 until n, npartition))
+      .map_acc(new MonteCarlo)
       .reduce(_ + _)
     println("Pi is roughly " + 4.0 * count / n)
 
@@ -46,13 +47,9 @@ class MonteCarlo extends Accelerator[Int, Int] {
   def getArg(idx: Int) = None
 
   override def call(in: Int): Int = {
-    var seed0: Int = 13
-    var seed1: Int = 17
-
-    val x = myRand(seed0)
-    val y = myRand(seed1)
-    seed0 = (x * 65535).toInt
-    seed1 = (y * 65535).toInt
+    val p = in
+    val x = random
+    val y = random
 
     if (x * x + y * y < 1.0)
       1
@@ -74,9 +71,5 @@ class MonteCarlo extends Accelerator[Int, Int] {
     }
     out(0) = count
     out.iterator
-  }
-
-  def myRand(seed: Int): Float = {
-    ((16807 * seed) % 65535).toFloat / 65535
   }
 }

@@ -96,6 +96,10 @@ public abstract class KernelWriter extends BlockWriter {
 		scalaMapped.add("scala/math/package$.pow(D)D");
 		scalaMapped.add("scala/math/package$.exp(D)D");
 		scalaMapped.add("scala/math/package$.log(D)D");
+		scalaMapped.add("scala/math/package$.log(D)D");
+		scalaMapped.add("scala/math/package$.abs(D)D");
+		scalaMapped.add("scala/math/package$.abs(I)I");
+		scalaMapped.add("scala/math/package$.abs(F)F");
 	}
 
 	public final static Set<String> SelfMapped = new HashSet<String>();
@@ -109,6 +113,8 @@ public abstract class KernelWriter extends BlockWriter {
 		XilinxMethodMap.put("pow", new String[] {"float", "float"});
 		XilinxMethodMap.put("exp", new String[] {"float"});
 		XilinxMethodMap.put("log", new String[] {"float"});
+		XilinxMethodMap.put("abs", new String[] {"int"});
+		XilinxMethodMap.put("fabs", new String[] {"float"});
 	}
 
 	public final static Map<String, String> javaToCLIdentifierMap = new HashMap<String, String>();

@@ -55,14 +55,16 @@ class KMeans private (
       val initStartTime = System.nanoTime()
       val acc = new BlazeRuntime(sc)
 
-      val points: ShellRDD[Array[Double]] = acc.wrap(data)
+      val points: ShellRDD[Array[Int]] = acc.wrap(data.map(p => {
+        p.map(e => (e * 10e3).toInt)
+      }))
       points.cache
       logInfo(s"Total " + (points.collect).length + " points")
 
       // Random initialize centers
-      val samples = data.takeSample(true, k, 99)
+      val samples = data.map(p => {p.map(e => (e * 10e3).toInt)}).takeSample(true, k, 99)
       val dims = samples(0).length
-      var centers = new Array[Double](k * dims)
+      var centers = new Array[Int](k * dims)
       (0 until k).foreach { i =>
         (0 until dims).foreach { j => 
           centers(i * dims + j) = samples(i)(j)
@@ -87,7 +89,7 @@ class KMeans private (
 
         val counts = classified.countByKey()
         val sums = classified.reduceByKey((a, b) => {
-          val ary = new Array[Double](bcDim.value)
+          val ary = new Array[Int](bcDim.value)
           (0 until dims).foreach ( ii => {
             ary(ii) = a(ii) + b(ii)
           })
@@ -96,10 +98,10 @@ class KMeans private (
 
         val averages = sums.map(kv => {
           val cluster_index: Int = kv._1;
-          val p: Array[Double] = kv._2;
-          val ary = new Array[Double](dims)
+          val p: Array[Int] = kv._2;
+          val ary = new Array[Int](dims)
           (0 until dims).foreach( ii => {
-            ary(ii) = p(ii) / counts(cluster_index)
+            ary(ii) = (p(ii) / counts(cluster_index)).toInt
           })
           ary
         }).collect
@@ -114,7 +116,7 @@ class KMeans private (
 
       val iterationTimeInSeconds = (System.nanoTime() - iterationStartTime) / 1e9
       logInfo(s"Iterations took " + "%.3f".format(iterationTimeInSeconds) + " seconds.")
-      val cost = computeCost(centers, points, dims)
+      val cost = computeCost(centers.map(e => e.toDouble), points.map(p => (p.map(e => e.toDouble))), dims)
       acc.stop
 
       cost
@@ -180,9 +182,9 @@ object KMeans {
 }
 
 class KMeansClassified(
-  b_centers: BlazeBroadcast[Array[Double]], 
+  b_centers: BlazeBroadcast[Array[Int]], 
   b_D: BlazeBroadcast[Int]
-  ) extends Accelerator[Array[Double], Int] {
+  ) extends Accelerator[Array[Int], Int] {
   
   val id: String = "KMeans"
 
@@ -197,7 +199,7 @@ class KMeansClassified(
       None
   }
 
-  override def call(in_blazeLocal784: Array[Double]): Int = { 
+  override def call(in_blazeLocal784: Array[Int]): Int = { 
     val centers_blazeLocalMax4096 = b_centers.value
     val D: Int = b_D.value
 
@@ -205,21 +207,17 @@ class KMeansClassified(
     val K: Int = (b_centers.value).length / D
 
     var closest_center = -1
-    var closest_center_dist = -1.0
-    val dist = new Array[Double](3)
+    var closest_center_dist = -1
+    val dist = new Array[Int](3)
 
     // Blaze CodeGen: foreach and for loop are forbidden.
     var i: Int = 0
     while (i < K) {
-      dist(i) = 0.0
+      dist(i) = 0
 
       var j: Int = 0
       while (j < D) {
-        val dist_root = centers_blazeLocalMax4096(i * D + j) - in_blazeLocal784(j)
-        if (dist_root > 0)
-          dist(i) = dist(i) + dist_root
-        else
-          dist(i) = dist(i) - dist_root
+        dist(i) = dist(i) + math.abs(centers_blazeLocalMax4096(i * D + j) - in_blazeLocal784(j))
         j += 1
       }      
       i += 1
