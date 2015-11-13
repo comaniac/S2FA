@@ -499,25 +499,42 @@ class AccRDD[U: ClassTag, T: ClassTag](
     *
     * @param split The partition to be executed on JVM.
     * @param context TaskContext of Spark.
-    * @return The output array
+    * @param partitionMask A byte array for indicating the sampled data in the partition.
+    * @return The output as an iterator
     */
   def computeOnJTP(split: Partition, context: TaskContext, partitionMask: Array[Byte]): Iterator[U] = {
     logInfo("Compute partition " + split.index + " using JVM")
 
-    val inputAry: Array[T] = (firstParent[T].iterator(split, context)).toArray
-    val dataLength = inputAry.length
-    var outputList = List[U]()
+    val inputIter: Iterator[T] = (firstParent[T].iterator(split, context))
+    var inputAry: Array[T] = null
+/*
+    if (partitionMask != null) {
+      logWarning("Partition " + split.index + " has mask")
+      inputIter.zipWithIndex
+               .filter{case(_, idx) => partitionMask(idx) == 1}
+               .map{ case(v, _) => acc.call(v)}
+    }
+    else {
+      inputIter.map(e => acc.call(e))
+    }
+*/
 
-    if (partitionMask == null)
-      logWarning("Partition " + split.index + " has no mask")
+    if (partitionMask != null) {
+      inputAry = inputIter.zipWithIndex
+                          .filter{case(_, idx) => partitionMask(idx) == 1}
+                          .map{case(v, _) => v}
+                          .toArray
+    }
+    else
+      inputAry = inputIter.toArray
 
+    val outputAry = new Array[U](inputAry.length)
     var j: Int = 0
     while (j < inputAry.length) {
-      if (partitionMask == null || partitionMask(j) != 0)
-        outputList = outputList :+ acc.call(inputAry(j).asInstanceOf[T])
+      outputAry(j) = acc.call(inputAry(j))
       j = j + 1
     }
-    outputList.iterator
-  }  
+    outputAry.iterator
+  }
 }
 

@@ -1,36 +1,38 @@
 MANAGER_DIR=../../../../manager
-BOOST_DIR=/curr/diwu/tools/boost_1_55_0/install
-PROTOBUF_DIR=/curr/diwu/tools/protobuf-2.5.0/build/install
-MKL_DIR=/curr/diwu/intel_mkl
-HADOOP_DIR=/curr/diwu/tools/hadoop/hadoop-2.5.2
-XILINX_OPENCL_DIR=/space/Xilinx/SDAccel/2015.1
+PLATFORM_DIR=../../../../platforms/xil_ocl
+include ../../../../Makefile.config
 
-PP=$(XILINX_OPENCL_DIR)/lnx64/tools/gcc/bin/g++
-CC=$(XILINX_OPENCL_DIR)/lnx64/tools/gcc/bin/gcc
+# check all variables
+ifeq ($(XILINX_OPENCL_DIR),)
+$(error XILINK_OPENCL_DIR not set properly in Makefile.config)
+endif
+ifeq ($(BOOST_DIR),)
+$(error BOOST_DIR not set properly in Makefile.config)
+endif
+ifeq ($(PROTOBUF_DIR),)
+$(error PROTOBUF_DIR not set properly in Makefile.config)
+endif
+PP=g++
+CC=gcc
 
-CFLAGS= -shared -fPIC -std=c++0x -m64 -g
+CFLAGS= -shared -fPIC -std=c++0x -m64 -g 
 COMPILE= $(CFLAGS) \
 				 -I$(MANAGER_DIR)/include \
 				 -I$(BOOST_DIR)/include \
 				 -I$(PROTOBUF_DIR)/include \
-				 -I$(HADOOP_DIR)/include \
-				 -I$(MKL_DIR)/include \
+				 -I$(PLATFORM_DIR) \
 				 -I$(XILINX_OPENCL_DIR)/runtime/include/1_2
 
-LINK= -L${MKL_DIR}/lib/intel64 \
-			-L$(XILINX_OPENCL_DIR)/runtime/lib/x86_64 -lxilinxopencl \
-			-lmkl_intel_lp64 -lmkl_core -lmkl_sequential \
-			-lpthread -lm
+LINK= -L$(XILINX_OPENCL_DIR)/runtime/lib/x86_64 -lxilinxopencl
 
-ACC = KMeans \
-			KMeans_ocl
+ACC = KMeans_ocl
 
-OBJS= $(addsuffix .so, $(addprefix ../lib/, $(ACC)))
+OBJS= $(addsuffix .so, $(addprefix ../../, $(ACC)))
 
 all: $(OBJS)
 
-../lib/%.so: %.cpp
-	$(PP) $(COMPILE) $(LINK) $< -o $@
+../../%.so: %.cpp Makefile
+	$(PP) $(COMPILE) $< -o $@
 
 clean:
 	rm -rf $(OBJS)

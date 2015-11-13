@@ -78,18 +78,17 @@ class KMeans private (
       var iteration = 0
       val iterationStartTime = System.nanoTime()
 
-      val bcDim = acc.wrap(sc.broadcast(dims))
       while (iteration < maxIterations) {
         val bcCenters = acc.wrap(sc.broadcast(centers))
         val startTime = System.nanoTime()
-        val classifiedCenters = points.map_acc(new KMeansClassified(bcCenters, bcDim))
+        val classifiedCenters = points.map_acc(new KMeansClassified(bcCenters, dims))
         val elapsedTime = (System.nanoTime() - initStartTime) / 1e9
-        println("Execution time " + "%.3f".format(initTimeInSeconds) + " s.")
+        println(classifiedCenters.count + " points, execution time " + "%.3f".format(initTimeInSeconds) + " s.")
         val classified = classifiedCenters.zip(points)
 
         val counts = classified.countByKey()
         val sums = classified.reduceByKey((a, b) => {
-          val ary = new Array[Int](bcDim.value)
+          val ary = new Array[Int](dims)
           (0 until dims).foreach ( ii => {
             ary(ii) = a(ii) + b(ii)
           })
@@ -183,14 +182,14 @@ object KMeans {
 
 class KMeansClassified(
   b_centers: BlazeBroadcast[Array[Int]], 
-  b_D: BlazeBroadcast[Int]
+  b_D: Int
   ) extends Accelerator[Array[Int], Int] {
   
   val id: String = "KMeans"
 
   def getArgNum = 2
 
-  def getArg(idx: Int): Option[BlazeBroadcast[_]] = {
+  def getArg(idx: Int): Option[_] = {
     if (idx == 0)
       Some(b_centers)
     else if (idx == 1)
@@ -201,7 +200,7 @@ class KMeansClassified(
 
   override def call(in_blazeLocal784: Array[Int]): Int = { 
     val centers_blazeLocalMax4096 = b_centers.value
-    val D: Int = b_D.value
+    val D: Int = b_D
 
     // Blaze CodeGen: Cannot access array length of local array.
     val K: Int = (b_centers.value).length / D

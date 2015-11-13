@@ -36,7 +36,8 @@ object BlazeCodeGen {
     val clazz = loader.loadClass(args(1))
 
     val codeGenLog = CodeGenUtil.genOpenCLKernel(args(1), clazz)
-    println(codeGenLog._1)
+    println("CodeGen result: " + codeGenLog._1)
+    println("WARNING: " + codeGenLog._2)
   }
 }
 

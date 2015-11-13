@@ -95,11 +95,13 @@ class NBody(bodies: BlazeBroadcast[Array[Float]])
       val dx = cur_body(0) - this_body(0)
       val dy = cur_body(1) - this_body(1)
       val dz = cur_body(2) - this_body(2)
-      val dist = 1.0f / sqrt(dx * dx + dy * dy + dz * dz + 1).toFloat
-      val s = 5f * dist * dist * dist
-      this_acc(0) += (s * dx)
-      this_acc(1) += (s * dy)
-      this_acc(2) += (s * dz)
+      val distSqr = dx * dx + dy * dy + dz * dz
+      val distSixth = distSqr * distSqr * distSqr
+      val dist = 1.0f / sqrt(distSixth).toFloat
+      val s = 5f * dist
+      this_acc(0) = this_acc(0) + (s * dx)
+      this_acc(1) = this_acc(0) + (s * dy)
+      this_acc(2) = this_acc(0) + (s * dz)
 
       i += 1
     }

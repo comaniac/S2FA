@@ -52,8 +52,8 @@ public:
 			if (err != CL_SUCCESS)
 				throw std::runtime_error("Failed to set args!");
 			
-			size_t global = 1;
-			size_t local = 1; 
+			size_t global = 32;
+			size_t local = 32; 
 
 			gettimeofday(&t1, NULL);
 

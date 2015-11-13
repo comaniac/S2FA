@@ -27,20 +27,24 @@ import org.apache.spark.mllib.linalg.Vectors
 
 object SparkKMeans {
     def main(args : Array[String]) {
-      if (args.length != 3) {
-        println("usage: SparkKMeans run K iters input-path");
+      if (args.length != 4) {
+        println("usage: SparkKMeans run K iters npartitions input-path");
         return;
       }
       val sc = get_spark_context("Spark KMeans");
 
       val K = args(0).toInt;
       val iters = args(1).toInt;
-      val inputPath = args(2);
+      val npartitions = args(2).toInt;
+      val inputPath = args(3);
 
       val points = sc.textFile(inputPath)
         .map(line => Vectors.dense(line.split(' ').map(_.toDouble)))
+        .sample(true, 0.5, 0)
+        .repartition(npartitions)
         .cache()
 
+      println("Data count = " + points.count)
       val cost = KMeans.train(points, K, iters)
       println("Within set sum of squared errors = " + cost)
     }
