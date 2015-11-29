@@ -30,12 +30,14 @@ object CodeGenUtil {
   }
 
   def genOpenCLKernel[T: ClassTag, U: ClassTag](acc: Accelerator[T, U]) : (String, String) = {
-    genOpenCLKernel(acc.id, acc.getClass)
+    genOpenCLKernel(acc.id, acc.getClass, false)
   }
 
-  def genOpenCLKernel(id: String, accClazz: Class[_]) : (String, String) = {
+  def genOpenCLKernel(id: String, accClazz: Class[_], useMerlin: Boolean) : (String, String) = {
     System.setProperty("com.amd.aparapi.enable.NEW", "true")
     System.setProperty("com.amd.aparapi.enable.INVOKEINTERFACE", "true")
+    if (useMerlin)
+      System.setProperty("com.amd.aparapi.enable.MERLINE", "true")
 
     var logInfo : String = ""
     var logWarning : String = ""
@@ -44,45 +46,45 @@ object CodeGenUtil {
     val classModel : ClassModel = ClassModel.createClassModel(accClazz, null, new ShouldNotCallMatcher())
 
     for (methodFunction <- methodFunctions) {
-      val kernelPath : String = "/tmp/blaze_kernel_" + id + "_" + methodFunction + ".cl" 
-      // TODO: Should be a shared path e.g. HDFS
-      if (new File(kernelPath).exists) {
-        logWarning += "Kernel " + methodFunction + " exists, skip generating\n"
-      }
-      else {
-        var isMapPartitions: Boolean = if (methodFunction.contains("Partitions")) true else false
-        val method =  if (!isMapPartitions) classModel.getPrimitiveCallMethod 
-                      else classModel.getPrimitiveCallPartitionsMethod
-        try {
-          if (method == null)
-            throw new RuntimeException("Cannot find available call method.")
-          val descriptor : String = method.getDescriptor
-          val params : LinkedList[ScalaParameter] = new LinkedList[ScalaParameter]
+      var kernelPath : String = "/tmp/blaze_kernel_" + id + "_" + methodFunction
+      if (useMerlin)
+        kernelPath = kernelPath + ".c" 
+      else
+        kernelPath = kernelPath + ".cl"
 
-          val methods = accClazz.getMethods
-          var fun: Object = null
-          methods.foreach(m => {
-            val des = m.toString
-            if (!isMapPartitions && des.contains("call") && !des.contains("Object") && !des.contains("Iterator"))
-              fun = m
-            else if (isMapPartitions && des.contains("call") && !des.contains("Object") && des.contains("Iterator"))
-              fun = m
-          })
-          val entryPoint = classModel.getEntrypoint("call", descriptor, fun, params, null)
-          val writerAndKernel = KernelWriter.writeToString(entryPoint, params)
-          val openCL = writerAndKernel.kernel
-          val kernelFile = new PrintWriter(new File(kernelPath))
-          kernelFile.write(KernelWriter.applyXilinxPatch(openCL))
-          kernelFile.close
-          val res = applyBoko(kernelPath)
-          logInfo += "[CodeGen] Generate and optimize the kernel successfully\n"
-          logWarning += "[Boko] " + res + "\n"
-        } catch {
-          case e: Throwable =>
-            val sw = new StringWriter
-            e.printStackTrace(new PrintWriter(sw))
-            logWarning += "[CodeGen] OpenCL kernel generated failed: " + sw.toString + "\n"
-        }
+      var isMapPartitions: Boolean = if (methodFunction.contains("Partitions")) true else false
+      val method =  if (!isMapPartitions) classModel.getPrimitiveCallMethod 
+                    else classModel.getPrimitiveCallPartitionsMethod
+      try {
+        if (method == null)
+          throw new RuntimeException("Cannot find available call method.")
+        val descriptor : String = method.getDescriptor
+        val params : LinkedList[ScalaParameter] = new LinkedList[ScalaParameter]
+
+        val methods = accClazz.getMethods
+        var fun: Object = null
+        methods.foreach(m => {
+          val des = m.toString
+          if (!isMapPartitions && des.contains("call") && !des.contains("Object") && !des.contains("Iterator"))
+            fun = m
+          else if (isMapPartitions && des.contains("call") && !des.contains("Object") && des.contains("Iterator"))
+            fun = m
+        })
+        val entryPoint = classModel.getEntrypoint("call", descriptor, fun, params, null)
+        val writerAndKernel = KernelWriter.writeToString(entryPoint, params)
+        val openCL = writerAndKernel.kernel
+        val kernelFile = new PrintWriter(new File(kernelPath))
+        kernelFile.write(KernelWriter.applyXilinxPatch(openCL))
+        kernelFile.close
+        //val res = applyBoko(kernelPath)
+        logInfo += "[CodeGen] Generate and optimize the kernel successfully\n"
+        //logWarning += "[Boko] " + res + "\n"
+      } catch {
+        case e: Throwable =>
+          val sw = new StringWriter
+          e.printStackTrace(new PrintWriter(sw))
+          val fullMsg = sw.toString
+          logInfo += "[CodeGen] OpenCL kernel generated failed: " + fullMsg.substring(0, fullMsg.indexOf("\n")) + "\n"
       }
     } // end for 
     (logInfo, logWarning)

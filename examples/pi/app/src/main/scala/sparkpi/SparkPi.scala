@@ -27,10 +27,12 @@ object SparkPi {
     val conf = new SparkConf().setAppName("Spark Pi")
     val sc = new SparkContext(conf)
     val acc = new BlazeRuntime(sc)
-    val n = args(0).toInt * 100000
+    val n = math.min((args(0).toInt * 100000L), Int.MaxValue).toInt
     val npartition = args(1).toInt
+//    val n = math.min(100000L * npartition, Int.MaxValue).toInt
 
-    val count = acc.wrap(sc.parallelize(0 until n, npartition))
+    println("n = " + n)
+    val count = acc.wrap(sc.parallelize(0 until n).repartition(npartition))
       .map_acc(new MonteCarlo)
       .reduce(_ + _)
     println("Pi is roughly " + 4.0 * count / n)

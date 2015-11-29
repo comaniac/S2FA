@@ -988,12 +988,19 @@ public class Entrypoint implements Cloneable {
 						if (clazz.startsWith("L") && Utils.isHardCodedClass(clazz.substring(1))) {
 							Instruction next = instruction.getNextPC();
 	
-							if (next instanceof I_INVOKEVIRTUAL) // Arg type is a normal class
-								typeHint = findTypeHintForHardCodedClass(fieldName, clazz, next, false);
-							else if (next instanceof I_INVOKEINTERFACE) { // Arg type is an extended class (e.g. Iterator)
+							// Arg type is a normal class (i.e. Tuple2) or an extended class (e.g. Iterator)
+							if (next instanceof I_INVOKEVIRTUAL || next instanceof I_INVOKEINTERFACE) {
+//								typeHint = findTypeHintForHardCodedClass(fieldName, clazz, next, false);
+								if (next instanceof I_INVOKEVIRTUAL) {
+									MethodEntry entry = ((I_INVOKEVIRTUAL) next).getConstantPoolMethodEntry();
+									methodName = Utils.cleanMethodName(clazz, entry.getNameAndTypeEntry()
+													.getNameUTF8Entry().getUTF8());
+								}
+								else {
 								InterfaceMethodEntry entry = ((I_INVOKEINTERFACE) next).getConstantPoolInterfaceMethodEntry();
 								methodName = Utils.cleanMethodName(clazz, entry.getNameAndTypeEntry()
 												.getNameUTF8Entry().getUTF8());
+								}
 
 								if(Utils.getHardCodedClassMethodUsage(clazz, methodName) != METHODTYPE.VAR_ACCESS) {
 									//System.err.println("Skip method " + methodName);

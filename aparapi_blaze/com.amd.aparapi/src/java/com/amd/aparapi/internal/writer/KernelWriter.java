@@ -267,8 +267,9 @@ public abstract class KernelWriter extends BlockWriter {
 
 		String typeName = m.getOwnerClassMangledName();
 		String allocVarName = "__alloc" + (countAllocs++);
-		String allocStr = "__global " + typeName + " * " + allocVarName +
-		                  " = (__global " + typeName + " *)alloc(this->heap, this->free_index, this->heap_size, " +
+		String allocStr = __global + typeName + " * " + allocVarName +
+		                  " = (" + __global + typeName + 
+											" *)alloc(this->heap, this->free_index, this->heap_size, " +
 		                  "sizeof(" + typeName + "), &this->alloc_failed);";
 		String indentedAllocStr = doIndent(allocStr);
 
@@ -521,13 +522,13 @@ public abstract class KernelWriter extends BlockWriter {
 		newLine();
 	}
 
-	public final static String __local = "__local";
+	public final static String __local = "__local ";
 
-	public final static String __global = "__global";
+	public final static String __global = "__global ";
 
-	public final static String __constant = "__constant";
+	public final static String __constant = "__constant ";
 
-	public final static String __private = "__private";
+	public final static String __private = "__private ";
 
 	public final static String LOCAL_ANNOTATION_NAME = "L" +
 	    com.amd.aparapi.Kernel.Local.class.getName().replace('.', '/') + ";";
@@ -578,7 +579,6 @@ public abstract class KernelWriter extends BlockWriter {
 				assert field.desc.startsWith("["): "array type " + field.desc + " in Tuple2 is not allowed";
 
 				if (field.desc.startsWith("L")) {
-//                  cType = "__global " + cType.replace('.', '_') + " *";
 
 					// comaniac: Issue #1, the struct used for kernel argument cannot have pointer type.
 					// Original version use pointer to access object (L), here we use scalar instead, so the
@@ -811,14 +811,15 @@ public abstract class KernelWriter extends BlockWriter {
 				}
 			} else
 				fullReturnType = convertedReturnType;
- 
+
+			write("static ");
 			if (mm.getSimpleName().equals("<init>")) {
 				// Transform constructors to return a reference to their object type
 				ClassModel owner = mm.getMethod().getClassModel();
-				write("static __global " + owner.getClassWeAreModelling().getName().replace('.', '_') + " * ");
+				write(__global + owner.getClassWeAreModelling().getName().replace('.', '_') + " * ");
 				processingConstructor = true;
 			} else if (returnType.startsWith("L") && !Utils.isHardCodedClass(returnType)) {
-				write("static __global " + fullReturnType);
+				write(__global + fullReturnType);
 				write(" *");
 				processingConstructor = false;
 			} else {
@@ -831,12 +832,10 @@ public abstract class KernelWriter extends BlockWriter {
 					newLine();
 					write("   or the kernel might not be synthesized or compiled. */");
 					newLine();
-					write("static void ");
+					write("void ");
 					isArrayTypeOutput = true;
-				} else {
-					write("static ");
+				} else
 					write(fullReturnType);
-				}
 				processingConstructor = false;
 			}
 
@@ -853,12 +852,12 @@ public abstract class KernelWriter extends BlockWriter {
 					while (classIter.hasNext()) {
 						final ClassModel c = classIter.next();
 						if (mm.getMethod().getClassModel() == c) {
-							write("__global " + mm.getMethod().getClassModel().getClassWeAreModelling().getName().replace('.',
+							write(__global + mm.getMethod().getClassModel().getClassWeAreModelling().getName().replace('.',
 							      '_')
 							      + " *this");
 							break;
 						} else if (mm.getMethod().getClassModel().isSuperClass(c.getClassWeAreModelling())) {
-							write("__global " + c.getClassWeAreModelling().getName().replace('.', '_') + " *this");
+							write(__global + c.getClassWeAreModelling().getName().replace('.', '_') + " *this");
 							break;
 						}
 					}
@@ -910,11 +909,11 @@ public abstract class KernelWriter extends BlockWriter {
 							write(", ");
 
 						if (descriptor.startsWith("[") || Utils.isArrayBasedClass(clazzDesc))
-							write(" __global ");
+							write(" " + __global);
 
 						// FIXME: We haven't create a programming model for user-defined classes.
 						if (descriptor.startsWith("L"))
-							write("__global ");
+							write(__global);
 
 						final String convertedType;
 						if (descriptor.startsWith("L")) {
@@ -1021,7 +1020,7 @@ public abstract class KernelWriter extends BlockWriter {
 				if (newArrayInst == null)
 					System.err.println("WARNING: Cannot find local variable declaration for array type output.");
 
-				write(", __global " + fullReturnType);
+				write(", " + __global + fullReturnType);
 				if (Utils.isArrayBasedClass(returnType))
 					write("* ");
 				write(varName);
@@ -1093,8 +1092,9 @@ public abstract class KernelWriter extends BlockWriter {
 				paramString = p.getInputParameterString(this);
 
 			// I/O must be an array for kernel.run
-			if (!p.isArray())
-				paramString = "__global " + paramString.replace(" ", " * ");
+// FIXME: Should be set in ScalaParameter
+//			if (!p.isArray())
+//				paramString = __global + paramString.replace(" ", " * ");
 			write(paramString);
 
 			// Add length and item number for 1-D array I/O.
@@ -1143,7 +1143,7 @@ public abstract class KernelWriter extends BlockWriter {
 
 		// Call the kernel function. TODO: Double buffering
 		if (outParam.getClazz() != null) { // User defined class
-			write("__global " + outParam.getType() + "* result = " +
+			write(__global + outParam.getType() + "* result = " +
 			      _entryPoint.getMethodModel().getName() + "(this");
 		} else {
 			if (!outParam.isArray() && !isMapPartitions) // Issue #40: We don't use return value for array type
@@ -1332,6 +1332,14 @@ public abstract class KernelWriter extends BlockWriter {
          throw new CodeGenException(t);
        }*/
 
-		return (new WriterAndKernel(openCLWriter, openCLStringBuilder.toString()));
+		String kernel = openCLStringBuilder.toString();
+
+		// Remove OpenCL tags for Merlin Compiler
+		if (useMerlinKernel) {
+			kernel = kernel.replace("__global", "")
+										 .replace("__local", "")
+										 .replace("__kernel", "");
+		}
+		return (new WriterAndKernel(openCLWriter, kernel));
 	}
 }

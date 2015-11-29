@@ -14,12 +14,18 @@ public class ScalaScalarParameter extends ScalaParameter {
 
 	@Override
 	public String getInputParameterString(KernelWriter writer) {
-		return type + " " + name;
+		if (!isReference)
+			return type + " * " + name;
+		else
+			return type + " " + name;
 	}
 
 	@Override
 	public String getOutputParameterString(KernelWriter writer) {
-		return type + " " + name;
+		if (!isReference)
+			return type + " * " + name;
+		else
+			return type + " " + name;
 	}
 
 	@Override

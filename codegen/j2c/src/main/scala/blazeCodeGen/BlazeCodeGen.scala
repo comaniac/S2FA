@@ -27,15 +27,16 @@ object BlazeCodeGen {
 
   def main(args : Array[String]) {
     if (args.length < 2) {
-      System.err.println("Usage: BlazeCodeGen <jar path> <Accelerator class name>")
+      System.err.println("Usage: BlazeCodeGen <jar path> <Accelerator class name> <use Merlin?>")
       System.exit(1)
     }
     val jars = Array((new File(args(0)).toURI.toURL), 
                      new URL("file://" + sys.env("BLAZE_HOME") + "/accrdd/target/blaze-1.0-SNAPSHOT.jar"))
     val loader = new URLClassLoader(jars)
     val clazz = loader.loadClass(args(1))
+    val useMerlin = if (args(2).toLowerCase.equals("y")) true else false
 
-    val codeGenLog = CodeGenUtil.genOpenCLKernel(args(1), clazz)
+    val codeGenLog = CodeGenUtil.genOpenCLKernel(args(1), clazz, useMerlin)
     println("CodeGen result: " + codeGenLog._1)
     println("WARNING: " + codeGenLog._2)
   }

@@ -69,7 +69,9 @@ public abstract class BlockWriter {
 		return entryPoint;
 	}
 
-	protected final boolean useFPGAStyle = true;
+	protected final static boolean useFPGAStyle = true;
+
+	protected final static boolean useMerlinKernel = Config.enableMerlinKernel;
 
 	public final static String iteratorIndexSuffix = "_iterIdx";
 

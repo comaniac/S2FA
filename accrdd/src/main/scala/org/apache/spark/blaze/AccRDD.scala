@@ -94,12 +94,6 @@ class AccRDD[U: ClassTag, T: ClassTag](
         if (!isPrimitiveType && modeledType == ModeledType.NotModeled)
           throw new RuntimeException("RDD data type is not supported")
 
-        if (split.index == 0) { // FIXME: Testing
-          val codeGenLog = CodeGenUtil.genOpenCLKernel(acc)
-          logInfo(codeGenLog._1)
-          logWarning(codeGenLog._2)
-        }
-
         // Get broadcast block IDs
         for (j <- 0 until brdcstIdOrValue.length) {
 
@@ -158,18 +152,6 @@ class AccRDD[U: ClassTag, T: ClassTag](
         logInfo("Partition " + split.index + " communication latency: " + elapseTime + " ns")
 
         if (revMsg.getType() != AccMessage.MsgType.ACCGRANT) {
-          // TODO: Manager should return an error code
-          if (split.index == 0) { // Only let one worker to generate the kernel
-            logInfo("Generating the OpenCL kernel")
-            val thread = new Thread {
-              override def run {
-                val codeGenLog = CodeGenUtil.genOpenCLKernel(acc)
-                logInfo(codeGenLog._1)
-                logWarning(codeGenLog._2)
-              }
-            }
-            thread.start
-          }
           throw new RuntimeException("Request reject.")
         }
 

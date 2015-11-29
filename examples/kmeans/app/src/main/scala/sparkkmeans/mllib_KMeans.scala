@@ -207,30 +207,24 @@ class KMeansClassified(
 
     var closest_center = -1
     var closest_center_dist = -1
-    val dist = new Array[Int](3)
+    var dist = 0
 
     // Blaze CodeGen: foreach and for loop are forbidden.
     var i: Int = 0
-    while (i < K) {
-      dist(i) = 0
+    for (i <- 0 until K) {
+      dist = 0
 
       var j: Int = 0
-      while (j < D) {
-        dist(i) = dist(i) + math.abs(centers_blazeLocalMax4096(i * D + j) - in_blazeLocal784(j))
-        j += 1
-      }      
-      i += 1
-    }
-
-    i = 0
-    while (i < K) {
-      if (closest_center == -1 || dist(i) < closest_center_dist) {
-        closest_center = i
-        closest_center_dist = dist(i)
+      for (j <- 0 until D) {
+        dist = dist + math.abs(centers_blazeLocalMax4096(i * D + j) - in_blazeLocal784(j))
+//        j += 1
       }
-      i += 1
+      if (closest_center == -1 || dist < closest_center_dist) {
+        closest_center = i
+        closest_center_dist = dist
+      }
+//      i += 1
     }
-
     closest_center
   }
 }

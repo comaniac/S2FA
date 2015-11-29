@@ -56,11 +56,13 @@ public:
 			size_t local = 32; 
 
 			gettimeofday(&t1, NULL);
-
+			err = clEnqueueTask(command, kernel, 0, NULL, &event);
+/*
 			err = clEnqueueNDRangeKernel(command, kernel, 1, NULL,
 			   (size_t *) &global, (size_t *) &local, 0, NULL, &event);
-			clWaitForEvents(1, &event);
+*/
 
+			clWaitForEvents(1, &event);
 			gettimeofday(&t2, NULL);
 			timersub(&t1, &t2, &tr);
 			fprintf(stdout, "FPGA execution takes %.4f ms\n",

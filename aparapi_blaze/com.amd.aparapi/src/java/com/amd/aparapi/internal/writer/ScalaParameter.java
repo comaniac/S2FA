@@ -16,9 +16,9 @@ public abstract class ScalaParameter {
 	protected HardCodedClassModel clazzModel;
 	protected Class<?> clazz;
 	protected boolean isReference;
+	protected String type;
 	protected final boolean primitiveOrNot;
 	protected final boolean arrayOrNot;
-	protected final String type;
 	protected final String name;
 	protected final DIRECTION dir;
 	protected final List<String> typeParameterDescs;
