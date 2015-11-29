@@ -1,0 +1,1 @@
+--gcc-toolchain=/curr/cody/.local/gcc-4.8/ -I/curr/cody/.local/llvm-3.7/lib/clang/3.7.0/include/
