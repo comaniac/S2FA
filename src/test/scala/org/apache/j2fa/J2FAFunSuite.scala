@@ -39,6 +39,17 @@ abstract class J2FAFunSuite extends FunSuite {
     codeGenLog._1
   }
 
+  final protected def checkResult(log: String, numSuccess: Int) = {
+    val trimRes = log.replace("successfully", "")
+    val successfullyCnt = (log.length - trimRes.length) / ("successfully".length)
+    if (successfullyCnt < numSuccess) {
+      println(log)
+      false
+    }
+    else
+      true
+  }
+
   /**
    * Log the suite name and the test name before and after each test.
    *
@@ -50,10 +61,10 @@ abstract class J2FAFunSuite extends FunSuite {
     val testName = test.text
     val suiteName = this.getClass.getName
     try {
-      println(s"\n\n===== TEST OUTPUT FOR $suiteName: '$testName' =====\n")
+//      println(s"\n\n===== TEST OUTPUT FOR $suiteName: '$testName' =====\n")
       test()
     } finally {
-      println(s"\n\n===== FINISHED $suiteName: '$testName' =====\n")
+//      println(s"\n\n===== FINISHED $suiteName: '$testName' =====\n")
     }
   }
 }

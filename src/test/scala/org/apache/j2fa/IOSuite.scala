@@ -26,13 +26,34 @@ import java.util.LinkedList
 
 class IOSuite extends J2FAFunSuite {
 
-  test("Test: (Merlin) Tuple2/Primitive") {
-    val jarFileURL = getClass.getResource("/iotest_tp-0.0.0.jar")
+  test("Map IO Test: (Merlin) Primitive/Primitive") {
+    val jarFileURL = getClass.getResource("/map_iotest_pp-0.0.0.jar")
+    val className = "IOTest_PP"
+    assert(checkResult(runTest(jarFileURL, className), 1))
+  }
+
+  test("Map IO Test: (Merlin) Tuple2/Primitive") {
+    val jarFileURL = getClass.getResource("/map_iotest_tp-0.0.0.jar")
     val className = "IOTest_TP"
-    val res = runTest(jarFileURL, className)
-    val trimRes = res.replace("successfully", "")
-    val successfullyCnt = (res.length - trimRes.length) / ("successfully".length)
-    assert(successfullyCnt > 0)
+    assert(checkResult(runTest(jarFileURL, className), 1))
+  }
+
+   test("Map IO Test: (Merlin) Broadcast") {
+    val jarFileURL = getClass.getResource("/map_iotest_b-0.0.0.jar")
+    val className = "IOTest_B"
+    assert(checkResult(runTest(jarFileURL, className), 1))
+  }
+ 
+  test("Map IO Test: (Merlin) Array[Primitive]/Array[Primitive]") {
+    val jarFileURL = getClass.getResource("/map_iotest_apap-0.0.0.jar")
+    val className = "IOTest_APAP"
+    assert(checkResult(runTest(jarFileURL, className), 1))
+  }
+
+  test("MapPartitions IO Test: (Merlin) Primitive/Primitive") {
+    val jarFileURL = getClass.getResource("/mappartitions_iotest_pp-0.0.0.jar")
+    val className = "IOTest_PP"
+    assert(checkResult(runTest(jarFileURL, className), 1))
   }
 }
 
