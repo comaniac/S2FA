@@ -66,8 +66,8 @@ object J2FA {
     if (useMerlin)
       System.setProperty("com.amd.aparapi.enable.MERLINE", "true")
 
-    var logInfo : String = ""
-    var logWarning : String = ""
+    var logInfo : String = "\n"
+    var logWarning : String = "\n"
 
     val methodFunctions = Array("map", "mapPartitions")
     val classModel : ClassModel = ClassModel.createClassModel(accClazz, null, new ShouldNotCallMatcher())
@@ -82,6 +82,10 @@ object J2FA {
       var isMapPartitions: Boolean = if (methodFunction.contains("Partitions")) true else false
       val method =  if (!isMapPartitions) classModel.getPrimitiveCallMethod 
                     else classModel.getPrimitiveCallPartitionsMethod
+      if (isMapPartitions) 
+        logInfo += "[MapPartitions] " 
+      else 
+        logInfo += "[Map] "
       try {
         if (method == null)
           throw new RuntimeException("Cannot find available call method.")
@@ -104,14 +108,15 @@ object J2FA {
         kernelFile.write(KernelWriter.applyXilinxPatch(openCL))
         kernelFile.close
         //val res = applyBoko(kernelPath)
-        logInfo += "[CodeGen] Generate and optimize the kernel successfully\n"
+        logInfo += "Generate and optimize the kernel successfully\n"
         //logWarning += "[Boko] " + res + "\n"
       } catch {
         case e: Throwable =>
           val sw = new StringWriter
           e.printStackTrace(new PrintWriter(sw))
           val fullMsg = sw.toString
-          logInfo += "[CodeGen] Kernel generated failed: " + fullMsg.substring(0, fullMsg.indexOf("\n")) + "\n"
+//          logInfo += "Kernel generated failed: " + fullMsg.substring(0, fullMsg.indexOf("\n")) + "\n"
+          logInfo += "Kernel generated failed: " + fullMsg + "\n"
       }
     } // end for 
     (logInfo, logWarning)

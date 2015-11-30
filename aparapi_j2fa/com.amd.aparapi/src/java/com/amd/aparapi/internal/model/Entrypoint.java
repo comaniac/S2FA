@@ -974,6 +974,7 @@ public class Entrypoint implements Cloneable {
 						String clazz = varInfo.getVariableDescriptor().replace(";", "");
 						String fieldName = varInfo.getVariableName();
 						String methodName = null;
+						String returnType = null;
 						String typeHint = null;
 						boolean isArray = false;
 
@@ -990,17 +991,26 @@ public class Entrypoint implements Cloneable {
 	
 							// Arg type is a normal class (i.e. Tuple2) or an extended class (e.g. Iterator)
 							if (next instanceof I_INVOKEVIRTUAL || next instanceof I_INVOKEINTERFACE) {
+								boolean fetchDirectly = false;
 //								typeHint = findTypeHintForHardCodedClass(fieldName, clazz, next, false);
 								if (next instanceof I_INVOKEVIRTUAL) {
 									MethodEntry entry = ((I_INVOKEVIRTUAL) next).getConstantPoolMethodEntry();
 									methodName = Utils.cleanMethodName(clazz, entry.getNameAndTypeEntry()
 													.getNameUTF8Entry().getUTF8());
+									returnType = entry.getNameAndTypeEntry().getDescriptorUTF8Entry()
+													.getUTF8().replace("()", "");
 								}
 								else {
-								InterfaceMethodEntry entry = ((I_INVOKEINTERFACE) next).getConstantPoolInterfaceMethodEntry();
-								methodName = Utils.cleanMethodName(clazz, entry.getNameAndTypeEntry()
-												.getNameUTF8Entry().getUTF8());
+									InterfaceMethodEntry entry = ((I_INVOKEINTERFACE) next).getConstantPoolInterfaceMethodEntry();
+									methodName = Utils.cleanMethodName(clazz, entry.getNameAndTypeEntry()
+													.getNameUTF8Entry().getUTF8());
+									returnType = entry.getNameAndTypeEntry().getDescriptorUTF8Entry()
+													.getUTF8().replace("()", "");
 								}
+
+								// Method returns a primitve type so fetch directly.
+								if (Utils.isPrimitive(returnType))
+									fetchDirectly = true;
 
 								if(Utils.getHardCodedClassMethodUsage(clazz, methodName) != METHODTYPE.VAR_ACCESS) {
 									//System.err.println("Skip method " + methodName);
@@ -1014,7 +1024,9 @@ public class Entrypoint implements Cloneable {
 									curTypeHint = Utils.addHardCodedFieldTypeMapping(clazz);
 								}
 
-								if (next.getNextPC() instanceof I_CHECKCAST) {
+								if (fetchDirectly)
+									typeHint = returnType;
+								else if (next.getNextPC() instanceof I_CHECKCAST) {
 									I_CHECKCAST cast = (I_CHECKCAST) next.getNextPC();
 									typeHint = cast.getConstantPoolClassEntry().getNameUTF8Entry().getUTF8();
 								}
