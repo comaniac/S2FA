@@ -61,6 +61,7 @@ object J2FA {
   }
 
   def genKernel(id: String, accClazz: Class[_], useMerlin: Boolean) : (String, String) = {
+    System.setProperty("com.amd.aparapi.logLevel", "FINEST")
     System.setProperty("com.amd.aparapi.enable.NEW", "true")
     System.setProperty("com.amd.aparapi.enable.INVOKEINTERFACE", "true")
     if (useMerlin)

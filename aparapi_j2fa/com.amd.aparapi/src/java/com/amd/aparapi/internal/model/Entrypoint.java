@@ -569,34 +569,8 @@ public class Entrypoint implements Cloneable {
 		methodModel = _methodModel;
 		kernelInstance = _k;
 
-		if (setHardCodedClassModels == null)
-			hardCodedClassModels = new HardCodedClassModels();
-		else
-			hardCodedClassModels = setHardCodedClassModels;
-/*
-		for (HardCodedClassModel model : hardCodedClassModels) {
-			for (String desc : model.getNestedTypeDescs()) {
-				// Convert object desc to class name
-				String nestedClass = desc.substring(1, desc.length() - 1);
-				lexicalOrdering.add(nestedClass);
-				addToObjectArrayFieldsClasses(nestedClass,
-				                              getOrUpdateAllClassAccesses(nestedClass,
-				                                  new ShouldNotCallMatcher()));
-			}
-		}
+		hardCodedClassModels = new HardCodedClassModels();
 
-		if (params != null) {
-			for (ScalaParameter p : params) {
-				if (p.getClazz() != null) {
-
-					//	Issue #49: Now we don't want to model some hardcoded class such as Tuple2.
-					//	Intead, we want to transform it as variables and access them directly.
-					if (!Utils.isHardCodedClass(p.getClazz().getName()))
-						addClass(p.getClazz().getName(), p.getDescArray());
-				}
-			}
-		}
-*/
 		final Map<ClassModelMethod, MethodModel> methodMap = new
 		LinkedHashMap<ClassModelMethod, MethodModel>();
 

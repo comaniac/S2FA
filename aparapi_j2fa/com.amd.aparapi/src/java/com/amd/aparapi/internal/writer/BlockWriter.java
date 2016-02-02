@@ -286,7 +286,7 @@ public abstract class BlockWriter {
 			Instruction blockEnd = instruction.getLastChild();
 			writeBlock(blockStart, blockEnd);
 			write("while(");
-			writeConditional(((CompositeInstruction) instruction).getBranchSet(), true);
+			writeConditional(instruction.getBranchSet(), true);
 			write(");");
 			newLine();
 		}

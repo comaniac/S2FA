@@ -1384,15 +1384,14 @@ public abstract class MethodModel {
 	                          final Instruction _operandStart)
 	throws ClassParseException {
 
-//		if (logger.isLoggable(Level.FINE)) {
-
+		if (logger.isLoggable(Level.FINE)) {
 			System.err.println("We are looking at " + _instruction + " which wants to consume " +
 			                   _instruction.getStackConsumeCount()
 			                   + " operands, produces stack? " + _operandStart.producesStack() + ", is assign to local? " +
 			                   (_instruction instanceof AssignToLocalVariable) + ", next is assign to local? " +
 			                   (_operandStart.getNextExpr() instanceof AssignToLocalVariable) + " -> " +
 			                   _operandStart.getNextExpr());
-//		}
+		}
 		boolean txformed = false;
 
 		/**

@@ -54,6 +54,7 @@ import com.amd.aparapi.internal.instruction.InstructionSet.ConditionalBranch;
 import com.amd.aparapi.internal.instruction.InstructionSet.FakeGoto;
 import com.amd.aparapi.internal.instruction.InstructionSet.Return;
 import com.amd.aparapi.internal.instruction.InstructionSet.UnconditionalBranch;
+import com.amd.aparapi.internal.instruction.InstructionSet.LocalVariableTableIndexAccessor;
 import com.amd.aparapi.internal.model.MethodModel;
 import com.amd.aparapi.internal.model.ClassModel.LocalVariableTableEntry;
 import com.amd.aparapi.internal.model.ClassModel.LocalVariableInfo;
@@ -639,23 +640,67 @@ public class ExpressionList {
 									}
 								}
 
+								boolean foldtoForLoop = true;
 								if (loopTop instanceof AssignToLocalVariable) {
 									final LocalVariableInfo localVariableInfo = ((AssignToLocalVariable)
 									    loopTop).getLocalVariableInfo();
 									if ((localVariableInfo.getStart() == loopTop.getNextExpr().getStartPC())
 									    && (localVariableInfo.getEnd() == _instruction.getThisPC())) {
 										loopTop = loopTop.getPrevExpr(); // back up over the initialization
-
 									}
 								}
 								branchSet.unhook();
 
-								// If there is an inner scope, it is likely that the loop counter var
-								// is modified using an inner scope variable so use while rather than for
-								if (reverseGoto.getPrevExpr() instanceof CompositeArbitraryScopeInstruction)
+								if (reverseGoto.getPrevExpr() instanceof CompositeArbitraryScopeInstruction) {
+									// If there is an inner scope, it is likely that the loop counter var
+									// is modified using an inner scope variable so use while rather than for
+									// 2/2/16: All arbitrary blocks are now cancelled so if we run into here it 
+									//  means that while-loop is inevitable. 
+									foldtoForLoop = false;
+								}
+								else if (reverseGoto.getPrevExpr() instanceof AssignToLocalVariable) {
+									// 2/2/16: Check if the loop variable increment uses other variables.
+									Instruction inst = reverseGoto.getPrevExpr();
+									LocalVariableInfo localVariableInfo = ((AssignToLocalVariable) 
+											inst).getLocalVariableInfo();
+									// 2/2/16: 1. Check if the loop variable increment uses other variables.
+									if (hasOtherVariables(localVariableInfo, inst.getFirstChild())) {
+										if (logger.isLoggable(Level.FINEST))
+											System.out.println("Find other local variables are referred by the loop variable");
+										foldtoForLoop = false;
+									}
+									else {
+										// 2/2/16: 2. Check if we have multuple assignments in this block.
+										inst = branchSet.getFirst().getNextExpr();
+										while (inst != reverseGoto.getPrevExpr()) {
+											if (inst instanceof AssignToLocalVariable) {
+												LocalVariableInfo otherLocalVariableInfo = ((AssignToLocalVariable) 
+													inst).getLocalVariableInfo();
+												if (localVariableInfo.getVariableIndex() == otherLocalVariableInfo.getVariableIndex()) {
+													if (logger.isLoggable(Level.FINEST)) {
+														System.out.println("Find multiple assignments of loop variable " + 
+															localVariableInfo.getVariableName() + ": " + inst + " assign to " + 
+															otherLocalVariableInfo.getVariableName());
+													}
+													foldtoForLoop = false;
+													break;
+												}
+											}
+											inst = inst.getNextExpr();
+										}
+									}
+								}
+
+								if (!foldtoForLoop) {
+									if (logger.isLoggable(Level.FINEST))
+										System.out.println("Fold to while-loop");
 									addAsComposites(ByteCode.COMPOSITE_WHILE, loopTop, branchSet);
-								else
+								}
+								else {
+									if (logger.isLoggable(Level.FINEST))
+										System.out.println("Fold to sun_for-loop");
 									addAsComposites(ByteCode.COMPOSITE_FOR_SUN, loopTop, branchSet);
+								}
 								handled = true;
 							}
 
@@ -796,7 +841,9 @@ public class ExpressionList {
 							startPc = localVariableInfo.getStart();
 					}
 				}
-				if (startPc < Short.MAX_VALUE) {
+				if (false) {
+// 2/2/16: Experiment: Never forms the arbitrary scope composites
+//				if (startPc < Short.MAX_VALUE) {
 					logger.fine("Scope block from " + startPc + " to  " + (tail.getThisPC() + tail.getLength()));
 					for (Instruction i = head; i != null; i = i.getNextPC()) {
 						if (i.getThisPC() == startPc) {
@@ -808,9 +855,7 @@ public class ExpressionList {
 							break;
 						}
 					}
-
 				}
-
 			}
 
 			if (Config.instructionListener != null)
@@ -831,6 +876,68 @@ public class ExpressionList {
 		final CompositeInstruction composite = CompositeInstruction.create(_byteCode, methodModel,
 		                                       childHead, childTail, _branchSet);
 		add(composite);
+	}
+
+	/** Check if there have other local variables are assigned to the target.
+	 * @param target The target local variable.
+	 * @param _instruction The instruction and the corresponding expression tree we are looking for.
+	 * @param If it has the other variables or not.
+	 */
+	public boolean hasOtherVariables(LocalVariableInfo target, Instruction _instruction) {
+		if (_instruction instanceof LocalVariableTableIndexAccessor) {
+			LocalVariableInfo localVariableInfo = ((LocalVariableTableIndexAccessor) 
+					_instruction).getLocalVariableInfo();
+			if (localVariableInfo.getVariableIndex() != target.getVariableIndex())
+				return true;
+		}
+		for (Instruction child = _instruction.getFirstChild(); child != null; child = child.getNextExpr()) {
+			if (hasOtherVariables(target, child))
+				return true;
+		}
+		return false;
+	}
+
+
+	/**
+	 * Aids debugging. Create an expression tree from the input instruction.
+	 * This method should only be invoked by dumpExpressionTree(Instruction).
+	 */
+	public String dumpExpressionTree(Instruction _instruction, int lv) {
+		final StringBuilder sb = new StringBuilder();
+		String indent = "";
+		for (int i = 0; i < lv; i += 1)
+			indent += "  ";
+		if (lv != 0)
+			sb.append("|- ");
+
+		Instruction inst = _instruction;
+
+		sb.append(inst + "\n");
+		for (Instruction child = inst.getFirstChild(); child != null; child = child.getNextExpr())
+			sb.append(dumpExpressionTree(child, lv + 1));
+			
+		return sb.toString();
+	}
+
+	/**
+	 * Aids debugging. Create an expression tree from the root of the input instruction.
+	 * <pre>
+	 * System.our.println(dumpExpressionTree(instruction));
+	 *  inst
+	 *    |- 1st child
+	 *		  |- 1st child
+	 *		|- 2nd child
+	 * </pre>
+	 * @param _instruction The instruction we are looking at
+	 * @return A string of dumped expression tree
+	 */
+	public String dumpExpressionTree(Instruction _instruction) {
+		final StringBuilder sb = new StringBuilder();
+		sb.append("Expression Tree of : " + _instruction + "\n");
+		Instruction root = _instruction.getRootExpr();
+		sb.append(dumpExpressionTree(root, 0));
+
+		return sb.toString();
 	}
 
 	/**

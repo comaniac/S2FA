@@ -211,19 +211,19 @@ class KMeansClassified(
 
     // Blaze CodeGen: foreach and for loop are forbidden.
     var i: Int = 0
-    for (i <- 0 until K) {
+    while (i < K) {
       dist = 0
 
       var j: Int = 0
-      for (j <- 0 until D) {
+      while (j < D) {
         dist = dist + math.abs(centers_blazeLocalMax4096(i * D + j) - in_blazeLocal784(j))
-//        j += 1
+        j += 1
       }
       if (closest_center == -1 || dist < closest_center_dist) {
         closest_center = i
         closest_center_dist = dist
       }
-//      i += 1
+      i += 1
     }
     closest_center
   }
