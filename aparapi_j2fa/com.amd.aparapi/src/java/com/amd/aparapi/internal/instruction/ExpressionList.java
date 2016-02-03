@@ -644,11 +644,14 @@ public class ExpressionList {
 								if (loopTop instanceof AssignToLocalVariable) {
 									final LocalVariableInfo localVariableInfo = ((AssignToLocalVariable)
 									    loopTop).getLocalVariableInfo();
+									// If the local variable assignment right before the loop and the scope
+									// is same as the loop, then treat it as the initialization
 									if ((localVariableInfo.getStart() == loopTop.getNextExpr().getStartPC())
 									    && (localVariableInfo.getEnd() == _instruction.getThisPC())) {
 										loopTop = loopTop.getPrevExpr(); // back up over the initialization
 									}
 								}
+								
 								branchSet.unhook();
 
 								if (reverseGoto.getPrevExpr() instanceof CompositeArbitraryScopeInstruction) {
@@ -659,11 +662,13 @@ public class ExpressionList {
 									foldtoForLoop = false;
 								}
 								else if (reverseGoto.getPrevExpr() instanceof AssignToLocalVariable) {
-									// 2/2/16: Check if the loop variable increment uses other variables.
 									Instruction inst = reverseGoto.getPrevExpr();
 									LocalVariableInfo localVariableInfo = ((AssignToLocalVariable) 
 											inst).getLocalVariableInfo();
+
+									// 2/2/16: Check if the loop variable increment uses other variables.
 									// 2/2/16: 1. Check if the loop variable increment uses other variables.
+									inst = reverseGoto.getPrevExpr();
 									if (hasOtherVariables(localVariableInfo, inst.getFirstChild())) {
 										if (logger.isLoggable(Level.FINEST))
 											System.out.println("Find other local variables are referred by the loop variable");

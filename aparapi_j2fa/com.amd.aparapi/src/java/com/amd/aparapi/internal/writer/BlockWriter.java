@@ -196,6 +196,27 @@ public abstract class BlockWriter {
 				writeInstruction(topBranch);
 				topBranch = topBranch.getNextExpr();
 			}
+			else {
+				// The loop has no initialization. Copy the nearest statement.
+				// 1. Find the loop variable
+				Instruction tempInst = instruction.getLastChild().getPrevExpr();
+				LocalVariableInfo loopVariableInfo = ((AssignToLocalVariable) 
+						tempInst).getLocalVariableInfo();
+				
+				// 2. Find the nearest assignment.
+				tempInst = instruction;
+				while (tempInst != null) {
+					if (tempInst instanceof AssignToLocalVariable) {
+						LocalVariableInfo localVariableInfo = ((AssignToLocalVariable) 
+								tempInst).getLocalVariableInfo();
+						if (localVariableInfo.getVariableIndex() == loopVariableInfo.getVariableIndex()) {
+							writeInstruction(tempInst);
+							break;
+						}
+					}
+					tempInst = tempInst.getPrevExpr();
+				}
+			}
 			write("; ");
 			final BranchSet branchSet = instruction.getBranchSet();
 			final Instruction blockStart = writeConditional(branchSet);

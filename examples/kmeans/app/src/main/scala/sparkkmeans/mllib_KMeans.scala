@@ -207,10 +207,11 @@ class KMeansClassified(
 
     var closest_center = -1
     var closest_center_dist = -1
-    var dist = 0
+//    var dist = 0
 
     // Blaze CodeGen: foreach and for loop are forbidden.
     var i: Int = 0
+    var dist = 0
     while (i < K) {
       dist = 0
 
