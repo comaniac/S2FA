@@ -73,17 +73,20 @@ class NBody(bodies: BlazeBroadcast[Array[Float]])
     var i: Int = 0
 
     val this_body = new Array[Float](6)
+    i = 0
     while (i < 6) {
       this_body(i) = in(i)
       i += 1
     }
 
     val this_acc = new Array[Float](3)
+    i = 0
     while (i < 3) {
       this_acc(i) = 0.0f
       i += 1
     }
 
+    i = 0
     while (i < body_num) {
       val cur_body = new Array[Float](3)
       var j: Int = 0

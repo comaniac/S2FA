@@ -1047,7 +1047,7 @@ public class Entrypoint implements Cloneable {
 						// the type: aload, cast, unbox.
 						// Only focus on the main function (call method in Scala)
 
-						String outFieldName = "blazeOut";
+						String outFieldName = "j2faOut";
 						String typeHint = null;
 						if (instruction instanceof I_IRETURN)
 							typeHint = "I";
@@ -1182,7 +1182,7 @@ public class Entrypoint implements Cloneable {
 
 				ScalaParameter param = null;
 
-				if (argName.contains("blazeOut"))
+				if (argName.contains("j2faOut"))
 					param = Utils.createScalaParameter(typeHint, argName, ScalaParameter.DIRECTION.OUT);			
 				else
 					param = Utils.createScalaParameter(typeHint, argName, ScalaParameter.DIRECTION.IN);

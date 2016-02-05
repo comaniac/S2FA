@@ -198,8 +198,8 @@ class KMeansClassified(
       None
   }
 
-  override def call(in_blazeLocal784: Array[Int]): Int = { 
-    val centers_blazeLocalMax4096 = b_centers.value
+  override def call(in: Array[Int]): Int = { 
+    val centers = b_centers.value
     val D: Int = b_D
 
     // Blaze CodeGen: Cannot access array length of local array.
@@ -207,7 +207,6 @@ class KMeansClassified(
 
     var closest_center = -1
     var closest_center_dist = -1
-//    var dist = 0
 
     // Blaze CodeGen: foreach and for loop are forbidden.
     var i: Int = 0
@@ -215,9 +214,9 @@ class KMeansClassified(
     while (i < K) {
       dist = 0
 
-      var j: Int = 0
+      var j: Int = i
       while (j < D) {
-        dist = dist + math.abs(centers_blazeLocalMax4096(i * D + j) - in_blazeLocal784(j))
+        dist = dist + math.abs(centers(i * D + j) - in(j))
         j += 1
       }
       if (closest_center == -1 || dist < closest_center_dist) {

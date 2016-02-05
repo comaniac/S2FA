@@ -671,7 +671,7 @@ public class ExpressionList {
 									inst = reverseGoto.getPrevExpr();
 									if (hasOtherVariables(localVariableInfo, inst.getFirstChild())) {
 										if (logger.isLoggable(Level.FINEST))
-											System.out.println("Find other local variables are referred by the loop variable");
+											System.out.println("Find other local variables are referred by the loop variable increment");
 										foldtoForLoop = false;
 									}
 									else {
@@ -888,7 +888,7 @@ public class ExpressionList {
 	 * @param _instruction The instruction and the corresponding expression tree we are looking for.
 	 * @param If it has the other variables or not.
 	 */
-	public boolean hasOtherVariables(LocalVariableInfo target, Instruction _instruction) {
+	public static boolean hasOtherVariables(LocalVariableInfo target, Instruction _instruction) {
 		if (_instruction instanceof LocalVariableTableIndexAccessor) {
 			LocalVariableInfo localVariableInfo = ((LocalVariableTableIndexAccessor) 
 					_instruction).getLocalVariableInfo();
@@ -901,7 +901,6 @@ public class ExpressionList {
 		}
 		return false;
 	}
-
 
 	/**
 	 * Aids debugging. Create an expression tree from the input instruction.

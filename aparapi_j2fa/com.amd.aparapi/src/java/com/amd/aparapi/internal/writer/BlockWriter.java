@@ -50,8 +50,11 @@ import com.amd.aparapi.internal.model.ClassModel.*;
 import com.amd.aparapi.internal.model.*;
 import com.amd.aparapi.internal.model.ClassModel.ConstantPool.NameAndTypeEntry;
 import com.amd.aparapi.internal.model.HardCodedMethodModel.METHODTYPE;
+import com.amd.aparapi.Config;
 
 import java.util.*;
+import java.util.logging.Logger;
+import java.util.logging.Level;
 
 /**
  * Base abstract class for converting <code>Aparapi</code> IR to text.<br/>
@@ -62,6 +65,8 @@ import java.util.*;
  */
 
 public abstract class BlockWriter {
+
+	protected static Logger logger = Logger.getLogger(Config.getLoggerName());
 
 	protected Entrypoint entryPoint = null;
 
@@ -210,7 +215,13 @@ public abstract class BlockWriter {
 						LocalVariableInfo localVariableInfo = ((AssignToLocalVariable) 
 								tempInst).getLocalVariableInfo();
 						if (localVariableInfo.getVariableIndex() == loopVariableInfo.getVariableIndex()) {
-							writeInstruction(tempInst);
+							// Check if the statement RHS has other variables.
+							if (!ExpressionList.hasOtherVariables(localVariableInfo, tempInst))
+								writeInstruction(tempInst);
+							else {
+								if (logger.isLoggable(Level.FINEST))
+								  System.out.println("Find other local variables are referred by loop variable initialization");	
+							}
 							break;
 						}
 					}
@@ -968,8 +979,8 @@ public abstract class BlockWriter {
 
 		if (varName.contains("Max"))
 			maxLength = varName.substring(varName.indexOf("Max") + 3);
-		else if (varName.contains("blazeLocal"))
-			maxLength = varName.substring(varName.indexOf("blazeLocal") + 10);
+		else if (varName.contains("j2faLocal"))
+			maxLength = varName.substring(varName.indexOf("j2faLocal") + 10);
 		else // Argument with unknown size
 			maxLength = varName + arrayItemLengthMangleSuffix;
 
