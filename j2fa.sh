@@ -5,9 +5,9 @@ if [[ $# != 2 ]]; then
     exit 1
 fi
 
-JARS="./target/j2fa-0.0.0.jar"
+JARS="./core/target/j2fa_core-0.0.0.jar"
+JARS="${JARS}:./aparapi/target/aparapi-1.0.0.jar"
 JARS="${JARS}:${BLAZE_HOME}/accrdd/target/blaze-1.0-SNAPSHOT.jar"
-JARS="${JARS}:aparapi_j2fa/com.amd.aparapi/dist/aparapi.jar"
 
 scala	-classpath ${JARS} org.apache.j2fa.J2FA $1 $2 y
 

@@ -15,21 +15,22 @@
   -->
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
   <groupId>j2fa</groupId>
-  <artifactId>j2fa</artifactId>
-  <packaging>pom</packaging>
+  <artifactId>aparapi</artifactId>
+  <packaging>jar</packaging>
   <modelVersion>4.0.0</modelVersion>
-  <version>0.0.0</version>
-  
+  <version>1.0.0</version>
+ 
+	<parent>
+	  <groupId>j2fa</groupId>
+  	<artifactId>j2fa</artifactId>
+  	<version>0.0.0</version>
+	</parent>
+ 
   <repositories>
     <repository>
       <id>scala-tools.org</id>
       <name>Scala-tools Maven2 Repository</name>
       <url>http://scala-tools.org/repo-releases</url>
-    </repository>
-    <repository>
-      <id>maven-hadoop</id>
-      <name>Hadoop Releases</name>
-      <url>https://repository.cloudera.com/content/repositories/releases/</url>
     </repository>
     <repository>
       <id>cloudera-repos</id>
@@ -58,11 +59,6 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
   </properties>
-
-	<modules>
-		<module>aparapi</module>
-		<module>core</module>
-	</modules>
 
   <build>
     <plugins>
@@ -116,12 +112,4 @@
       </plugin>
     </plugins>  
   </build>
-
-  <dependencies>
-    <dependency>
-      <groupId>org.scala-lang</groupId>
-      <artifactId>scala-library</artifactId>
-      <version>2.11.4</version>
-    </dependency>
-  </dependencies>
 </project>
