@@ -10,7 +10,7 @@ The J2FA framework is released under Apache 2.0 license.
     0. Blaze runtime system
     0. Apache Spark (tested with 1.5.1)
 0. **Compiling**
-    0. run `mvn package`
+    0. run `mvn install`
 
 ### Running VectorAdd example
 0. **Prerequisites**

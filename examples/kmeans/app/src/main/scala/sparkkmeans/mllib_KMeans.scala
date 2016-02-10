@@ -23,6 +23,7 @@ import org.apache.spark.mllib.linalg.{Vector, Vectors}
 import org.apache.spark.rdd._
 import org.apache.spark.storage.StorageLevel
 
+import org.apache.j2fa.Annotation._
 import org.apache.spark.blaze._
 
 class KMeans private (
@@ -198,6 +199,7 @@ class KMeansClassified(
       None
   }
 
+  @J2FA_Kernel("Merlin")
   override def call(in: Array[Int]): Int = { 
     val centers = b_centers.value
     val D: Int = b_D

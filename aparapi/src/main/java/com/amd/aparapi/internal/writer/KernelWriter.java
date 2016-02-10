@@ -1154,6 +1154,10 @@ public abstract class KernelWriter extends BlockWriter {
 			if (!useFPGAStyle)
 				write("for (; idx < N; idx += nthreads) {");
 			else {
+				if (useMerlinKernel) {
+					write("assert(N < MAX_PARTITION_SIZE);");
+					newLine();
+				}
 				write("for (int idx = 0; idx < N; idx += PE) {");
 				in();
 				newLine();

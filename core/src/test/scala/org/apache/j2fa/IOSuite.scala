@@ -26,10 +26,8 @@ import java.util.LinkedList
 
 class IOSuite extends J2FAFunSuite {
 
-/*
   test("Map IO Test: (Merlin) Primitive/Primitive") {
     val jarFileURL = getClass.getResource("/map_iotest_pp-0.0.0.jar")
-    println("RESOURCE:" + jarFileURL)
     val className = "IOTest_PP"
     assert(checkResult(runTest(jarFileURL, className), 1))
   }
@@ -52,10 +50,9 @@ class IOSuite extends J2FAFunSuite {
     assert(checkResult(runTest(jarFileURL, className), 1))
   }
 
-  test("MapPartitions IO Test: (Merlin) Primitive/Primitive") {
-    val jarFileURL = getClass.getResource("/mappartitions_iotest_pp-0.0.0.jar")
-    val className = "IOTest_PP"
-    assert(checkResult(runTest(jarFileURL, className), 1))
-  }
-  */
+//  test("MapPartitions IO Test: (Merlin) Primitive/Primitive") {
+//    val jarFileURL = getClass.getResource("/mappartitions_iotest_pp-0.0.0.jar")
+//    val className = "IOTest_PP"
+//    assert(checkResult(runTest(jarFileURL, className), 1))
+//  }
 }

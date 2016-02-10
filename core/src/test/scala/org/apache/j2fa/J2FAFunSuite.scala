@@ -33,9 +33,8 @@ abstract class J2FAFunSuite extends FunSuite {
                      new URL("file://" + sys.env("BLAZE_HOME") + "/accrdd/target/blaze-1.0-SNAPSHOT.jar"))
     val loader = new URLClassLoader(jars)
     val clazz = loader.loadClass(className)
-    val useMerlin = true
 
-    val codeGenLog = J2FA.genKernel(className, clazz, useMerlin)
+    val codeGenLog = J2FA.genKernel(className, clazz, "call", "Merlin")
     codeGenLog._1
   }
 
