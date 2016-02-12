@@ -24,30 +24,38 @@ import java.io._
 import java.net._
 import java.util.LinkedList
 
-import org.scalatest.{FunSuite, Outcome}
+import org.scalatest.{FunSuite, Outcome, Ignore}
+
+import org.apache.j2fa.AST._
 
 abstract class J2FAFunSuite extends FunSuite {
 
-  final protected def runTest(jarFileURL: URL, className: String) = {
+  final protected def runTest(srcFileURL: URL, jarFileURL: URL, className: String) = {
+    val srcTree = ASTUtils.getSourceTree(srcFileURL.toString.replace("file:", ""))
+    val kernelMethods = ASTUtils.getKernelMethods(srcTree)
+
     val jars = Array(jarFileURL,
-                     new URL("file://" + sys.env("BLAZE_HOME") + "/accrdd/target/blaze-1.0-SNAPSHOT.jar"))
+                      new URL("file://" + sys.env("BLAZE_HOME") + "/accrdd/target/blaze-1.0-SNAPSHOT.jar"))
     val loader = new URLClassLoader(jars)
     val clazz = loader.loadClass(className)
 
-    val codeGenLog = J2FA.genKernel(className, clazz, "call", "Merlin")
-    codeGenLog._1
-  }
+    var success = 0
+    kernelMethods.foreach({
+      case (mName, mInfo) =>
+        Logging.info("Compiling kernel " + mInfo.toString)
+        val kernel = new Kernel(className, clazz, mInfo)
+        success = if (kernel.generate == true) success + 1 else success
 
-  final protected def checkResult(log: String, numSuccess: Int) = {
-    val trimRes = log.replace("successfully", "")
-    val successfullyCnt = (log.length - trimRes.length) / ("successfully".length)
-    if (successfullyCnt < numSuccess) {
-      println(log)
+      case _ =>
+    })
+
+    if (success != kernelMethods.size)
       false
-    }
     else
       true
   }
+
+  final protected def checkResult(res: Boolean) = res
 
   /**
    * Log the suite name and the test name before and after each test.

@@ -199,7 +199,7 @@ class KMeansClassified(
       None
   }
 
-  @J2FA_Kernel("Merlin")
+  @J2FA_Kernel
   override def call(in: Array[Int]): Int = { 
     val centers = b_centers.value
     val D: Int = b_D

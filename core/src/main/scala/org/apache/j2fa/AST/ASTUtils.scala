@@ -13,8 +13,8 @@ object ASTUtils {
   }
 
   def getKernelMethods(tree: Tree) = {
-    val extractor = new MethodAnnotExt("J2FA_Kernel")
+    val extractor = new KernelMethodExt("J2FA_Kernel")
     extractor.traverse(tree)
-    extractor.getList
+    extractor.getMethods
   }
 }

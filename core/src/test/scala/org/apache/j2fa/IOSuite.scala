@@ -24,35 +24,45 @@ import java.io._
 import java.net._
 import java.util.LinkedList
 
+import org.scalatest.Ignore
+
+import org.apache.j2fa.AST._
+
+//@Ignore
 class IOSuite extends J2FAFunSuite {
 
   test("Map IO Test: (Merlin) Primitive/Primitive") {
     val jarFileURL = getClass.getResource("/map_iotest_pp-0.0.0.jar")
+    val srcFileURL = getClass.getResource("/IOTest_PP.scala")
     val className = "IOTest_PP"
-    assert(checkResult(runTest(jarFileURL, className), 1))
+    assert(checkResult(runTest(srcFileURL, jarFileURL, className)))
   }
 
   test("Map IO Test: (Merlin) Tuple2/Primitive") {
     val jarFileURL = getClass.getResource("/map_iotest_tp-0.0.0.jar")
+    val srcFileURL = getClass.getResource("/IOTest_TP.scala")
     val className = "IOTest_TP"
-    assert(checkResult(runTest(jarFileURL, className), 1))
+    assert(checkResult(runTest(srcFileURL, jarFileURL, className)))
   }
 
    test("Map IO Test: (Merlin) Broadcast") {
     val jarFileURL = getClass.getResource("/map_iotest_b-0.0.0.jar")
+    val srcFileURL = getClass.getResource("/IOTest_B.scala")
     val className = "IOTest_B"
-    assert(checkResult(runTest(jarFileURL, className), 1))
+    assert(checkResult(runTest(srcFileURL, jarFileURL, className)))
   }
  
   test("Map IO Test: (Merlin) Array[Primitive]/Array[Primitive]") {
     val jarFileURL = getClass.getResource("/map_iotest_apap-0.0.0.jar")
+    val srcFileURL = getClass.getResource("/IOTest_APAP.scala")
     val className = "IOTest_APAP"
-    assert(checkResult(runTest(jarFileURL, className), 1))
+    assert(checkResult(runTest(srcFileURL, jarFileURL, className)))
   }
 
-//  test("MapPartitions IO Test: (Merlin) Primitive/Primitive") {
-//    val jarFileURL = getClass.getResource("/mappartitions_iotest_pp-0.0.0.jar")
-//    val className = "IOTest_PP"
-//    assert(checkResult(runTest(jarFileURL, className), 1))
-//  }
+  test("MapPartitions IO Test: (Merlin) Primitive/Primitive") {
+    val jarFileURL = getClass.getResource("/mappartitions_iotest_pp-0.0.0.jar")
+    val srcFileURL = getClass.getResource("/IOTest_mp_PP.scala")
+    val className = "IOTest_PP"
+    assert(checkResult(runTest(srcFileURL, jarFileURL, className)))
+  }
 }
