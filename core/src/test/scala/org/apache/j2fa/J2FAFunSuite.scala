@@ -43,8 +43,9 @@ abstract class J2FAFunSuite extends FunSuite {
     kernelMethods.foreach({
       case (mName, mInfo) =>
         Logging.info("Compiling kernel " + mInfo.toString)
-        val kernel = new Kernel(className, clazz, mInfo)
-        success = if (kernel.generate == true) success + 1 else success
+        val kernel = new Kernel(clazz, mInfo)
+        val result = kernel.generate
+        success = if (result.isEmpty == false) success + 1 else success
 
       case _ =>
     })

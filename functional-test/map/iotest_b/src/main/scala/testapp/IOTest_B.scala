@@ -26,6 +26,7 @@ import java.net._
 
 // comaniac: Import extended package
 import org.apache.spark.blaze._
+import org.apache.j2fa.Annotation._
 
 class IOTest_B(b_1: Double, b_2: BlazeBroadcast[Array[Double]])
   extends Accelerator[Double, Double] {
@@ -40,6 +41,7 @@ class IOTest_B(b_1: Double, b_2: BlazeBroadcast[Array[Double]])
     case _ => None
   }
 
+  @J2FA_Kernel
   override def call(in: Double): Double = {
     val b = b_2.value
     in + b_1 + b(0)

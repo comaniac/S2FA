@@ -15,6 +15,17 @@ class TypeInfo(var typeName: String) {
 
   def getName = typeName
 
+  def getShortName : String = typeName.replace("scala.", "") match {
+    case "Int" => "I"
+    case "Float" => "F"
+    case "Double" => "D"
+    case "Long" => "L"
+    case "Array" => 
+      assert (gTypes.size == 1)
+      "[" + gTypes(0).getShortName
+    case _ => typeName
+  }
+
   def addGenericType(newType: TypeInfo) = {
     gTypes = gTypes :+ newType
   }

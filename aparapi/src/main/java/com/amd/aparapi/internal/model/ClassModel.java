@@ -2719,6 +2719,48 @@ public abstract class ClassModel {
 		else return superClazz.getField(_name);
 	}
 
+	public ClassModelMethod getKernelMethod(String expectName, String expectDes) {
+		ClassModelMethod result = null;
+
+		for (ClassModelMethod method : methods) {
+			String name = method.getName();
+			String des = method.getDescriptor();
+			String shortDes = "";
+
+			// Cut off the class name since AST cannot have it
+			// Ex: Lscala/Tuple2; (bytecode) <-> scala.Tuple2
+			for (int i = 0; i < des.length(); i += 1) {
+				if (des.charAt(i) == 'L') {
+					int lastSlash = 0;
+					while (des.charAt(i) != ';') {
+						if (des.charAt(i) == '/')
+							lastSlash = i;
+						i += 1;
+					}
+					shortDes += des.substring(lastSlash + 1, i);
+				}
+				else
+					shortDes += des.charAt(i);
+			}
+
+			if (name.equals(expectName) && shortDes.equals(expectDes)) {
+				if (result != null) {
+					// We expect only one match per Function in Scala
+					throw new RuntimeException("Multiple matches");
+				}
+				result = method;
+				if (logger.isLoggable(Level.FINEST))
+					logger.finest("Match method: " + expectDes);
+			}
+			else {
+				if (logger.isLoggable(Level.FINEST))
+					logger.finest("Mismatch method: " + expectDes + " != " + shortDes);
+			}
+		}
+		return result;
+	}
+
+
 	public ClassModelMethod getPrimitiveCallMethod() {
 		ClassModelMethod result = null;
 		for (ClassModelMethod method : methods) {
@@ -2726,8 +2768,6 @@ public abstract class ClassModel {
 			String descriptor = method.getDescriptor();
 			String returnType = descriptor.substring(descriptor.lastIndexOf(')') + 1);
 
-			// Correspond to Blaze programming model: Accelerator.call
-			// Find partition
 			if (name.equals("call") &&
 			    !returnType.equals("Ljava/lang/Object;") &&
 			    !returnType.contains("Lscala/collection/Iterator")) {

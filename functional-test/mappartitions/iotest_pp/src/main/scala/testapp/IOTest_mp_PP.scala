@@ -26,6 +26,7 @@ import java.net._
 
 // comaniac: Import extended package
 import org.apache.spark.blaze._
+import org.apache.j2fa.Annotation._
 
 class IOTest_PP
   extends Accelerator[Double, Double] {
@@ -38,6 +39,7 @@ class IOTest_PP
     case _ => None
   }
 
+  @J2FA_Kernel(kernel_type="mapPartitions")
   override def call(in: Iterator[Double]): Iterator[Double] = {
     var count: Double = 0.0
     val out = new Array[Double](1)

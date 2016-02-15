@@ -26,6 +26,7 @@ import java.net._
 
 // comaniac: Import extended package
 import org.apache.spark.blaze._
+import org.apache.j2fa.Annotation._
 
 class IOTest_TP()
   extends Accelerator[Tuple2[Double, Double], Double] {
@@ -38,6 +39,7 @@ class IOTest_TP()
     case _ => None
   }
 
+  @J2FA_Kernel
   override def call(in: Tuple2[Double, Double]): Double = {
     in._1 + in._2
   }

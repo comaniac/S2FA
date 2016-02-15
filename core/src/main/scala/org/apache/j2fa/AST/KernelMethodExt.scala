@@ -96,8 +96,15 @@ class KernelMethodExt(annot: String) extends Traverser {
       })
       if (_type != null) // Generic type
         _type.addGenericType(newType)
-      else // Argument type
-        _arg.setType(newType)
+      else { // Argument type
+        if (_arg == null) { // Output type
+          val newArg = new ArgInfo
+          newArg.setType(newType)
+          _method.setOutput(newArg)
+        }
+        else
+          _arg.setType(newType)
+      }
 
     case pat @ Ident(name) => 
       val newType = new TypeInfo(name.toString)

@@ -1,7 +1,7 @@
 #!/bin/bash
 
-if [[ $# != 3 ]]; then
-    echo "usage: j2fa.sh <source file path> <jar file path> <class name>"
+if [[ $# != 4 ]]; then
+    echo "usage: j2fa.sh <source file path> <jar file path> <class name> <output file path>"
     exit 1
 fi
 
@@ -9,7 +9,7 @@ fi
 JARS="./core/target/j2fa_core-0.0.0.jar"
 JARS="${JARS}:${BLAZE_HOME}/accrdd/target/blaze-1.0-SNAPSHOT.jar"
 
-scala	-classpath ${JARS} org.apache.j2fa.J2FA $1 $2 $3
+scala	-classpath ${JARS} org.apache.j2fa.J2FA $1 $2 $3 $4
 
 # Example: /curr/cody/Spark_ACC/acc_runtime/examples/kmeans/app/target/sparkkmeans-0.0.0.jar KMeansClassified
 

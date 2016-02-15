@@ -39,34 +39,23 @@ import com.amd.aparapi.internal.writer.KernelWriter.WriterAndKernel
 import org.apache.spark.blaze.Accelerator
 import org.apache.j2fa.AST._
 
-class Kernel(id: String, accClazz: Class[_], mInfo: MethodInfo) {
+class Kernel(accClazz: Class[_], mInfo: MethodInfo) {
 
-  def generate = {
+  def generate: Option[String] = {
 
-    System.setProperty("com.amd.aparapi.logLevel", "INFO")
+    System.setProperty("com.amd.aparapi.logLevel", Logging.getLevel)
     System.setProperty("com.amd.aparapi.enable.NEW", "true")
     System.setProperty("com.amd.aparapi.enable.INVOKEINTERFACE", "true")
 
     val mName = mInfo.getName
-    var kernelPath : String = "/tmp/j2fa_kernel_" + id + "_" + mName
     val outputMerlin = if (mInfo.getConfig("output_format") == "Merlin") true else false
     var isMapPartitions: Boolean = if (mInfo.getConfig("kernel_type") == "mapPartitions") true else false
 
-    Logging.info("Kernel type: " + mInfo.getConfig("kernel_type"))
-    Logging.info("Output format: " + mInfo.getConfig("output_format"))
-
-    if (outputMerlin) {
+    if (outputMerlin)
       System.setProperty("com.amd.aparapi.enable.MERLINE", "true")
-      kernelPath = kernelPath + ".c" 
-    }
-    else
-      kernelPath = kernelPath + ".cl"
 
     val classModel : ClassModel = ClassModel.createClassModel(accClazz, null, new ShouldNotCallMatcher())
-
-    // FIXME: Find method using name and sig.
-    val method =  if (!isMapPartitions) classModel.getPrimitiveCallMethod 
-                  else classModel.getPrimitiveCallPartitionsMethod
+    val method =  classModel.getKernelMethod(mName, mInfo.getSig)
 
     try {
       if (method == null)
@@ -85,21 +74,18 @@ class Kernel(id: String, accClazz: Class[_], mInfo: MethodInfo) {
       })
       val entryPoint = classModel.getEntrypoint(mName, descriptor, fun, params, null)
       val writerAndKernel = KernelWriter.writeToString(entryPoint, params)
-      val openCL = writerAndKernel.kernel
-      val kernelFile = new PrintWriter(new File(kernelPath))
-      kernelFile.write(KernelWriter.applyXilinxPatch(openCL))
-      kernelFile.close
-      //val res = applyBoko(kernelPath)
-      Logging.info("Generate and optimize the kernel successfully")
-      //logWarning += "[Boko] " + res + "\n"
-      true
+      var kernelString = writerAndKernel.kernel
+      kernelString = KernelWriter.applyXilinxPatch(kernelString)
+      Logging.info("Generate the kernel successfully")
+      Some(kernelString)
     } catch {
       case e: Throwable =>
         val sw = new StringWriter
         e.printStackTrace(new PrintWriter(sw))
         val fullMsg = sw.toString
         Logging.severe("Kernel generated failed: " + fullMsg)
-        false
+        None
     }
   } 
 }
+

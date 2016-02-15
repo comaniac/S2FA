@@ -93,5 +93,10 @@
       <artifactId>blaze</artifactId>
       <version>1.0-SNAPSHOT</version>
     </dependency>
+		<dependency>
+	  	<groupId>org.apache.j2fa</groupId>
+		  <artifactId>j2fa_core</artifactId>
+		  <version>0.0.0</version>
+		</dependency>
   </dependencies>
 </project>

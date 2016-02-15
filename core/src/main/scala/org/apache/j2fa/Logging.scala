@@ -20,8 +20,11 @@ import java.util.logging.{Handler, Level, Logger}
 
 object Logging {
   val logger = Logger.getLogger("j2fa.log")
-  val level = Level.parse("INFO")
-  logger.setLevel(level)
+  val level = "INFO"
+  val logLevel = Level.parse(level)
+  logger.setLevel(logLevel)
+
+  def getLevel = level
 
   def severe(msg: => String) {
     if (logger.isLoggable(Level.SEVERE))

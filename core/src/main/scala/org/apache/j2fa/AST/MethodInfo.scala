@@ -27,6 +27,17 @@ class MethodInfo(methodName: String, _config: Map[String, String]) {
 
   def getConfig = config
 
+  def getSig : String = {
+    var str = "("
+    args.foreach(e => str += e.getShortTypeName)
+    str += ")"
+    if (out == null)
+      str += "V"
+    else
+      str += out.getShortTypeName
+    str
+  }
+
   override def toString = {
     var first = true
     var str = "@J2FA_Kernel("

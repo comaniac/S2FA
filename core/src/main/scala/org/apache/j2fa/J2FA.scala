@@ -33,8 +33,8 @@ import org.apache.j2fa.AST._
 object J2FA {
 
   def main(args : Array[String]) {
-    if (args.length < 3) {
-      System.err.println("Usage: J2FA <Source file> <jar path> <Accelerator class name> <use Merlin?>")
+    if (args.length < 4) {
+      System.err.println("Usage: J2FA <Source file> <jar path> <Accelerator class name> <Output kernel file>")
       System.exit(1)
     }
     Logging.info("J2FA -- Java to FPGA Accelerator Framework")
@@ -51,8 +51,13 @@ object J2FA {
     kernelMethods.foreach({
       case (mName, mInfo) =>
         Logging.info("Compiling kernel " + mInfo.toString)
-        val kernel = new Kernel(args(2), clazz, mInfo)
-        kernel.generate
+        val kernel = new Kernel(clazz, mInfo)
+        val kernelString = kernel.generate
+        if (kernelString.isEmpty == false) {
+          val kernelFile = new PrintWriter(new File(args(3)))
+          kernelFile.write(kernelString.get)
+          kernelFile.close
+        }
 
       case _ =>
     })
