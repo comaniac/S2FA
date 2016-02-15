@@ -19,13 +19,19 @@ class MethodInfo(methodName: String, _config: Map[String, String]) {
     args = args :+ arg
   }
 
+  def hasOutput = if (out == null) false else true
+
   def setOutput(arg: ArgInfo) = {
     out = arg
   }
 
+  def getOutput = out
+
   def getName = methodName
 
   def getConfig = config
+
+  def getArgs = args
 
   def getSig : String = {
     var str = "("
@@ -35,6 +41,19 @@ class MethodInfo(methodName: String, _config: Map[String, String]) {
       str += "V"
     else
       str += out.getShortTypeName
+    str
+  }
+
+  def getFullSig = {
+    var str = "("
+    args.foreach(e => {
+      str += e.getFullType
+    })
+    str += ")"
+    if (out == null)
+      str += "V"
+    else
+      str += out.getFullType
     str
   }
 

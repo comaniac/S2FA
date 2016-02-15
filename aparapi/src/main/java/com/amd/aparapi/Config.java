@@ -156,7 +156,7 @@ public class Config {
 
 	public static final boolean enableNEW = Boolean.getBoolean(propPkgName + ".enable.NEW");
 
-	public static final boolean enableMerlinKernel = Boolean.getBoolean(propPkgName + ".enable.MERLINE");
+	public static final boolean enableMerlinKernel = Boolean.getBoolean(propPkgName + ".enable.MERLIN");
 
 	public static final boolean enableATHROW = Boolean.getBoolean(propPkgName + ".enable.ATHROW");
 

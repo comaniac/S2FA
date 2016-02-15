@@ -35,6 +35,7 @@ import com.amd.aparapi.internal.writer.ScalaParameter.DIRECTION
 import com.amd.aparapi.internal.model.HardCodedClassModels.ShouldNotCallMatcher
 import com.amd.aparapi.internal.writer.KernelWriter
 import com.amd.aparapi.internal.writer.KernelWriter.WriterAndKernel
+import com.amd.aparapi.internal.util.{Utils => AparapiUtils}
 
 import org.apache.spark.blaze.Accelerator
 import org.apache.j2fa.AST._
@@ -52,27 +53,46 @@ class Kernel(accClazz: Class[_], mInfo: MethodInfo) {
     var isMapPartitions: Boolean = if (mInfo.getConfig("kernel_type") == "mapPartitions") true else false
 
     if (outputMerlin)
-      System.setProperty("com.amd.aparapi.enable.MERLINE", "true")
+      System.setProperty("com.amd.aparapi.enable.MERLIN", "true")
 
     val classModel : ClassModel = ClassModel.createClassModel(accClazz, null, new ShouldNotCallMatcher())
-    val method =  classModel.getKernelMethod(mName, mInfo.getSig)
 
     try {
-      if (method == null)
-        throw new RuntimeException("Cannot find available kernel method from bytecode.")
-      val descriptor : String = method.getDescriptor
+      // Setup arguments and return values
       val params : LinkedList[ScalaParameter] = new LinkedList[ScalaParameter]
+      mInfo.getArgs.foreach({ arg =>
+        val param = AparapiUtils.createScalaParameter(
+            arg.getFullType, arg.getName, ScalaParameter.DIRECTION.IN)
+        params.add(param)
+      })
+      if (mInfo.hasOutput) {
+        val outArg = mInfo.getOutput
+        val param = AparapiUtils.createScalaParameter(
+            outArg.getFullType, "j2faOut", ScalaParameter.DIRECTION.OUT)
+        params.add(param)
+      }
 
-      val methods = accClazz.getMethods
+      // Identify the kernel method object
+      val methods = accClazz.getMethods.filter(m => m.getName.equals(mName))
       var fun: Object = null
       methods.foreach(m => {
-        val des = m.toString
-        if (!isMapPartitions && des.contains(mName) && !des.contains("Object") && !des.contains("Iterator"))
-          fun = m
-        else if (isMapPartitions && des.contains(mName) && !des.contains("Object") && des.contains("Iterator"))
-          fun = m
+        // Transform to signature
+        try {
+          val des = m.toString.replace(".", "/").split(' ')
+          val args = des(2).substring(des(2).indexOf('(') + 1, des(2).indexOf(')')).split(',')
+          var sig = "("
+          args.foreach( e => sig += Utils.asBytecodeType(e))
+          sig += ")" + Utils.asBytecodeType(des(1))
+          if (sig.equals(mInfo.getSig))
+            fun = m
+        } catch {
+          case _: Throwable =>
+            Logging.warn("Transform method fail: " + m.toString)
+        }
       })
-      val entryPoint = classModel.getEntrypoint(mName, descriptor, fun, params, null)
+
+      // Create Entrypoint and generate the kernel
+      val entryPoint = classModel.getEntrypoint(mName, mInfo.getSig, fun, params, null)
       val writerAndKernel = KernelWriter.writeToString(entryPoint, params)
       var kernelString = writerAndKernel.kernel
       kernelString = KernelWriter.applyXilinxPatch(kernelString)

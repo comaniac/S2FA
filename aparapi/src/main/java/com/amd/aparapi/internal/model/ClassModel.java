@@ -377,6 +377,7 @@ public abstract class ClassModel {
 				return (returnType);
 			}
 
+			@SuppressWarnings("fallthrough")
 			public Arg[] getArgs() {
 				if ((args == null) || (returnType == null)) {
 					final List<Arg> argList = new ArrayList<Arg>();
@@ -410,7 +411,6 @@ public abstract class ClassModel {
 								break;
 							case 'L':
 								// beginning of Ljava/lang/String; or something
-
 								switch (state) {
 									case counting:
 										start = pos;
@@ -1342,7 +1342,7 @@ public abstract class ClassModel {
 
 			public String getVariableName(int _pc, int _index) {
 				String returnValue = "unknown";
-				final RealLocalVariableInfo localVariableInfo = (RealLocalVariableInfo) getVariable(_pc, _index);
+				final RealLocalVariableInfo localVariableInfo = getVariable(_pc, _index);
 				if (localVariableInfo != null) {
 					returnValue = convert(constantPool.getUTF8Entry(localVariableInfo.getDescriptorIndex()).getUTF8(),
 					                      constantPool
@@ -2725,25 +2725,8 @@ public abstract class ClassModel {
 		for (ClassModelMethod method : methods) {
 			String name = method.getName();
 			String des = method.getDescriptor();
-			String shortDes = "";
 
-			// Cut off the class name since AST cannot have it
-			// Ex: Lscala/Tuple2; (bytecode) <-> scala.Tuple2
-			for (int i = 0; i < des.length(); i += 1) {
-				if (des.charAt(i) == 'L') {
-					int lastSlash = 0;
-					while (des.charAt(i) != ';') {
-						if (des.charAt(i) == '/')
-							lastSlash = i;
-						i += 1;
-					}
-					shortDes += des.substring(lastSlash + 1, i);
-				}
-				else
-					shortDes += des.charAt(i);
-			}
-
-			if (name.equals(expectName) && shortDes.equals(expectDes)) {
+			if (name.equals(expectName) && des.equals(expectDes)) {
 				if (result != null) {
 					// We expect only one match per Function in Scala
 					throw new RuntimeException("Multiple matches");
@@ -2754,7 +2737,7 @@ public abstract class ClassModel {
 			}
 			else {
 				if (logger.isLoggable(Level.FINEST))
-					logger.finest("Mismatch method: " + expectDes + " != " + shortDes);
+					logger.finest("Mismatch method: " + expectDes + " != " + des);
 			}
 		}
 		return result;

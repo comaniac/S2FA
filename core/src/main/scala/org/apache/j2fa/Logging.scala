@@ -31,7 +31,7 @@ object Logging {
       logger.severe(msg)
   }
 
-  def warning(msg: => String) {
+  def warn(msg: => String) {
     if (logger.isLoggable(Level.WARNING))
       logger.warning(msg)
   }

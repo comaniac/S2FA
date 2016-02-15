@@ -1174,7 +1174,7 @@ public class Entrypoint implements Cloneable {
 					e.printStackTrace();
 				}
 			}
-
+/*
 			// Process input/output arguments to parameters for KernelWriter
 			for (final Map.Entry<String, String> argument : argumentList.entrySet()) {
 				String argName = argument.getKey();
@@ -1189,7 +1189,7 @@ public class Entrypoint implements Cloneable {
 
 				params.add(param);
 			}
-
+*/
 			// Build data needed for oop form transforms if necessary
 			if (!objectArrayFieldsClasses.isEmpty()) {
 

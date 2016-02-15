@@ -19,6 +19,8 @@ class ArgInfo(argName: String) {
 
   def getShortTypeName = thisType.getShortName
 
+  def getFullType = thisType.getFullType
+
   override def toString() = {
     var str = if (argName == null) "" else argName + ": "
 
