@@ -17,6 +17,7 @@ public abstract class ScalaParameter {
 	protected Class<?> clazz;
 	protected boolean isReference;
 	protected String type;
+	protected String fullSig;
 	protected final boolean primitiveOrNot;
 	protected final boolean arrayOrNot;
 	protected final String name;
@@ -30,6 +31,7 @@ public abstract class ScalaParameter {
 		this.clazzModel = null;
 		this.dir = dir;
 		this.isReference = false;
+		this.fullSig = fullSig;
 
 		this.typeParameterDescs = new LinkedList<String>();
 		this.typeParameterIsObject = new LinkedList<Boolean>();
@@ -139,6 +141,10 @@ public abstract class ScalaParameter {
 
 	public String getClassName() {
 		return type;
+	}
+
+	public String getFullType() {
+		return fullSig;
 	}
 
 	public String getType() {

@@ -87,13 +87,12 @@ public class Config {
 	public static final boolean disableUnsafe = Boolean.getBoolean(propPkgName + ".disableUnsafe");
 
 	/**
-	 * Allows the user to request a specific Kernel.EXECUTION_MODE enum value for all Kernels.
+	 * Allows the user to soecify 
 	 *
-	 *  Usage -Dcom.amd.aparapi.executionMode={SEQ|JTP|CPU|GPU|ACC|EXT}
+	 *  Usage -Dcom.amd.aparapi.kernelType={General|Map|MapPartitions}
 	 *
-	 *  @see com.amd.aparapi.Kernel.EXECUTION_MODE
 	 */
-	public static final String executionMode = System.getProperty(propPkgName + ".executionMode");
+	public static final String kernelType = System.getProperty(propPkgName + ".kernelType");
 
 	/**
 	 * Allows the user to request that the execution mode of each kernel invocation be reported to stdout.

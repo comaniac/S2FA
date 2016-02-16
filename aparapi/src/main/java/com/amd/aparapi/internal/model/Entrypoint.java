@@ -90,12 +90,7 @@ public class Entrypoint implements Cloneable {
 		referencedFieldNames.put(name, hint);
 	}
 
-	private final HashMap<String, String> argumentList = new HashMap<String, String>();
-
-	private void addToArguments(String name, String hint) {
-		argumentList.put(name, hint);
-	}
-
+	private Collection<ScalaParameter> argumentList = null;
 
 	private final Set<String> arrayFieldAssignments = new LinkedHashSet<String>();
 
@@ -568,6 +563,7 @@ public class Entrypoint implements Cloneable {
 		classModel = _classModel;
 		methodModel = _methodModel;
 		kernelInstance = _k;
+		argumentList = params;
 
 		hardCodedClassModels = new HardCodedClassModels();
 
@@ -894,18 +890,14 @@ public class Entrypoint implements Cloneable {
 								Instruction varInst = inst.getPrevPC().getPrevPC().getPrevPC();
 								String varName = null;
 								String typeHint = null;
-								if (varInst instanceof I_ALOAD_1) {
-									varName = ((I_ALOAD_1) varInst).getLocalVariableInfo().getVariableName();
-									typeHint = getArgumentTypeHint(varName);
-								}
-								else if (varInst instanceof AccessField) {
-									varName = ((AccessField) varInst).getConstantPoolFieldEntry()
-															.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
-									typeHint = getReferencedFieldTypeHint(varName);
-								}
-								else
-									throw new RuntimeException("Expecting aload1 or getfield, but found " + varInst);
-								
+
+								if (!(varInst instanceof AccessField))
+									continue;
+
+								varName = ((AccessField) varInst).getConstantPoolFieldEntry()
+														.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+								typeHint = getReferencedFieldTypeHint(varName);
+							
 								if (typeHint == null)
 									throw new RuntimeException("Variable " + varName + " is neither field nor argument.");
 
@@ -918,10 +910,7 @@ public class Entrypoint implements Cloneable {
 									throw new RuntimeException("Method " + methodName + " doesn't be modeled in class " + clazzName);
 			
 								typeHint = typeHint.replace(pureMethodName, realType);
-								if (varInst instanceof I_ALOAD_1)
-									addToArguments(varName, typeHint);
-								else
-									addToReferencedFieldNames(varName, typeHint);
+								addToReferencedFieldNames(varName, typeHint);
 							}
 						}
 					} else if (instruction instanceof I_NEWARRAY) {
@@ -929,228 +918,6 @@ public class Entrypoint implements Cloneable {
 						if (!(child instanceof BytecodeEncodedConstant) && // i_const
 						    !(child instanceof ImmediateConstant)) // push
 							throw new ClassParseException(ClassParseException.TYPE.NEWDYNAMICARRAY);
-					}
-					else if (instruction instanceof LocalVariableConstIndexLoad) { 
-						// Parse input data generic type [Experiment]
-						// Assume the only input data argument is stored in local variable slot 1
-						// Only focus on the main function (call method in Scala)
-						if (!methodModel.getName().contains("call"))
-							continue;
-
-						LocalVariableConstIndexLoad loadInst = (LocalVariableConstIndexLoad) instruction;
-						int loadIdx = loadInst.getLocalVariableTableIndex();
-						if (loadIdx != 1)
-							continue;
-
-						LocalVariableInfo varInfo = loadInst.getLocalVariableInfo();
-						if (varInfo.getStart() != 0) // Make sure this is an argument of method
-							continue;
-						String clazz = varInfo.getVariableDescriptor().replace(";", "");
-						String fieldName = varInfo.getVariableName();
-						String methodName = null;
-						String returnType = null;
-						String typeHint = null;
-						boolean isArray = false;
-
-
-						System.err.println("call arg type: " + clazz);
-
-						if (clazz.startsWith("[")) {
-							isArray = true;
-							clazz = clazz.substring(1);
-						}
-
-						if (clazz.startsWith("L") && Utils.isHardCodedClass(clazz.substring(1))) {
-							Instruction next = instruction.getNextPC();
-	
-							// Arg type is a normal class (i.e. Tuple2) or an extended class (e.g. Iterator)
-							if (next instanceof I_INVOKEVIRTUAL || next instanceof I_INVOKEINTERFACE) {
-								boolean fetchDirectly = false;
-//								typeHint = findTypeHintForHardCodedClass(fieldName, clazz, next, false);
-								if (next instanceof I_INVOKEVIRTUAL) {
-									MethodEntry entry = ((I_INVOKEVIRTUAL) next).getConstantPoolMethodEntry();
-									methodName = Utils.cleanMethodName(clazz, entry.getNameAndTypeEntry()
-													.getNameUTF8Entry().getUTF8());
-									returnType = entry.getNameAndTypeEntry().getDescriptorUTF8Entry()
-													.getUTF8().replace("()", "");
-								}
-								else {
-									InterfaceMethodEntry entry = ((I_INVOKEINTERFACE) next).getConstantPoolInterfaceMethodEntry();
-									methodName = Utils.cleanMethodName(clazz, entry.getNameAndTypeEntry()
-													.getNameUTF8Entry().getUTF8());
-									returnType = entry.getNameAndTypeEntry().getDescriptorUTF8Entry()
-													.getUTF8().replace("()", "");
-								}
-
-								// Method returns a primitve type so fetch directly.
-								if (Utils.isPrimitive(returnType))
-									fetchDirectly = true;
-
-								if(Utils.getHardCodedClassMethodUsage(clazz, methodName) != METHODTYPE.VAR_ACCESS) {
-									//System.err.println("Skip method " + methodName);
-									continue;
-								}
-
-								String curTypeHint = getArgumentTypeHint(fieldName);
-								if (curTypeHint == null) {
-									// Add field type mapping to genericType for later used.
-									// Example: scala.Tuple2 -> scala.Tuple2<_1, _2>
-									curTypeHint = Utils.addHardCodedFieldTypeMapping(clazz);
-								}
-
-								if (fetchDirectly)
-									typeHint = returnType;
-								else if (next.getNextPC() instanceof I_CHECKCAST) {
-									I_CHECKCAST cast = (I_CHECKCAST) next.getNextPC();
-									typeHint = cast.getConstantPoolClassEntry().getNameUTF8Entry().getUTF8();
-								}
-								else if (next.getNextPC() instanceof I_INVOKESTATIC) {
-									I_INVOKESTATIC unbox = (I_INVOKESTATIC) next.getNextPC();
-									typeHint = unbox.getConstantPoolMethodEntry().getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
-									if (typeHint.contains("Int"))
-										typeHint = "I";
-									else if (typeHint.contains("Double"))
-										typeHint = "D";
-									else if (typeHint.contains("Float"))
-										typeHint = "F";
-									else if (typeHint.contains("Long"))
-										typeHint = "J";
-								}
-								else
-									throw new RuntimeException("Expecting invoke -> cast/unbox, but found " + next.getNextPC());
-
-								if (typeHint.startsWith("[")) {
-									typeHint = typeHint.substring(1);
-									isArray = true;
-								}
-								if(!Utils.isHardCodedClass(typeHint) && !Utils.isPrimitive(typeHint))
-									throw new RuntimeException("Generic type is not hard coded or primitive: " + typeHint);
-								typeHint = curTypeHint.replace(methodName, typeHint);
-							}
-							else
-								throw new RuntimeException("Expecting method call for hardcoded class, but found " + next);
-
-						}
-						else // Primitive type
-							typeHint = clazz;
-
-						if (isArray && !typeHint.startsWith("["))
-							typeHint = '[' + typeHint;
-
-						if (typeHint != "")
-							addToArguments(fieldName, typeHint);
-						System.err.println("call arg typeHint: " + fieldName + "." + methodName + ": " + typeHint);
-					}
-					else if (instruction instanceof Return) {
-						// Parse output data generic type [Experiment]
-						// We guess the generic type by searching the nearest instruction of 
-						// the type: aload, cast, unbox.
-						// Only focus on the main function (call method in Scala)
-
-						String outFieldName = "j2faOut";
-						String typeHint = null;
-						if (instruction instanceof I_IRETURN)
-							typeHint = "I";
-						else if (instruction instanceof I_DRETURN)
-							typeHint = "D";
-						else if (instruction instanceof I_FRETURN)
-							typeHint = "F";
-						else if (instruction instanceof I_LRETURN)
-							typeHint = "J";
-						else if (instruction instanceof I_ARETURN) { // Object type
-							Instruction curr = instruction.getPrevPC();
-							String clazz = null;
-							boolean isArray = false;
-
-							if (curr instanceof AccessLocalVariable) {
-								// Case 1: Return a local variable
-
-								LocalVariableInfo varInfo = ((AccessLocalVariable) curr).getLocalVariableInfo();
-								clazz = varInfo.getVariableDescriptor().replace(";", "");
-							}
-							else if (curr instanceof MethodCall) {
-								// Case 2: Return an object by calling a method (invokevirtual, invokespecial, invokestatic).
-								// Ex: Array.iterator, Tuple2._1
-								// Find return type of the method, and make the corresponding action.
-
-								MethodEntry fieldMethodEntry = ((MethodCall) curr).getConstantPoolMethodEntry();
-								String caller = Utils.cleanClassName(fieldMethodEntry.getClassEntry()
-																	.getNameUTF8Entry().getUTF8());
-								String fieldMethodName = Utils.cleanMethodName(caller, fieldMethodEntry
-											.getNameAndTypeEntry().getNameUTF8Entry().getUTF8());
-
-								System.err.println("caller: " + caller + "; method: " + fieldMethodName);
-
-								if (fieldMethodName.equals("<init>")) { // Constructor
-									clazz = caller;
-
-									// Find type from signature
-									boolean isFirstType = true;
-									String sig = fieldMethodEntry.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
-									sig = sig.substring(1, sig.indexOf(")"));
-									typeHint = clazz + "<";
-									for (char ch : sig.toCharArray()) {
-										if (!isFirstType)
-											typeHint = typeHint + ",";
-										typeHint = typeHint + ch;
-										isFirstType = false;
-									}
-									typeHint = typeHint + ">";
-								}
-								else
-									clazz = fieldMethodEntry.getNameAndTypeEntry().getDescriptorUTF8Entry()
-															.getUTF8().replace("()", "");
-							}
-							else if (curr instanceof I_INVOKEINTERFACE) {
-								// Case 3: Return an object by calling a method
-								// Ex: ArrayOps.iterator
-								// Find return type of the method, and make the corresponding action.
-
-								InterfaceMethodEntry entry = ((I_INVOKEINTERFACE) curr).getConstantPoolInterfaceMethodEntry();
-								clazz = entry.getNameAndTypeEntry().getDescriptorUTF8Entry()
-														.getUTF8().replace("()", "");
-							}
-							else if (curr instanceof I_CHECKCAST) {
-								// Case 4: Cast the object before return
-								clazz = ((I_CHECKCAST) curr).getConstantPoolClassEntry().getNameUTF8Entry().getUTF8();
-							}
-							else
-								throw new RuntimeException("Expecting invoke/cast, but found " + curr);
-
-							System.err.println("call output class type: " + clazz);
-
-							if (clazz.startsWith("[")) {
-								isArray = true;
-								clazz = clazz.substring(1);
-							}
-
-							if (typeHint == null) {
-								if (clazz.startsWith("L") && Utils.isHardCodedClass(clazz.substring(1))) {
-									clazz = clazz.substring(1).replace(";", "");
-									// FIXME: Currently we just leverage the nearest aload to guess the type.
-									Instruction aloadInst = curr.getPrevPC();
-									while(!(aloadInst instanceof AccessLocalVariable))
-										aloadInst = aloadInst.getPrevPC();
-
-									if (aloadInst instanceof I_ALOAD_0)
-										throw new RuntimeException("Cannot return this");
-
-									typeHint = ((AccessLocalVariable) aloadInst).getLocalVariableInfo().getVariableDescriptor();
-
-									// FIXME: Iterator eliminates an array, but this is not general
-									if (typeHint.startsWith("["))
-										typeHint = typeHint.substring(1);
-									typeHint = clazz + "<" + typeHint + ">";
-								}
-								else // Primitive type
-									typeHint = clazz;
-							}
-								
-							if (isArray && !typeHint.startsWith("["))
-								typeHint = '[' + typeHint;
-						}
-						addToArguments(outFieldName, typeHint);
-						System.err.println("call output typeHint: " + typeHint);
 					}
 				}
 			}
@@ -1174,22 +941,7 @@ public class Entrypoint implements Cloneable {
 					e.printStackTrace();
 				}
 			}
-/*
-			// Process input/output arguments to parameters for KernelWriter
-			for (final Map.Entry<String, String> argument : argumentList.entrySet()) {
-				String argName = argument.getKey();
-				String typeHint = argument.getValue();
 
-				ScalaParameter param = null;
-
-				if (argName.contains("j2faOut"))
-					param = Utils.createScalaParameter(typeHint, argName, ScalaParameter.DIRECTION.OUT);			
-				else
-					param = Utils.createScalaParameter(typeHint, argName, ScalaParameter.DIRECTION.IN);
-
-				params.add(param);
-			}
-*/
 			// Build data needed for oop form transforms if necessary
 			if (!objectArrayFieldsClasses.isEmpty()) {
 
@@ -1319,13 +1071,14 @@ public class Entrypoint implements Cloneable {
 	}
 
 	public String getArgumentTypeHint(String name) {
-		if (argumentList.containsKey(name))
-			return argumentList.get(name);
-		else
-			return null;
+		for (ScalaParameter param : argumentList) {
+			if (param.getName().equals(name))
+				return param.getFullType();
+		}
+		return null;
 	}
 
-	public HashMap<String, String> getArguments() {
+	public Collection<ScalaParameter> getArguments() {
 		return (argumentList);
 	}
 

@@ -658,8 +658,9 @@ public abstract class KernelWriter extends BlockWriter {
 		final List<String> argLines = new ArrayList<String>();
 		final List<String> assigns = new ArrayList<String>();
 
-		// Set true if there has at least one method returns Iterator
 		boolean isMapPartitions = false;
+		if (Config.kernelType.equals("MapPartitions"))
+			isMapPartitions = true;
 
 		entryPoint = _entryPoint;
 
@@ -795,9 +796,6 @@ public abstract class KernelWriter extends BlockWriter {
 
 			final String returnType = mm.getReturnType();
 			this.currentReturnType = returnType;
-
-			if (returnType.contains("scala/collection/Iterator"))
-				isMapPartitions = true;
 
 			String fullReturnType;
 			String convertedReturnType = convertType(returnType, true);

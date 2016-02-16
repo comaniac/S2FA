@@ -52,6 +52,11 @@ class Kernel(accClazz: Class[_], mInfo: MethodInfo) {
     val outputMerlin = if (mInfo.getConfig("output_format") == "Merlin") true else false
     var isMapPartitions: Boolean = if (mInfo.getConfig("kernel_type") == "mapPartitions") true else false
 
+    if (isMapPartitions)
+      System.setProperty("com.amd.aparapi.kernelType", "MapPartitions")
+    else
+      System.setProperty("com.amd.aparapi.kernelType", "Map")
+
     if (outputMerlin)
       System.setProperty("com.amd.aparapi.enable.MERLIN", "true")
 
