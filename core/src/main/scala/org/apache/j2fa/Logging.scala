@@ -20,7 +20,7 @@ import java.util.logging.{Handler, Level, Logger}
 
 object Logging {
   val logger = Logger.getLogger("j2fa.log")
-  val level = "INFO"
+  val level = "FINEST"
   val logLevel = Level.parse(level)
   logger.setLevel(logLevel)
 

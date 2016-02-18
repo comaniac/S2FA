@@ -57,6 +57,7 @@ import com.amd.aparapi.internal.model.HardCodedMethodModel.METHODTYPE;
 import java.lang.reflect.*;
 import java.util.*;
 import java.util.logging.*;
+import java.net.URLClassLoader;
 
 public class Entrypoint implements Cloneable {
 
@@ -70,6 +71,8 @@ public class Entrypoint implements Cloneable {
 	private ClassModel classModel;
 
 	private final HardCodedClassModels hardCodedClassModels;
+
+	private final URLClassLoader classLoader;
 
 	public HardCodedClassModels getHardCodedClassModels() {
 		return hardCodedClassModels;
@@ -270,7 +273,7 @@ public class Entrypoint implements Cloneable {
 		ClassModel memberClassModel = allFieldsClasses.get(className, ClassModel.wrap(className, matcher));
 		if (memberClassModel == null) {
 			try {
-				final Class<?> memberClass = Class.forName(className);
+				final Class<?> memberClass = classLoader.loadClass(className);
 
 				// Immediately add this class and all its supers if necessary
 				memberClassModel = ClassModel.createClassModel(memberClass, this,
@@ -558,12 +561,13 @@ public class Entrypoint implements Cloneable {
 	}
 
 	public Entrypoint(ClassModel _classModel, MethodModel _methodModel,
-	                  Object _k, Collection<ScalaParameter> params, HardCodedClassModels setHardCodedClassModels)
+	                  Object _k, Collection<ScalaParameter> params, URLClassLoader _loader)
 	throws AparapiException {
 		classModel = _classModel;
 		methodModel = _methodModel;
 		kernelInstance = _k;
 		argumentList = params;
+		classLoader = _loader;
 
 		hardCodedClassModels = new HardCodedClassModels();
 
@@ -586,6 +590,15 @@ public class Entrypoint implements Cloneable {
 				logger.fine("Enabling byte addressable on " + methodModel.getName());
 		}
 
+		// Add customized class if necessary
+		for (final ScalaParameter param : params) {
+			if (param.isCustomized() == false)
+				continue;
+
+			addClass(param.getClassName(), param.getDescArray());
+			logger.finest("Add a customized class " + param.getClassName());
+		}
+
 		// Collect all methods called directly from kernel's run method
 		for (final MethodCall methodCall : methodModel.getMethodCalls()) {
 			ClassModelMethod m = resolveCalledMethod(methodCall, classModel);
@@ -596,6 +609,7 @@ public class Entrypoint implements Cloneable {
 				methodMap.put(m, target);
 				methodModel.getCalledMethods().add(target);
 				discovered = true;
+				logger.finest("Collect method to be generated: " + target.getName());
 			}
 		}
 
@@ -1287,14 +1301,12 @@ public class Entrypoint implements Cloneable {
 			}
 		}
 
-		if (target != null) {
-			for (final MethodModel m : calledMethods) {
-				if (m.getMethod() == target) {
-					if (logger.isLoggable(Level.FINE))
-						logger.fine("selected from called methods = " + m.getName());
+		for (final MethodModel m : calledMethods) {
+			if (m.getMethod() == target) {
+				if (logger.isLoggable(Level.FINE))
+					logger.fine("selected from called methods = " + m.getName());
 
-					return m;
-				}
+				return m;
 			}
 		}
 

@@ -65,8 +65,10 @@ public class Utils {
 	public static String mapPrimitiveType(String type) {
 		String newType = "";
 
-		if (type.startsWith("["))
+		if (type.startsWith("[")) {
 			newType = " * ";
+			type = type.substring(1);
+		}
 
 		if (type.equals("I"))
 			newType = newType + "int ";
@@ -76,6 +78,8 @@ public class Utils {
 			newType = newType + "double ";
 		else if (type.equals("J"))
 			newType = newType + "long ";
+		else
+			newType = newType + type;
 
 		return newType;
 	}

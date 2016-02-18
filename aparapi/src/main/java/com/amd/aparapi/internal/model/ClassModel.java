@@ -19,6 +19,7 @@ import java.io.*;
 import java.lang.reflect.*;
 import java.util.*;
 import java.util.logging.*;
+import java.net.URLClassLoader;
 
 
 public abstract class ClassModel {
@@ -2927,23 +2928,16 @@ public abstract class ClassModel {
 	});
 
 	public Entrypoint getEntrypoint(String _entrypointName, String _descriptor,
-	                                Object _k, Collection<ScalaParameter> params,
-	                                HardCodedClassModels hardCodedClassModels) throws AparapiException {
-		if (CacheEnabler.areCachesEnabled()) {
-			EntrypointKey key = EntrypointKey.of(_entrypointName, _descriptor, params, hardCodedClassModels);
-			Entrypoint entrypointWithoutKernel = entrypointCache.computeIfAbsent(key);
-			return entrypointWithoutKernel.cloneForKernel(_k);
-		} else {
-			final MethodModel method = getMethodModel(_entrypointName, _descriptor);
-			return new Entrypoint(this, method, _k, params, hardCodedClassModels);
-		}
+	                                Object _k, Collection<ScalaParameter> params, 
+																	URLClassLoader loader) throws AparapiException {
+		final MethodModel method = getMethodModel(_entrypointName, _descriptor);
+		return new Entrypoint(this, method, _k, params, loader);
 	}
 
 	Entrypoint computeBasicEntrypoint(EntrypointKey entrypointKey) throws AparapiException {
 		final MethodModel method = getMethodModel(entrypointKey.getEntrypointName(),
 		                           entrypointKey.getDescriptor());
-		return new Entrypoint(this, method, null, entrypointKey.getParams(),
-		                      entrypointKey.getModels());
+		return new Entrypoint(this, method, null, entrypointKey.getParams(), null);
 	}
 
 	public Class<?> getClassWeAreModelling() {

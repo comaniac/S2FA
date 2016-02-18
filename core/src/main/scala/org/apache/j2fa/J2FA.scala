@@ -51,7 +51,7 @@ object J2FA {
     kernelMethods.foreach({
       case (mName, mInfo) =>
         Logging.info("Compiling kernel " + mInfo.toString)
-        val kernel = new Kernel(clazz, mInfo)
+        val kernel = new Kernel(clazz, mInfo, loader)
         val kernelString = kernel.generate
         if (kernelString.isEmpty == false) {
           val kernelFile = new PrintWriter(new File(args(3)))

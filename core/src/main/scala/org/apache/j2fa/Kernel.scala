@@ -40,7 +40,7 @@ import com.amd.aparapi.internal.util.{Utils => AparapiUtils}
 import org.apache.spark.blaze.Accelerator
 import org.apache.j2fa.AST._
 
-class Kernel(accClazz: Class[_], mInfo: MethodInfo) {
+class Kernel(accClazz: Class[_], mInfo: MethodInfo, loader: URLClassLoader) {
 
   def generate: Option[String] = {
 
@@ -86,7 +86,7 @@ class Kernel(accClazz: Class[_], mInfo: MethodInfo) {
           val des = m.toString.replace(".", "/").split(' ')
           val args = des(2).substring(des(2).indexOf('(') + 1, des(2).indexOf(')')).split(',')
           var sig = "("
-          args.foreach( e => sig += Utils.asBytecodeType(e))
+          args.foreach(e => sig += Utils.asBytecodeType(e))
           sig += ")" + Utils.asBytecodeType(des(1))
           if (sig.equals(mInfo.getSig))
             fun = m
@@ -97,7 +97,7 @@ class Kernel(accClazz: Class[_], mInfo: MethodInfo) {
       })
 
       // Create Entrypoint and generate the kernel
-      val entryPoint = classModel.getEntrypoint(mName, mInfo.getSig, fun, params, null)
+      val entryPoint = classModel.getEntrypoint(mName, mInfo.getSig, fun, params, loader)
       val writerAndKernel = KernelWriter.writeToString(entryPoint, params)
       var kernelString = writerAndKernel.kernel
       kernelString = KernelWriter.applyXilinxPatch(kernelString)

@@ -671,8 +671,6 @@ public abstract class KernelWriter extends BlockWriter {
 			final StringBuilder assignLine = new StringBuilder();
 
 			String signature = field.getDescriptor();
-//System.err.println("Field: " + field.getName() + ", sig: " + signature);
-
 			ScalaParameter param = Utils.createScalaParameter(signature, field.getName(), ScalaParameter.DIRECTION.IN);
 			param.setAsReference();
 
@@ -751,7 +749,7 @@ public abstract class KernelWriter extends BlockWriter {
 			}
 		}
 
-		write("typedef struct This_s{");
+		write("typedef struct This_s {");
 
 		in();
 		newLine();
@@ -835,7 +833,7 @@ public abstract class KernelWriter extends BlockWriter {
 				// Issue #40 Array type output support:
 				// Change the return type to void
 				if (returnType.startsWith("[") || Utils.isArrayBasedClass(returnType)) {
-					write("/* [Blaze CodeGen] WARNING: This method tries to return an array in ByteCode.");
+					write("/* [Blaze CodeGen] WARNING: This method tries to return an array in Bytecode.");
 					newLine();
 					write("   This function must be called by the main function of the kernel, ");
 					newLine();
@@ -875,8 +873,6 @@ public abstract class KernelWriter extends BlockWriter {
 
 			boolean alreadyHasFirstArg = !mm.getMethod().isStatic();
 
-			// A list of arguments which will be copied to the local variable in advacne.
-			// Map<Name, Type>. Type "0" means we just want to initalize the argument.
 			@SuppressWarnings("unchecked")
 			final Map<String, String> promoteLocalArguments = new HashMap<String, String>();
 			final Set<String> iterArguments = new HashSet<String>();

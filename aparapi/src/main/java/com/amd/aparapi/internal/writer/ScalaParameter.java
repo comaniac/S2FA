@@ -20,6 +20,7 @@ public abstract class ScalaParameter {
 	protected String fullSig;
 	protected final boolean primitiveOrNot;
 	protected final boolean arrayOrNot;
+	protected boolean customizedOrNot;
 	protected final String name;
 	protected final DIRECTION dir;
 	protected final List<String> typeParameterDescs;
@@ -32,6 +33,7 @@ public abstract class ScalaParameter {
 		this.dir = dir;
 		this.isReference = false;
 		this.fullSig = fullSig;
+		this.customizedOrNot = false;
 
 		this.typeParameterDescs = new LinkedList<String>();
 		this.typeParameterIsObject = new LinkedList<Boolean>();
@@ -84,8 +86,10 @@ public abstract class ScalaParameter {
 				this.type = "double";
 			else if (eleSig.equals("F"))
 				this.type = "float";
-			else if (eleSig.startsWith("L"))
+			else if (eleSig.startsWith("L")) {
 				this.type = eleSig.substring(1, eleSig.length() - 1).replace('/', '.');
+				customizedOrNot = true;
+			}
 			else
 				throw new RuntimeException("Invalid type: " + eleSig);
 		}
@@ -99,12 +103,17 @@ public abstract class ScalaParameter {
 		this.dir = dir;
 		this.isReference = false;
 		this.primitiveOrNot = false;
+		this.customizedOrNot = false;
 		this.typeParameterDescs = new LinkedList<String>();
 		this.typeParameterIsObject = new LinkedList<Boolean>();
-		if (type.charAt(0) != '[')
-			arrayOrNot = false;
-		else
+		if (type.charAt(0) == '[') {
 			arrayOrNot = true;
+			type = type.substring(1);
+		}
+		else
+			arrayOrNot = false;
+		if (type.charAt(0) == 'L')
+			this.customizedOrNot = true;
 	}
 
 	public ScalaParameter(String fullSig, String name) {
@@ -206,6 +215,10 @@ public abstract class ScalaParameter {
 
 	public boolean isArray() {
 		return arrayOrNot;
+	}
+
+	public boolean isCustomized() {
+		return customizedOrNot;
 	}
 
 	/*
