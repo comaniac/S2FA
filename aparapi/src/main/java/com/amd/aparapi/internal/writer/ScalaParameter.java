@@ -18,8 +18,8 @@ public abstract class ScalaParameter {
 	protected boolean isReference;
 	protected String type;
 	protected String fullSig;
-	protected final boolean primitiveOrNot;
 	protected final boolean arrayOrNot;
+	protected boolean primitiveOrNot;
 	protected boolean customizedOrNot;
 	protected final String name;
 	protected final DIRECTION dir;
@@ -34,14 +34,10 @@ public abstract class ScalaParameter {
 		this.isReference = false;
 		this.fullSig = fullSig;
 		this.customizedOrNot = false;
+		this.primitiveOrNot = true;
 
 		this.typeParameterDescs = new LinkedList<String>();
 		this.typeParameterIsObject = new LinkedList<Boolean>();
-
-		if (this instanceof ScalaScalarParameter || this instanceof ScalaArrayParameter)
-			this.primitiveOrNot = true;
-		else
-			this.primitiveOrNot = false;
 
 		boolean isArrayBased = false;
 		if (fullSig.indexOf('<') != -1)
@@ -59,6 +55,7 @@ public abstract class ScalaParameter {
 		}
 
 		if (eleSig.indexOf('<') != -1) {
+			primitiveOrNot = false;
 			String topLevelType = eleSig.substring(0, eleSig.indexOf('<'));
 			if (topLevelType.charAt(0) == 'L')
 				this.type = topLevelType.substring(1).replace('/', '.');
@@ -89,6 +86,7 @@ public abstract class ScalaParameter {
 			else if (eleSig.startsWith("L")) {
 				this.type = eleSig.substring(1, eleSig.length() - 1).replace('/', '.');
 				customizedOrNot = true;
+				primitiveOrNot = false;
 			}
 			else
 				throw new RuntimeException("Invalid type: " + eleSig);
@@ -170,7 +168,7 @@ public abstract class ScalaParameter {
 		return sb.toString();
 	}
 
-	protected String getParameterStringFor(int field) {
+	protected String getParameterStringFor(int field, String name) {
 		String param;
 		if (!typeParameterIsObject(field)) {
 			param = "__global " + ClassModel.convert(
@@ -187,6 +185,10 @@ public abstract class ScalaParameter {
 			param = "__global " + fieldDesc.replace('.', '_') + "* " + name + (field + 1);
 		}
 		return param;
+	}
+
+	protected String getParameterStringFor(int field) {
+		return getParameterStringFor(field, name);
 	}
 
 	public boolean isPrimitive() {
@@ -240,6 +242,11 @@ public abstract class ScalaParameter {
 	 * Generate the string for the variables in "this" struct.
 	 */ 
 	public abstract String getStructString(KernelWriter writer);
+
+	/*
+	 * Generate the string for the global variable.
+	 */
+	//public abstract String getGlobalString(KernelWriter writer);
 
 	/*
 	 * Generate the string for assigning input variables to "this" struct.

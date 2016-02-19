@@ -30,7 +30,7 @@ public class ScalaScalarParameter extends ScalaParameter {
 
 	@Override
 	public String getAssignString(KernelWriter writer) {
-		return "this->" + name + " = " + name;
+		return type + " this_" + name + " = " + name;
 	}
 
 	@Override

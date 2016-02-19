@@ -43,7 +43,7 @@ public class ScalaIteratorParameter extends ScalaParameter {
 		if (dir != DIRECTION.IN)
 			throw new RuntimeException("getAssignString can only be applied for input paramter.");
 
-		return "this->" + name + " = " + name;
+		return getParameterStringFor(0, "this_" + name) + " = " + name;
 	}
 
 	@Override

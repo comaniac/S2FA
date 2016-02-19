@@ -906,7 +906,7 @@ public class ExpressionList {
 	 * Aids debugging. Create an expression tree from the input instruction.
 	 * This method should only be invoked by dumpExpressionTree(Instruction).
 	 */
-	public String dumpExpressionTree(Instruction _instruction, int lv) {
+	static public String dumpExpressionTree(Instruction _instruction, int lv) {
 		final StringBuilder sb = new StringBuilder();
 		String indent = "";
 		for (int i = 0; i < lv; i += 1)
@@ -935,7 +935,7 @@ public class ExpressionList {
 	 * @param _instruction The instruction we are looking at
 	 * @return A string of dumped expression tree
 	 */
-	public String dumpExpressionTree(Instruction _instruction) {
+	static public String dumpExpressionTree(Instruction _instruction) {
 		final StringBuilder sb = new StringBuilder();
 		sb.append("Expression Tree of : " + _instruction + "\n");
 		Instruction root = _instruction.getRootExpr();

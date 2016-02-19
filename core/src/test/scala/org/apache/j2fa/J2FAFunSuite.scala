@@ -39,16 +39,27 @@ abstract class J2FAFunSuite extends FunSuite {
     val loader = new URLClassLoader(jars)
     val clazz = loader.loadClass(className)
 
+    val plog = ProcessLogger((e: String) => println("Error: " + e))
     var success = 0
     kernelMethods.foreach({
       case (mName, mInfo) =>
         Logging.info("Compiling kernel " + mInfo.toString)
         val kernel = new Kernel(clazz, mInfo, loader)
         val result = kernel.generate
-        success = if (result.isEmpty == false) success + 1 else success
+        if (result.isEmpty == false) {
+          val tmpFile = new PrintWriter(new File("/tmp/j2fa_tmp.c"))
+          tmpFile.write(result.get)
+          tmpFile.close
+          val code = "gcc -std=c99 -c /tmp/j2fa_tmp.c -o /dev/null" ! plog
+          if (code == 0)
+            success += 1
+          else
+            "mv /tmp/j2fa_tmp.c /tmp/j2fa_" + className + "_" + mName + ".c" !
+        }
 
       case _ =>
     })
+    "rm /tmp/j2fa_tmp.c" !
 
     if (success != kernelMethods.size)
       false

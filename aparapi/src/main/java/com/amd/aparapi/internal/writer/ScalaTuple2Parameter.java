@@ -66,8 +66,8 @@ public class ScalaTuple2Parameter extends ScalaParameter {
 		String secondName = name + "_2";
 
 		StringBuilder sb = new StringBuilder();
-		sb.append("this->" + firstName + " = " + firstName + "; ");
-		sb.append("this->" + secondName + " = " + secondName);
+		sb.append(getParameterStringFor(0, "this_" + firstName) + " = " + firstName + "; ");
+		sb.append(getParameterStringFor(1, "this_" + secondName) + " = " + secondName);
 
 		return sb.toString();
 	}

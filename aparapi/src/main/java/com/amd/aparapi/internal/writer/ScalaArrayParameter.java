@@ -38,12 +38,17 @@ public class ScalaArrayParameter extends ScalaParameter {
 		return "__global " + type.replace('.', '_') + "* " + name;
 	}
 
+//	@Override
+//	public String getGlobalString(KernelWriter writer) {
+//		return type.replace('.', '_') + "* " + name;
+//	}
+
 	@Override
 	public String getAssignString(KernelWriter writer) {
 		if (dir != DIRECTION.IN)
 			throw new RuntimeException("getAssignString can only be applied for input paramter.");
 
-		return "this->" + name + " = " + name;
+		return type.replace('.', '_') + "* " + "this_" + name + " = " + name;
 	}
 
 	@Override

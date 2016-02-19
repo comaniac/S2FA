@@ -167,11 +167,6 @@ public class InstructionHelper {
 			// TODO
 		}
 
-		@Override public String getAllocCheck() {
-			// TODO
-			return null;
-		}
-
 		@Override public void writeMethodBody(MethodModel _methodModel) throws CodeGenException {
 			super.writeMethodBody(_methodModel);
 		}

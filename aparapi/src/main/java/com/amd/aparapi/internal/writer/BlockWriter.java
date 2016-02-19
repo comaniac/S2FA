@@ -94,8 +94,6 @@ public abstract class BlockWriter {
 		;
 	}
 
-	public abstract String getAllocCheck();
-
 	public void writeln(String _string) {
 		write(_string);
 		newLine();
@@ -332,10 +330,8 @@ public abstract class BlockWriter {
 				writeComposite((CompositeInstruction) instruction);
 			else if (!instruction.getByteCode().equals(ByteCode.NONE)) {
 				newLine();
-				boolean writeCheck = writeInstruction(instruction);
+				writeInstruction(instruction);
 				write(";");
-				if (writeCheck)
-					write(getAllocCheck());
 			}
 		}
 	}
@@ -542,7 +538,7 @@ public abstract class BlockWriter {
 
 						write(Utils.mapPrimitiveType(type) + " " + varName + m + " = ");
 						if (isReference)
-							write("this->");
+							write("this_");
 						write(assignName + m + ";");
 						newLine();
 						localType = localType.substring(localType.indexOf(',') + 1);
@@ -616,7 +612,7 @@ public abstract class BlockWriter {
 				                                     load).getConstantPoolFieldEntry().getNameAndTypeEntry();
 				if (isMultiDimensionalArray(nameAndTypeEntry)) {
 					String arrayName = nameAndTypeEntry.getNameUTF8Entry().getUTF8();
-					write(" * this->" + arrayName + arrayDimMangleSuffix + dim);
+					write(" * this_" + arrayName + arrayDimMangleSuffix + dim);
 				}
 			}
 
@@ -636,7 +632,7 @@ public abstract class BlockWriter {
 					writeInstruction(accessInstanceField);
 					write(".");
 				} else
-					writeThisRef();
+					write("this_");
 			}
 			write(accessField.getConstantPoolFieldEntry().getNameAndTypeEntry().getNameUTF8Entry().getUTF8());
 
@@ -658,7 +654,7 @@ public abstract class BlockWriter {
 			                                     load).getConstantPoolFieldEntry().getNameAndTypeEntry();
 			final String arrayName = nameAndTypeEntry.getNameUTF8Entry().getUTF8();
 			String dimSuffix = isMultiDimensionalArray(nameAndTypeEntry) ? Integer.toString(dim) : "";
-			write("this->" + arrayName + arrayLengthMangleSuffix + dimSuffix);
+			write("this_" + arrayName + arrayLengthMangleSuffix + dimSuffix);
 		} else if (_instruction instanceof AssignToField) {
 //					write("/* assign to field */");
 			final AssignToField assignedField = (AssignToField) _instruction;
@@ -671,7 +667,7 @@ public abstract class BlockWriter {
 					writeInstruction(accessInstanceField);
 					write(".");
 				} else
-					writeThisRef();
+					write("this->");
 			}
 			write(assignedField.getConstantPoolFieldEntry().getNameAndTypeEntry().getNameUTF8Entry().getUTF8());
 			write("=");
@@ -1053,7 +1049,7 @@ public abstract class BlockWriter {
 									.getConstantPoolFieldEntry()
 									.getNameAndTypeEntry()
 									.getNameUTF8Entry().getUTF8();
-			write("this->" + fieldName);
+			write("this_" + fieldName);
 			varName = fieldName;
 		}
 		else if (c instanceof AccessLocalVariable) { // Argument transformed object access. e.q. Tuple2/Vector
@@ -1092,7 +1088,7 @@ public abstract class BlockWriter {
 				writeInstruction(instanceInstruction);
 				write(".");
 			} else
-				writeThisRef();
+				write("this->");
 		}
 		final int argc = _methodEntry.getStackConsumeCount();
 		write(_methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8());
@@ -1106,10 +1102,6 @@ public abstract class BlockWriter {
 		write(")");
 
 		return false;
-	}
-
-	public void writeThisRef() {
-		write("this.");
 	}
 
 	public void writeMethodBody(MethodModel _methodModel) throws CodeGenException {

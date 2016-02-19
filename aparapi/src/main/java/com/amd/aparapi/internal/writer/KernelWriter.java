@@ -53,6 +53,7 @@ import com.amd.aparapi.internal.model.FullMethodSignature;
 import com.amd.aparapi.internal.model.FullMethodSignature.TypeSignature;
 
 import java.util.*;
+import java.util.logging.*;
 
 public abstract class KernelWriter extends BlockWriter {
 
@@ -78,7 +79,7 @@ public abstract class KernelWriter extends BlockWriter {
 
 	private final String cvtShortArrayToShortStar = "short* ";
 
-	// private static Logger logger = Logger.getLogger(Config.getLoggerName());
+	private static Logger logger = Logger.getLogger(Config.getLoggerName());
 
 	private boolean processingConstructor = false;
 
@@ -87,8 +88,6 @@ public abstract class KernelWriter extends BlockWriter {
 	private int countAllocs = 0;
 
 	private String currentReturnType = null;
-
-	private Set<MethodModel> mayFailHeapAllocation = null;
 
 	public final static Set<String> scalaMapped = new HashSet<String>();
 	{
@@ -211,9 +210,10 @@ public abstract class KernelWriter extends BlockWriter {
 		if (isArrayTypeOutput)
 			writeInstruction(ret.getFirstChild());
 		else {
+
 			write("return");
 			if (processingConstructor)
-				write(" (this)");
+				return ;
 			else if (ret.getStackConsumeCount() > 0) {
 				write("(");
 				writeInstruction(ret.getFirstChild());
@@ -228,23 +228,6 @@ public abstract class KernelWriter extends BlockWriter {
 			builder.append("   ");
 		builder.append(str);
 		return builder.toString();
-	}
-
-	@Override public String getAllocCheck() {
-		assert(currentReturnType != null);
-		final String nullReturn;
-		if (currentReturnType.startsWith("L") || currentReturnType.startsWith("["))
-			nullReturn = "0x0";
-		else if (currentReturnType.equals("I") || currentReturnType.equals("L") ||
-		         currentReturnType.equals("F") || currentReturnType.equals("D"))
-			nullReturn = "0";
-		else
-			throw new RuntimeException("Unsupported type descriptor " + currentReturnType);
-
-		String checkStr = "if (this->alloc_failed) { return (" + nullReturn + "); }";
-		String indentedCheckStr = doIndent(checkStr);
-
-		return indentedCheckStr;
 	}
 
 	@Override public void writeConstructorCall(ConstructorCall call) throws CodeGenException {
@@ -262,33 +245,38 @@ public abstract class KernelWriter extends BlockWriter {
 			                           constructorEntry + " sig=" + constructorSignature);
 		}
 
-		write(m.getName());
-		write("(");
-
+		boolean isReturn = false;
 		String typeName = m.getOwnerClassMangledName();
-		String allocVarName = "__alloc" + (countAllocs++);
-		String allocStr = __global + typeName + " * " + allocVarName +
-		                  " = (" + __global + typeName + 
-											" *)alloc(this->heap, this->free_index, this->heap_size, " +
-		                  "sizeof(" + typeName + "), &this->alloc_failed);";
-		String indentedAllocStr = doIndent(allocStr);
+		String varName = "";
+		Instruction parent = call.getParentExpr();
 
-		String indentedCheckStr = getAllocCheck();
+		if (parent instanceof LocalVariableTableIndexAccessor)
+			varName = ((LocalVariableTableIndexAccessor) parent).getLocalVariableInfo().getVariableName();
+		else {
+			isReturn = true;
+			varName = "returnValue";
+		}
 
-		StringBuilder allocLine = new StringBuilder();
-		allocLine.append(indentedAllocStr);
-		allocLine.append("\n");
-		allocLine.append(indentedCheckStr);
-		writeBeforeCurrentLine(allocLine.toString());
+		deleteCurrentLine();
 
-		write(allocVarName);
+		write(typeName + " _" + varName + ";");
+		newLine();
+		write(typeName + " * " + varName + " = &_" + varName + ";");
+		newLine();
+		write(m.getName() + "(" + varName);
 
 		for (int i = 0; i < constructorEntry.getStackConsumeCount(); i++) {
 			write(", ");
 			writeInstruction(invokeSpecial.getArg(i));
 		}
-
 		write(")");
+
+		// Rewrite the return statement
+		if (isReturn) {
+			write(";");
+			newLine();
+			write("return (_" + varName);
+		}
 	}
 
 	@Override public boolean writeMethod(MethodCall _methodCall,
@@ -329,7 +317,6 @@ public abstract class KernelWriter extends BlockWriter {
 		final String barrierAndGetterMappings =
 		  javaToCLIdentifierMap.get(methodName + methodSignature);
 
-		boolean writeAllocCheck = false;
 		if (barrierAndGetterMappings != null) {
 			write("/* WARNING: method call with barrier cannot be adapted for FPGA (Issue #1). */");
 			// this is one of the OpenCL barrier or size getter methods
@@ -348,7 +335,6 @@ public abstract class KernelWriter extends BlockWriter {
 		} else {
 			final boolean isSpecial = _methodCall instanceof I_INVOKESPECIAL;
 			MethodModel m = entryPoint.getCallTarget(_methodEntry, isSpecial);
-			writeAllocCheck = mayFailHeapAllocation.contains(m);
 
 			String getterFieldName = null;
 			FieldEntry getterField = null;
@@ -410,7 +396,7 @@ public abstract class KernelWriter extends BlockWriter {
 						if (isObjectField && m.getOwnerClassMangledName().contains("Tuple2"))
 							write("&(");
 
-						write("(this->" + fieldName);
+						write("(this_" + fieldName);
 						write("[");
 						writeInstruction(arrayAccess.getArrayIndex());
 						write("])." + getterFieldName);
@@ -476,7 +462,7 @@ public abstract class KernelWriter extends BlockWriter {
 					//assert refAccess instanceof I_GETFIELD : "ref should come from getfield";
 					final String fieldName = ((AccessField) refAccess).getConstantPoolFieldEntry().getNameAndTypeEntry()
 					                         .getNameUTF8Entry().getUTF8();
-					write(" &(this->" + fieldName);
+					write(" &(this_" + fieldName);
 					write("[");
 					writeInstruction(arrayAccess.getArrayIndex());
 					write("])");
@@ -510,7 +496,7 @@ public abstract class KernelWriter extends BlockWriter {
 			}
 			write(")");
 		}
-		return writeAllocCheck;
+		return false; // FIXME: Previous: alloc check
 	}
 
 	private boolean isThis(Instruction instruction) {
@@ -537,27 +523,15 @@ public abstract class KernelWriter extends BlockWriter {
 	    com.amd.aparapi.Kernel.Constant.class.getName().replace('.', '/')
 	    + ";";
 
-	private boolean doesHeapAllocation(MethodModel mm,
-	                                   Set<MethodModel> mayFailHeapAllocation) {
-		if (mayFailHeapAllocation.contains(mm))
-			return true;
-
-		for (MethodModel callee : mm.getCalledMethods()) {
-			if (doesHeapAllocation(callee, mayFailHeapAllocation)) {
-				mayFailHeapAllocation.add(mm);
-				return true;
-			}
-		}
-
-		return false;
-	}
-
 	private void emitExternalObjectDef(ClassModel cm) {
 		final ArrayList<FieldNameInfo> fieldSet = cm.getStructMembers();
 
 		final String mangledClassName = cm.getMangledClassName();
 		newLine();
-		write("typedef struct __attribute__ ((packed)) " + mangledClassName + "_s{");
+		write("typedef struct ");
+		if (!useMerlinKernel)
+			write("__attribute__ ((packed)) ");
+		write(mangledClassName + "_s{");
 		in();
 		newLine();
 
@@ -588,22 +562,6 @@ public abstract class KernelWriter extends BlockWriter {
 				assert cType != null : "could not find type for " + field.desc;
 				writeln(cType + " " + field.name + ";");
 			}
-
-			// compute total size for OpenCL buffer
-			int totalStructSize = 0;
-			if ((totalSize % alignTo) == 0)
-				totalStructSize = totalSize;
-			else {
-				// Pad up if necessary
-				totalStructSize = ((totalSize / alignTo) + 1) * alignTo;
-			}
-			// if (totalStructSize > alignTo) {
-			//   while (totalSize < totalStructSize) {
-			//     // structBuffer.put((byte)-1);
-			//     writeln("char _pad_" + totalSize + ";");
-			//     totalSize++;
-			//   }
-			// }
 
 			out();
 			newLine();
@@ -654,7 +612,8 @@ public abstract class KernelWriter extends BlockWriter {
 
 	@Override public void write(Entrypoint _entryPoint,
 	                            Collection<ScalaParameter> params) throws CodeGenException {
-		final List<String> thisStruct = new ArrayList<String>();
+		String thisArgs = "";
+		String thisArgsWithType = "";
 		final List<String> argLines = new ArrayList<String>();
 		final List<String> assigns = new ArrayList<String>();
 
@@ -664,9 +623,8 @@ public abstract class KernelWriter extends BlockWriter {
 
 		entryPoint = _entryPoint;
 
-		// Add reference fields (broadcast) to 1) "this", 2) argument of main, 3) "this" assignment
+		// Add reference fields to 1) "this", 2) argument of main, 3) "this" assignment
 		for (final ClassModelField field : _entryPoint.getReferencedClassModelFields()) {
-			final StringBuilder thisStructLine = new StringBuilder();
 			final StringBuilder argLine = new StringBuilder();
 			final StringBuilder assignLine = new StringBuilder();
 
@@ -679,26 +637,25 @@ public abstract class KernelWriter extends BlockWriter {
 			boolean isPointer = signature.startsWith("[");
 
 			argLine.append(param.getInputParameterString(this));
-			thisStructLine.append(param.getStructString(this));
-			assignLine.append(param.getAssignString(this));
+			String paramAssignStr = param.getAssignString(this);
+			assignLine.append(paramAssignStr);
 
 			assigns.add(assignLine.toString());
+			paramAssignStr = paramAssignStr.substring(0, paramAssignStr.indexOf(" ="));
+			thisArgsWithType += paramAssignStr + ", ";
+			thisArgs += "this_" + param.getName() + ", ";
 			argLines.add(argLine.toString());
-			thisStruct.add(thisStructLine.toString());
 
-			// Add int field into "this" struct for supporting java arraylength op
+			// Add int field into "this" variables for supporting java arraylength op
 			// named like foo__javaArrayLength
 			if (isPointer && _entryPoint.getArrayFieldArrayLengthUsed().contains(field.getName())) {
-				final StringBuilder lenStructLine = new StringBuilder();
 				final StringBuilder lenArgLine = new StringBuilder();
 				final StringBuilder lenAssignLine = new StringBuilder();
 
 				String suffix = "";
 				String lenName = field.getName() + BlockWriter.arrayLengthMangleSuffix + suffix;
 
-				lenStructLine.append("int " + lenName);
-
-				lenAssignLine.append("this->");
+				lenAssignLine.append("int this_");
 				lenAssignLine.append(lenName);
 				lenAssignLine.append(" = ");
 				lenAssignLine.append(lenName);
@@ -706,11 +663,17 @@ public abstract class KernelWriter extends BlockWriter {
 				lenArgLine.append("int " + lenName);
 
 				assigns.add(lenAssignLine.toString());
+				thisArgsWithType += "int this_" + lenName + ", ";
+				thisArgs += "this_" + lenName + ", ";
 				argLines.add(lenArgLine.toString());
-				thisStruct.add(lenStructLine.toString());
 			}
 		}
 
+		// Remove the last ", "
+		if (thisArgs.length() > 0) {
+			thisArgsWithType = thisArgsWithType.substring(0, thisArgsWithType.length() - 2);	
+			thisArgs = thisArgs.substring(0, thisArgs.length() - 2);
+		}
 
 // 2/2/16: We don't use these features now.
 		// Include self mapped function libaray
@@ -730,7 +693,7 @@ public abstract class KernelWriter extends BlockWriter {
 		write("#define MAX_PARTITION_SIZE 32767");
 		newLine();
 
-		if (Config.enableDoubles || _entryPoint.requiresDoublePragma()) {
+		if (!useMerlinKernel && (Config.enableDoubles || _entryPoint.requiresDoublePragma())) {
 			writePragma("cl_khr_fp64", true);
 			newLine();
 		}
@@ -749,6 +712,7 @@ public abstract class KernelWriter extends BlockWriter {
 			}
 		}
 
+/*	We now flat "this" struct
 		write("typedef struct This_s {");
 
 		in();
@@ -760,22 +724,13 @@ public abstract class KernelWriter extends BlockWriter {
 		out();
 		write("} This;");
 		newLine();
-
+*/
 		final List<MethodModel> merged = new ArrayList<MethodModel>(_entryPoint.getCalledMethods().size() +
 		    1);
 		merged.addAll(_entryPoint.getCalledMethods());
 		merged.add(_entryPoint.getMethodModel());
 
-		assert(mayFailHeapAllocation == null);
-		mayFailHeapAllocation = new HashSet<MethodModel>();
-		for (final MethodModel mm : merged) {
-			if (mm.requiresHeap()) mayFailHeapAllocation.add(mm);
-		}
-
-		for (final MethodModel mm : merged)
-			doesHeapAllocation(mm, mayFailHeapAllocation);
-
-/* For customized class, not supported now
+/* Old code for customized class, not use now
 		for (HardCodedClassModel model : _entryPoint.getHardCodedClassModels()) {
 			for (HardCodedMethodModel method : model.getMethods()) {
 				if (!method.isGetter()) {
@@ -819,16 +774,19 @@ public abstract class KernelWriter extends BlockWriter {
 			} else
 				fullReturnType = convertedReturnType;
 
-			write("static ");
+			if (!useMerlinKernel)
+				write("static ");
+
+			isArrayTypeOutput = false;
+			processingConstructor = false;
+
 			if (mm.getSimpleName().equals("<init>")) {
-				// Transform constructors to return a reference to their object type
+				// Transform constructors to initialize the object
 				ClassModel owner = mm.getMethod().getClassModel();
-				write(__global + owner.getClassWeAreModelling().getName().replace('.', '_') + " * ");
+				write(__global + "void ");
 				processingConstructor = true;
 			} else if (returnType.startsWith("L") && !Utils.isHardCodedClass(returnType)) {
-				write(__global + fullReturnType);
-				write(" *");
-				processingConstructor = false;
+				write(__global + fullReturnType + " ");
 			} else {
 				// Issue #40 Array type output support:
 				// Change the return type to void
@@ -843,7 +801,6 @@ public abstract class KernelWriter extends BlockWriter {
 					isArrayTypeOutput = true;
 				} else
 					write(fullReturnType);
-				processingConstructor = false;
 			}
 
 			write(mm.getName() + "(");
@@ -852,7 +809,7 @@ public abstract class KernelWriter extends BlockWriter {
 				if ((mm.getMethod().getClassModel() == _entryPoint.getClassModel())
 				    || mm.getMethod().getClassModel().isSuperClass(
 				      _entryPoint.getClassModel().getClassWeAreModelling()))
-					write("This *this");
+					write(thisArgsWithType);
 				else {
 					// Call to an object member or superclass of member
 					Iterator<ClassModel> classIter = _entryPoint.getObjectArrayFieldsClassesIterator();
@@ -873,6 +830,10 @@ public abstract class KernelWriter extends BlockWriter {
 
 			boolean alreadyHasFirstArg = !mm.getMethod().isStatic();
 
+			// No reference arguments
+			if (alreadyHasFirstArg == true && thisArgsWithType.length() == 0)
+				alreadyHasFirstArg = false;
+
 			@SuppressWarnings("unchecked")
 			final Map<String, String> promoteLocalArguments = new HashMap<String, String>();
 			final Set<String> iterArguments = new HashSet<String>();
@@ -886,7 +847,7 @@ public abstract class KernelWriter extends BlockWriter {
 					List<String> fieldList = new LinkedList<String>();
 
 					// Issue #49: Support the argument with type parameter.
-					// NOTICE: Only support "call" method with the argument has type parameter.
+					// NOTICE: Only support "call" method with the argument has type parameter. FIXME
 					if (mm.getName().contains("call") && Utils.isHardCodedClass(clazzDesc)) {
 						for (ScalaParameter p : params) {
 						  String paramString = null;
@@ -913,12 +874,9 @@ public abstract class KernelWriter extends BlockWriter {
 						if (alreadyHasFirstArg)
 							write(", ");
 
-						if (descriptor.startsWith("[") || Utils.isArrayBasedClass(clazzDesc))
+						if (descriptor.startsWith("[") || Utils.isArrayBasedClass(clazzDesc) || 
+								descriptor.startsWith("L"))
 							write(" " + __global);
-
-						// FIXME: We haven't create a programming model for user-defined classes.
-						if (descriptor.startsWith("L"))
-							write(__global);
 
 						final String convertedType;
 						if (descriptor.startsWith("L")) {
@@ -1064,6 +1022,7 @@ public abstract class KernelWriter extends BlockWriter {
 				}
 			}
 */
+
 			writeMethodBody(mm);
 			newLine();
 /*
@@ -1134,8 +1093,6 @@ public abstract class KernelWriter extends BlockWriter {
 			writeln("int idx = get_global_id(0);");
 		}
 
-		writeln("This thisStruct;");
-		writeln("This* this = &thisStruct;");
 		for (final String line : assigns) {
 			write(line);
 			writeln(";");
@@ -1162,26 +1119,29 @@ public abstract class KernelWriter extends BlockWriter {
 		}
 
 		// Call the kernel function.
-		if (outParam.getClazz() != null) { // User defined class
-			write(__global + outParam.getType() + "* result = " +
-			      _entryPoint.getMethodModel().getName() + "(this");
-		} else {
-			if (!outParam.isArray() && !isMapPartitions) // Issue #40: We don't use return value for array type
-				write(outParam.getName() + "[" + aryIdxStr + "] = ");
-			write(_entryPoint.getMethodModel().getName() + "(this");
-		}
+		first = true;
+		if (!outParam.isArray() && !isMapPartitions) // Issue #40: We don't use return value for array type
+			write(outParam.getName() + "[" + aryIdxStr + "] = ");
+		write(_entryPoint.getMethodModel().getName() + "(");
+		write(thisArgs);
+		if (thisArgs.length() > 0)
+			first = false;
 
 		for (ScalaParameter p : params) {
 			if (p.getDir() == ScalaParameter.DIRECTION.IN) {
 				if (p.isArray()) { // Deserialized access
 					if (!isMapPartitions) {
-						if (p.isPrimitive()) // Primitive type
-							write(", &" + p.getName() + "[" + aryIdxStr + " * " + p.getName() + 
+						if (p.isPrimitive()) { // Primitive type
+							if (!first)	write(", ");
+							write("&" + p.getName() + "[" + aryIdxStr + " * " + p.getName() + 
 									BlockWriter.arrayItemLengthMangleSuffix + "]");
+						}
 						else if (Utils.isHardCodedClass(p.getClassName())) { 
 							Set<String> fields = Utils.getHardCodedClassMethods(p.getClassName(), METHODTYPE.VAR_ACCESS);
 							for (String field : fields) {
-								write(", &" + p.getName() + Utils.getDeclareHardCodedMethodString(p.getClassName(), 
+								if (!first) write(", ");
+								else first = false;
+								write("&" + p.getName() + Utils.getDeclareHardCodedMethodString(p.getClassName(), 
 										field, p.getName()) + "[" + aryIdxStr + " " + p.getName() + 
 										BlockWriter.arrayItemLengthMangleSuffix + "]");
 							}
@@ -1192,31 +1152,42 @@ public abstract class KernelWriter extends BlockWriter {
 					else { // MapPartitions
 						Set<String> fields = Utils.getHardCodedClassMethods(p.getClassName(), METHODTYPE.VAR_ACCESS);
 						for (String field : fields) {
-							write(", " + p.getName() + Utils.getDeclareHardCodedMethodString(p.getClassName(), 
+							if (!first)	write(", ");
+							else first = false;
+							write(p.getName() + Utils.getDeclareHardCodedMethodString(p.getClassName(), 
 							field, p.getName()));
 						}
-						write(", N"); // Data length is necessary for mapPartitions
+						if (!first) write(", ");
+						write("N"); // Data length is necessary for mapPartitions
 					}
-					write(", " + p.getName() + BlockWriter.arrayItemLengthMangleSuffix);
+					if (!first) write(", ");
+					write(p.getName() + BlockWriter.arrayItemLengthMangleSuffix);
 				}
 				else {
-					if (p.isPrimitive()) // Primitive type
-						write(", " + p.getName() + "[" + aryIdxStr + "]");
+					if (p.isPrimitive()) { // Primitive type
+						if (!first) write(", ");
+						write(p.getName() + "[" + aryIdxStr + "]");
+					}
 					else if (Utils.isHardCodedClass(p.getClassName())) {
 						Set<String> fields = Utils.getHardCodedClassMethods(p.getClassName(), METHODTYPE.VAR_ACCESS);
 						for (String field : fields) {
-							write(", " + p.getName() + 
+							if (!first) write(", ");
+							else first = false;
+							write(p.getName() + 
 								Utils.getDeclareHardCodedMethodString(p.getClassName(), field, p.getName()) + "[" + aryIdxStr + "]");
 						}
 					}
-					else // User defined class
-						write(", " + p.getName() + " + i");
+					else { // User defined class
+						if (!first) write(", ");
+						write("&" + p.getName() + "[" + aryIdxStr + "]");
+					}
 				}
+				first = false;
 			}
 		}
 
 		if (isArrayTypeOutput) { // Issue #40: Add another argument for output array.
-			if (outParam.isPrimitive()) // Primitive type
+			if (outParam.isPrimitive() || outParam.isCustomized())
 				write(", &" + outParam.getName() + "[" + aryIdxStr + " * " + outParam.getName() + 
 					BlockWriter.arrayItemLengthMangleSuffix + "]");
 			else if (Utils.isHardCodedClass(outParam.getClassName())) {
@@ -1234,9 +1205,6 @@ public abstract class KernelWriter extends BlockWriter {
 							Utils.getDeclareHardCodedMethodString(outParam.getClassName(), field, outParam.getName()));
 					}
 				}
-			}
-			else {
-				; // TODO: User defined class
 			}
 			write(", " + outParam.getName() + BlockWriter.arrayItemLengthMangleSuffix);
 		}
@@ -1258,10 +1226,6 @@ public abstract class KernelWriter extends BlockWriter {
 		out();
 		newLine();
 		writeln("}");
-	}
-
-	@Override public void writeThisRef() {
-		write("this->");
 	}
 
 	@Override public boolean writeInstruction(Instruction _instruction) throws CodeGenException {
