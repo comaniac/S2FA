@@ -61,6 +61,8 @@ import java.net.URLClassLoader;
 
 public class Entrypoint implements Cloneable {
 
+	public final Config config;
+
 	private static Logger logger = Logger.getLogger(Config.getLoggerName());
 
 	private final List<ClassModel.ClassModelField> referencedClassModelFields = new
@@ -386,7 +388,7 @@ public class Entrypoint implements Cloneable {
 		// Quickly bail if it is a ref
 		if (field.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8().startsWith("L")
 		    || field.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8().startsWith("[L")) {
-			System.err.println("Referencing field " + accessedFieldName + " in " + className);
+			logger.severe("Referencing field " + accessedFieldName + " in " + className);
 			throw new ClassParseException(ClassParseException.TYPE.OBJECTARRAYFIELDREFERENCE);
 		}
 
@@ -569,6 +571,8 @@ public class Entrypoint implements Cloneable {
 		argumentList = params;
 		classLoader = _loader;
 
+		config = new Config();
+
 		hardCodedClassModels = new HardCodedClassModels();
 
 		final Map<ClassModelMethod, MethodModel> methodMap = new
@@ -596,7 +600,7 @@ public class Entrypoint implements Cloneable {
 				continue;
 
 			addClass(param.getClassName(), param.getDescArray());
-			logger.finest("Add a customized class " + param.getClassName());
+			logger.fine("Add a customized class " + param.getClassName());
 		}
 
 		// Collect all methods called directly from kernel's run method
@@ -664,20 +668,6 @@ public class Entrypoint implements Cloneable {
 
 			// This is just a prepass that collects metadata, we don't actually write kernels at this point
 			for (final MethodModel methodModel : methods) {
-				// Record which pragmas we need to enable
-				if (methodModel.requiresDoublePragma()) {
-					usesDoubles = true;
-					if (logger.isLoggable(Level.FINE))
-						logger.fine("Enabling doubles on " + methodModel.getName());
-				}
-				if (methodModel.requiresHeap())
-					usesNew = true;
-				if (methodModel.requiresByteAddressableStorePragma()) {
-					usesByteWrites = true;
-					if (logger.isLoggable(Level.FINE))
-						logger.fine("Enabling byte addressable on " + methodModel.getName());
-				}
-
 				for (Instruction instruction = methodModel.getPCHead(); instruction != null; instruction =
 				       instruction.getNextPC()) {
 					if (instruction instanceof AssignToArrayElement) {
@@ -958,7 +948,6 @@ public class Entrypoint implements Cloneable {
 
 			// Build data needed for oop form transforms if necessary
 			if (!objectArrayFieldsClasses.isEmpty()) {
-
 				for (final ClassModel memberObjClass : objectArrayFieldsClasses) {
 					// At this point we have already done the field override safety check, so
 					// add all the superclass fields into the kernel member class to be

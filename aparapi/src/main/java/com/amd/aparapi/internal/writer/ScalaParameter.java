@@ -4,6 +4,8 @@ import java.util.Set;
 import java.util.HashSet;
 import java.util.List;
 import java.util.LinkedList;
+import java.util.logging.*;
+import com.amd.aparapi.Config;
 import com.amd.aparapi.internal.model.ClassModel;
 import com.amd.aparapi.internal.model.HardCodedClassModel;
 import com.amd.aparapi.internal.util.Utils;
@@ -12,6 +14,8 @@ public abstract class ScalaParameter {
 	public static enum DIRECTION {
 		IN, OUT
 	}
+
+	protected static Logger logger = Logger.getLogger(Config.getLoggerName());
 
 	protected HardCodedClassModel clazzModel;
 	protected Class<?> clazz;
@@ -23,8 +27,7 @@ public abstract class ScalaParameter {
 	protected boolean customizedOrNot;
 	protected final String name;
 	protected final DIRECTION dir;
-	protected final List<String> typeParameterDescs;
-	protected final List<Boolean> typeParameterIsObject;
+	protected final List<ScalaParameter> typeParameters;
 
 	public ScalaParameter(String fullSig, String name, DIRECTION dir) {
 		this.name = name;
@@ -35,10 +38,9 @@ public abstract class ScalaParameter {
 		this.fullSig = fullSig;
 		this.customizedOrNot = false;
 		this.primitiveOrNot = true;
+		this.typeParameters = new LinkedList<ScalaParameter>();
 
-		this.typeParameterDescs = new LinkedList<String>();
-		this.typeParameterIsObject = new LinkedList<Boolean>();
-
+		// Check type: Array
 		boolean isArrayBased = false;
 		if (fullSig.indexOf('<') != -1)
 			isArrayBased = Utils.isArrayBasedClass(fullSig.substring(0, fullSig.indexOf("<")));
@@ -54,28 +56,46 @@ public abstract class ScalaParameter {
 			arrayOrNot = true;
 		}
 
-		if (eleSig.indexOf('<') != -1) {
+		// Check type: Customized
+		if (eleSig.startsWith("L")) {
+			primitiveOrNot = false;
+			String tmpSig = eleSig.substring(1);
+			if (tmpSig.indexOf('<') != -1)
+				tmpSig = tmpSig.substring(0, tmpSig.indexOf('<'));
+			if (!Utils.isHardCodedClass(tmpSig))
+				customizedOrNot = true;
+		}
+
+		if (eleSig.indexOf('<') != -1) { // Has generic types
 			primitiveOrNot = false;
 			String topLevelType = eleSig.substring(0, eleSig.indexOf('<'));
+
+			// Set base class
 			if (topLevelType.charAt(0) == 'L')
 				this.type = topLevelType.substring(1).replace('/', '.');
 			else
 				this.type = topLevelType.replace('/', '.');
+			logger.finest("Parameter: " + eleSig + " extracts base " + this.type);
 
+			// Extract generic types
 			String params = eleSig.substring(eleSig.indexOf('<') + 1, eleSig.lastIndexOf('>'));
-			if (params.indexOf('<') != -1 || params.indexOf('>') != -1)
-				throw new RuntimeException("Do not support nested parameter templates: " + fullSig);
-			String[] tokens = params.split(",");
-			for (int i = 0; i < tokens.length; i++) {
-				String t = tokens[i];
-				if (t.equals("I") || t.equals("F") || t.equals("D")) {
-					this.typeParameterDescs.add(t);
-					this.typeParameterIsObject.add(false);
-				} else {
-					this.typeParameterDescs.add("L" + t.replace('/', '.') + ";");
-					this.typeParameterIsObject.add(true);
+			int curPos = 0;
+			int nestLevel = 0;
+			for (int i = 0; i < params.length(); i++) {
+				if (params.charAt(i) == '<')
+					nestLevel += 1;
+				else if (params.charAt(i) == '>')
+					nestLevel -= 1;
+				else if (params.charAt(i) == ',' && nestLevel == 0) {
+					logger.finest("Add a new generic type " + params.substring(curPos, i));
+					ScalaParameter newType = Utils.createScalaParameter(params.substring(curPos, i), null, dir);
+					this.typeParameters.add(newType);
+					curPos = i + 1;
 				}
 			}
+			logger.finest("Add a new generic type " + params.substring(curPos));
+			ScalaParameter newType = Utils.createScalaParameter(params.substring(curPos), null, dir);
+			this.typeParameters.add(newType);
 		} else {
 			if (eleSig.equals("I"))
 				this.type = "int";
@@ -83,11 +103,8 @@ public abstract class ScalaParameter {
 				this.type = "double";
 			else if (eleSig.equals("F"))
 				this.type = "float";
-			else if (eleSig.startsWith("L")) {
+			else if (eleSig.startsWith("L"))
 				this.type = eleSig.substring(1, eleSig.length() - 1).replace('/', '.');
-				customizedOrNot = true;
-				primitiveOrNot = false;
-			}
 			else
 				throw new RuntimeException("Invalid type: " + eleSig);
 		}
@@ -102,8 +119,7 @@ public abstract class ScalaParameter {
 		this.isReference = false;
 		this.primitiveOrNot = false;
 		this.customizedOrNot = false;
-		this.typeParameterDescs = new LinkedList<String>();
-		this.typeParameterIsObject = new LinkedList<Boolean>();
+		this.typeParameters = new LinkedList<ScalaParameter>();
 		if (type.charAt(0) == '[') {
 			arrayOrNot = true;
 			type = type.substring(1);
@@ -118,32 +134,14 @@ public abstract class ScalaParameter {
 		this(fullSig, name, DIRECTION.IN);
 	}
 
-	public void addTypeParameter(String s, boolean isObject) {
-		typeParameterDescs.add(s);
-		typeParameterIsObject.add(isObject);
-	}
-
 	public String[] getDescArray() {
-		String[] arr = new String[typeParameterDescs.size()];
+		String[] arr = new String[typeParameters.size()];
 		int index = 0;
-		for (String param : typeParameterDescs) {
-			arr[index] = param;
+		for (ScalaParameter param : typeParameters) {
+			arr[index] = param.getType();
 			index++;
 		}
 		return arr;
-	}
-
-	public String getTypeParameter(int i) {
-		if (i < typeParameterDescs.size())
-			return typeParameterDescs.get(i);
-		else
-			return null;
-	}
-
-	public boolean typeParameterIsObject(int i) {
-		if (i < typeParameterIsObject.size())
-			return typeParameterIsObject.get(i);
-		return false;
 	}
 
 	public String getClassName() {
@@ -156,28 +154,38 @@ public abstract class ScalaParameter {
 
 	public String getType() {
 		StringBuilder sb = new StringBuilder();
-		sb.append(type.replace('.', '_'));
-		for (String typeParam : typeParameterDescs) {
+
+		// FIXME: Should be removed in the future
+		if (type.equals("int"))
+			sb.append("I");
+		else if (type.equals("float"))
+			sb.append("F");
+		else if (type.equals("double"))
+			sb.append("D");
+		else if (type.equals("long"))
+			sb.append("J");
+		else if (type.equals("short"))
+			sb.append("S");
+		else
+			sb.append(type.replace('.', '_'));
+
+		for (ScalaParameter param : typeParameters) {
 			sb.append("_");
-			if (typeParam.charAt(0) == 'L') {
-				sb.append(typeParam.substring(1,
-                  typeParam.length() - 1).replace(".", "_"));
-			} else
-				sb.append(typeParam);
+			sb.append(param.getType());
 		}
 		return sb.toString();
 	}
 
 	protected String getParameterStringFor(int field, String name) {
 		String param;
-		if (!typeParameterIsObject(field)) {
+		if (!typeParameters.get(field).isCustomized()) {
 			param = "__global " + ClassModel.convert(
-			          typeParameterDescs.get(field), "", true);
+			          typeParameters.get(field).getType(), "", true);
 			if (!isReference) // Arguments must be array type
 				param = param + "* ";
 			param = param + name + mapIdxToMethod(field);
 		} else {
-			String fieldDesc = typeParameterDescs.get(field);
+			String fieldDesc = typeParameters.get(field).getType();
 			if (fieldDesc.charAt(0) != 'L' ||
 			    fieldDesc.charAt(fieldDesc.length() - 1) != ';')
 				throw new RuntimeException("Invalid object signature \"" + fieldDesc + "\"");
@@ -242,11 +250,6 @@ public abstract class ScalaParameter {
 	 * Generate the string for the variables in "this" struct.
 	 */ 
 	public abstract String getStructString(KernelWriter writer);
-
-	/*
-	 * Generate the string for the global variable.
-	 */
-	//public abstract String getGlobalString(KernelWriter writer);
 
 	/*
 	 * Generate the string for assigning input variables to "this" struct.

@@ -37,7 +37,6 @@ import com.amd.aparapi.internal.writer.KernelWriter
 import com.amd.aparapi.internal.writer.KernelWriter.WriterAndKernel
 import com.amd.aparapi.internal.util.{Utils => AparapiUtils}
 
-import org.apache.spark.blaze.Accelerator
 import org.apache.j2fa.AST._
 
 class Kernel(accClazz: Class[_], mInfo: MethodInfo, loader: URLClassLoader) {
@@ -49,16 +48,10 @@ class Kernel(accClazz: Class[_], mInfo: MethodInfo, loader: URLClassLoader) {
     System.setProperty("com.amd.aparapi.enable.INVOKEINTERFACE", "true")
 
     val mName = mInfo.getName
-    val outputMerlin = if (mInfo.getConfig("output_format") == "Merlin") true else false
-    var isMapPartitions: Boolean = if (mInfo.getConfig("kernel_type") == "mapPartitions") true else false
-
-    if (isMapPartitions)
-      System.setProperty("com.amd.aparapi.kernelType", "MapPartitions")
-    else
-      System.setProperty("com.amd.aparapi.kernelType", "Map")
-
-    if (outputMerlin)
+    if (mInfo.getConfig("output_format") == "Merlin")
       System.setProperty("com.amd.aparapi.enable.MERLIN", "true")
+
+    System.setProperty("com.amd.aparapi.kernelType", mInfo.getConfig("kernel_type"))
 
     val classModel : ClassModel = ClassModel.createClassModel(accClazz, null, new ShouldNotCallMatcher())
 

@@ -31,19 +31,11 @@ import org.apache.j2fa.Annotation._
 class Point(var x: Double, var y: Double, var z: Double) 
     extends java.io.Serializable {
   
-  def getX = x
-  def getY = y
-  def getZ = z
-
-  def setX(_x: Double) = { x = _x }
-  def setY(_y: Double) = { y = _y }
-  def setZ(_z: Double) = { z = _z }
-
   def dis(p: Point) = {
     val d = sqrt(
-            (x - p.getX) * (x - p.getX) + 
-            (y - p.getY) * (y - p.getY) +
-            (z - p.getZ) * (y - p.getY))
+            (x - p.x) * (x - p.x) + 
+            (y - p.y) * (y - p.y) +
+            (z - p.z) * (y - p.z))
     d
   }
 
@@ -53,7 +45,7 @@ class Point(var x: Double, var y: Double, var z: Double)
   }
 }
 
-class IOTest_Obj(b_1: Double)
+class IOTest_Obj(b_1: Point)
   extends Accelerator[Point, Point] {
 
   val id: String = "IOTest_Obj"
@@ -67,7 +59,7 @@ class IOTest_Obj(b_1: Double)
 
   @J2FA_Kernel
   override def call(in: Point): Point = {
-    val refPoint = new Point(b_1, b_1, b_1)
+    val refPoint = b_1
     val d = in.dis(refPoint)
     refPoint.x = in.x + d
     refPoint.y = in.y + d
@@ -86,17 +78,17 @@ object TestApp {
       val acc = new BlazeRuntime(sc)
       val rdd_acc = acc.wrap(rdd)
 
-      val v_1 = 10.1
+      val v_1 = new Point(random, random, random)
 
       val result1 = rdd_acc.map_acc(new IOTest_Obj(v_1)).collect
       val result2 = rdd.map(e => {
-        val refPoint = new Point(v_1, v_1, v_1)
+        val refPoint = v_1
         val d = e.dis(refPoint)
-        refPoint.setX(e.getX + d)
-        refPoint.setY(e.getY + d)
-        refPoint.setZ(e.getZ + d)
+        refPoint.x = e.x + d
+        refPoint.y = e.y + d
+        refPoint.z = e.z + d
 
-        new Point(refPoint.getX, refPoint.getY, refPoint.getZ)
+        new Point(refPoint.x, refPoint.y, refPoint.z)
       }).collect
       println("map Result (first point): " + result1(0))
       println("CPU Result (first point): " + result2(0))

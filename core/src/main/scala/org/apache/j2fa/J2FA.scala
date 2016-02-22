@@ -22,19 +22,17 @@ import scala.reflect.ClassTag
 import scala.io._
 import scala.sys.process._
 
-import java.util._
 import java.io._
 import java.net._
 import java.util.LinkedList
 
-import org.apache.spark.blaze.Accelerator
 import org.apache.j2fa.AST._
 
 object J2FA {
 
   def main(args : Array[String]) {
     if (args.length < 4) {
-      System.err.println("Usage: J2FA <Source file> <jar path> <Accelerator class name> <Output kernel file>")
+      System.err.println("Usage: J2FA <Source file> <jar paths> <Accelerator class name> <Output kernel file>")
       System.exit(1)
     }
     Logging.info("J2FA -- Java to FPGA Accelerator Framework")
@@ -42,10 +40,14 @@ object J2FA {
     val srcTree = ASTUtils.getSourceTree(args(0))
     val kernelMethods = ASTUtils.getKernelMethods(srcTree)
 
-    // FIXME: User input classpath
-    val jars = Array((new File(args(1)).toURI.toURL),
-                      new URL("file://" + sys.env("BLAZE_HOME") + "/accrdd/target/blaze-1.0-SNAPSHOT.jar"))
-    val loader = new URLClassLoader(jars)
+    val jarPaths = args(1).split(":")
+    var jars = List[URL]()
+    jarPaths.foreach(path => {
+      val file = new File(path).toURI.toURL
+      jars = jars :+ file
+    })
+
+    val loader = new URLClassLoader(jars.toArray)
     val clazz = loader.loadClass(args(2))
 
     kernelMethods.foreach({

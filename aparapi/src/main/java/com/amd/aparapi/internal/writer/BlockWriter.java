@@ -76,8 +76,6 @@ public abstract class BlockWriter {
 
 	protected final static boolean useFPGAStyle = true;
 
-	protected final static boolean useMerlinKernel = Config.enableMerlinKernel;
-
 	public final static String iteratorIndexSuffix = "_iterIdx";
 
 	public final static String arrayLengthMangleSuffix = "__javaArrayLength";
@@ -622,7 +620,7 @@ public abstract class BlockWriter {
 			if (isMultiDimensional)
 				write(")");
 		} else if (_instruction instanceof AccessField) {
-//					write("/* access field */");
+//			write("/* access field */");
 			final AccessField accessField = (AccessField) _instruction;
 			if (accessField instanceof AccessInstanceField) {
 				Instruction accessInstanceField = ((AccessInstanceField) accessField).getInstance();
@@ -631,8 +629,13 @@ public abstract class BlockWriter {
 				if (!(accessInstanceField instanceof I_ALOAD_0)) {
 					writeInstruction(accessInstanceField);
 					write(".");
-				} else
+				} else {
+					String type = accessField.getConstantPoolFieldEntry().getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
+					// Customized object always pass by value and access by pointer
+					if (type.startsWith("L"))
+						write("&");
 					write("this_");
+				}
 			}
 			write(accessField.getConstantPoolFieldEntry().getNameAndTypeEntry().getNameUTF8Entry().getUTF8());
 

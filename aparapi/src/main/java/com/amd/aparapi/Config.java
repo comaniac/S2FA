@@ -66,76 +66,18 @@ public class Config {
 	private static final Logger logger = Logger.getLogger(Config.getLoggerName());
 
 	/**
-	 * Kernel file name (only used for convert phase).
-	 *
-	 *  Usage -Dcom.amd.aparapi.kernelFileName=string
-	 */
-	public static final String kernelFileName = System.getProperty(propPkgName + ".kernelFileName");
-
-	/**
-	 * Allows the user to request to use a jvmti agent to
-	 * access JNI code rather than loading explicitly.
-	 *
-	 * Usage -agentpath=/full/path/to/agent.dll -Dcom.amd.aparapi.useAgent=true
-	 */
-
-	public static final boolean useAgent = Boolean.getBoolean(propPkgName + ".useAgent");
-
-	/**
 	 * Disable Unsafe
 	 */
 	public static final boolean disableUnsafe = Boolean.getBoolean(propPkgName + ".disableUnsafe");
-
-	/**
-	 * Allows the user to soecify 
-	 *
-	 *  Usage -Dcom.amd.aparapi.kernelType={General|Map|MapPartitions}
-	 *
-	 */
-	public static final String kernelType = System.getProperty(propPkgName + ".kernelType");
-
-	/**
-	 * Allows the user to request that the execution mode of each kernel invocation be reported to stdout.
-	 *
-	 *  Usage -Dcom.amd.aparapi.enableExecutionModeReporting={true|false}
-	 *
-	 */
-	public static final boolean enableExecutionModeReporting = Boolean.getBoolean(
-	      propPkgName + ".enableExecutionModeReporting");
-
-	/**
-	 * Allows the user to request that the execution phase be reported to stdout.
-	 *
-	 *  Usage -Dcom.amd.aparapi.enableExecutionPhaseReporting={true|false}
-	 *
-	 */
-	public static final boolean enableExecutionPhaseReporting = Boolean.getBoolean(
-	      propPkgName + ".enableExecutionPhaseReporting");
-
-	/**
-	 * Allows the user to request that generated OpenCL code is dumped to standard out.
-	 *
-	 *  Usage -Dcom.amd.aparapi.enableShowGeneratedOpenCL={true|false}
-	 *
-	 */
-	public static final boolean enableShowGeneratedOpenCL = Boolean.getBoolean(
-	      propPkgName + ".enableShowGeneratedOpenCL");
 
 	// Pragma/OpenCL codegen related flags
 	public static final boolean enableAtomic32 = Boolean.getBoolean(propPkgName + ".enableAtomic32");
 
 	public static final boolean enableAtomic64 = Boolean.getBoolean(propPkgName + ".enableAtomic64");
 
-	public static final boolean enableByteWrites = Boolean.getBoolean(propPkgName +
-	    ".enableByteWrites");
-
-	public static final boolean enableDoubles = Boolean.getBoolean(propPkgName + ".enableDoubles");
-
 	// Debugging related flags
 	public static final boolean verboseComparitor = Boolean.getBoolean(propPkgName +
 	    ".verboseComparitor");
-
-	public static final boolean dumpFlags = Boolean.getBoolean(propPkgName + ".dumpFlags");
 
 	// Individual bytecode support related flags
 	public static final boolean enablePUTFIELD = Boolean.getBoolean(propPkgName + ".enable.PUTFIELD");
@@ -154,8 +96,6 @@ public class Config {
 	public static final boolean enableMONITOR = Boolean.getBoolean(propPkgName + ".enable.MONITOR");
 
 	public static final boolean enableNEW = Boolean.getBoolean(propPkgName + ".enable.NEW");
-
-	public static final boolean enableMerlinKernel = Boolean.getBoolean(propPkgName + ".enable.MERLIN");
 
 	public static final boolean enableATHROW = Boolean.getBoolean(propPkgName + ".enable.ATHROW");
 
@@ -181,6 +121,17 @@ public class Config {
 	public interface InstructionListener {
 		void showAndTell(String message, Instruction _start, Instruction _instruction);
 	}
+
+	// Kernel specified parameters
+	/**
+	 * User specified kernel type
+	 *
+	 *  Usage -Dcom.amd.aparapi.kernelType={General|Map|MapPartitions}
+	 *
+	 */
+	public final String kernelType;
+
+	public final boolean enableMerlinKernel;
 
 	static {
 		try {
@@ -217,6 +168,11 @@ public class Config {
 				e.printStackTrace();
 			}
 		}
+	}
+
+	public Config() {
+		kernelType = System.getProperty(propPkgName + ".kernelType");
+		enableMerlinKernel = Boolean.getBoolean(propPkgName + ".enable.MERLIN");
 	}
 
 	public static String getLoggerName() {

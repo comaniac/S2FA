@@ -85,6 +85,10 @@ public abstract class KernelWriter extends BlockWriter {
 
 	private boolean isArrayTypeOutput = false;
 
+	private boolean isMapPartitions = false;
+
+	private boolean useMerlinKernel = false;
+
 	private int countAllocs = 0;
 
 	private String currentReturnType = null;
@@ -486,8 +490,6 @@ public abstract class KernelWriter extends BlockWriter {
 					targetType = targetType.substring(1, targetType.length() - 1);
 					String validType = getXilinxMethodArgType(methodName, arg);
 					if (!targetType.equals(validType)) {
-//								System.out.println("[Aparapi] WARNING: Intrinsic method " + methodName +
-//									" has mismatched argument " + arg + ": " + targetType + " should be " + validType);
 						write("(" + validType + ")");
 						writeInstruction(castInstruction.getUnary());
 					}
@@ -617,11 +619,13 @@ public abstract class KernelWriter extends BlockWriter {
 		final List<String> argLines = new ArrayList<String>();
 		final List<String> assigns = new ArrayList<String>();
 
-		boolean isMapPartitions = false;
-		if (Config.kernelType.equals("MapPartitions"))
-			isMapPartitions = true;
-
 		entryPoint = _entryPoint;
+
+		logger.fine("Writing the kernel");
+
+		if (entryPoint.config.kernelType.equals("mapPartitions"))
+			isMapPartitions = true;
+		useMerlinKernel = entryPoint.config.enableMerlinKernel;
 
 		// Add reference fields to 1) "this", 2) argument of main, 3) "this" assignment
 		for (final ClassModelField field : _entryPoint.getReferencedClassModelFields()) {
@@ -681,19 +685,29 @@ public abstract class KernelWriter extends BlockWriter {
 //		newLine();
 
 		// Macros
-//		write("#define ITER_INC(x, inc) (((x)+=(inc))-(inc))");
-//		newLine();
-
 		write("#include <math.h>");
 		newLine();
 		write("#include <assert.h>");
 		newLine();
+		if (isMapPartitions) {
+			write("#define ITER_INC(x, inc) (((x)+=(inc))-(inc))");
+			newLine();
+		}
 		write("#define PE 16");
 		newLine();
 		write("#define MAX_PARTITION_SIZE 32767");
 		newLine();
 
-		if (!useMerlinKernel && (Config.enableDoubles || _entryPoint.requiresDoublePragma())) {
+		if (useMerlinKernel) {
+			write("#define __global ");
+			newLine();
+			write("#define __local ");
+			newLine();
+			write("#define __kernel ");
+			newLine();
+		}
+
+		if (!useMerlinKernel && _entryPoint.requiresDoublePragma()) {
 			writePragma("cl_khr_fp64", true);
 			newLine();
 		}
@@ -993,8 +1007,7 @@ public abstract class KernelWriter extends BlockWriter {
 
 			write(")");
 			newLine();
-/*
-			// 2/2/16: We now leverage Merlin Compiler to perform memory burst.
+
 			write("{");
 			newLine();
 
@@ -1005,6 +1018,8 @@ public abstract class KernelWriter extends BlockWriter {
 				newLine();
 			}
 			out();
+/*
+			// 2/2/16: We now leverage Merlin Compiler to perform memory burst.
 			if (useFPGAStyle) {
 				// Issue #37: Local variable promotion for input arguments
 				// Issue #40: Inialize array type output
@@ -1022,13 +1037,11 @@ public abstract class KernelWriter extends BlockWriter {
 				}
 			}
 */
-
 			writeMethodBody(mm);
 			newLine();
-/*
+
 			write("}");
 			newLine();
-*/
 		}
 
 		// Start writing main function
@@ -1142,7 +1155,7 @@ public abstract class KernelWriter extends BlockWriter {
 								if (!first) write(", ");
 								else first = false;
 								write("&" + p.getName() + Utils.getDeclareHardCodedMethodString(p.getClassName(), 
-										field, p.getName()) + "[" + aryIdxStr + " " + p.getName() + 
+										field, p.getName()) + "[" + aryIdxStr + " * " + p.getName() + 
 										BlockWriter.arrayItemLengthMangleSuffix + "]");
 							}
 						}
@@ -1163,12 +1176,13 @@ public abstract class KernelWriter extends BlockWriter {
 					if (!first) write(", ");
 					write(p.getName() + BlockWriter.arrayItemLengthMangleSuffix);
 				}
-				else {
+				else { // One-by-one access
 					if (p.isPrimitive()) { // Primitive type
 						if (!first) write(", ");
 						write(p.getName() + "[" + aryIdxStr + "]");
 					}
 					else if (Utils.isHardCodedClass(p.getClassName())) {
+logger.fine("Hardcoded arg");
 						Set<String> fields = Utils.getHardCodedClassMethods(p.getClassName(), METHODTYPE.VAR_ACCESS);
 						for (String field : fields) {
 							if (!first) write(", ");
@@ -1196,7 +1210,7 @@ public abstract class KernelWriter extends BlockWriter {
 					for (String field : fields) {
 						write(", &" + outParam.getName() + 
 							Utils.getDeclareHardCodedMethodString(outParam.getClassName(), field, outParam.getName()) + 
-							"[" + aryIdxStr + " " + outParam.getName() + BlockWriter.arrayItemLengthMangleSuffix + "]");
+							"[" + aryIdxStr + " * " + outParam.getName() + BlockWriter.arrayItemLengthMangleSuffix + "]");
 					}
 				}
 				else {
@@ -1277,7 +1291,7 @@ public abstract class KernelWriter extends BlockWriter {
 		String xKernel = kernel.replace("$", "___");
 
 		// Add specified work group number
-		xKernel = xKernel.replace("__kernel", "__kernel __attribute__((reqd_work_group_size(1, 1, 1)))");
+		//xKernel = xKernel.replace("__kernel", "__kernel __attribute__((reqd_work_group_size(1, 1, 1)))");
 
 		// Add loop pipeline to each for-loop
 		//xKernel = xKernel.replace("for (", "__attribute__((xcl_pipeline_loop)) for (");
@@ -1325,12 +1339,6 @@ public abstract class KernelWriter extends BlockWriter {
 
 		String kernel = openCLStringBuilder.toString();
 
-		// Remove OpenCL tags for Merlin Compiler
-		if (useMerlinKernel) {
-			kernel = kernel.replace("__global", "")
-										 .replace("__local", "")
-										 .replace("__kernel", "");
-		}
 		return (new WriterAndKernel(openCLWriter, kernel));
 	}
 }

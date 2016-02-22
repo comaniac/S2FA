@@ -89,8 +89,8 @@ public class ScalaTuple2Parameter extends ScalaParameter {
 		String str = null;
 		if (isArray())
 			str += "[";
-		str += " scala.Tuple2<" + this.typeParameterDescs.get(0) + ", ";
-		str += this.typeParameterDescs.get(1) + "> " + name;
+		str += " scala.Tuple2<" + this.typeParameters.get(0).getType() + ", ";
+		str += this.typeParameters.get(1).getType() + "> " + name;
 		return str;
 	}
 }
