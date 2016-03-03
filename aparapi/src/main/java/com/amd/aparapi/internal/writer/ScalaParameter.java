@@ -57,9 +57,11 @@ public abstract class ScalaParameter {
 		}
 
 		// Check type: Customized
-		if (eleSig.startsWith("L")) {
+		if (!Utils.isPrimitive(eleSig)) {
 			primitiveOrNot = false;
-			String tmpSig = eleSig.substring(1);
+			String tmpSig = eleSig;
+			if (tmpSig.startsWith("L"))
+				tmpSig = tmpSig.substring(1);
 			if (tmpSig.indexOf('<') != -1)
 				tmpSig = tmpSig.substring(0, tmpSig.indexOf('<'));
 			if (!Utils.isHardCodedClass(tmpSig))
@@ -88,13 +90,13 @@ public abstract class ScalaParameter {
 					nestLevel -= 1;
 				else if (params.charAt(i) == ',' && nestLevel == 0) {
 					logger.finest("Add a new generic type " + params.substring(curPos, i));
-					ScalaParameter newType = Utils.createScalaParameter(params.substring(curPos, i), null, dir);
+					ScalaParameter newType = createScalaParameter(params.substring(curPos, i), null, dir);
 					this.typeParameters.add(newType);
 					curPos = i + 1;
 				}
 			}
 			logger.finest("Add a new generic type " + params.substring(curPos));
-			ScalaParameter newType = Utils.createScalaParameter(params.substring(curPos), null, dir);
+			ScalaParameter newType = createScalaParameter(params.substring(curPos), null, dir);
 			this.typeParameters.add(newType);
 		} else {
 			if (eleSig.equals("I"))
@@ -103,10 +105,12 @@ public abstract class ScalaParameter {
 				this.type = "double";
 			else if (eleSig.equals("F"))
 				this.type = "float";
-			else if (eleSig.startsWith("L"))
-				this.type = eleSig.substring(1, eleSig.length() - 1).replace('/', '.');
-			else
-				throw new RuntimeException("Invalid type: " + eleSig);
+			else {
+				if (eleSig.startsWith("L"))
+					this.type = eleSig.substring(1, eleSig.length() - 1).replace('/', '.');
+				else
+					this.type = eleSig.replace('/', '.');
+			}
 		}
 	}
 
@@ -229,6 +233,23 @@ public abstract class ScalaParameter {
 
 	public boolean isCustomized() {
 		return customizedOrNot;
+	}
+
+	public static ScalaParameter createScalaParameter(String signature, String name, DIRECTION dir) {
+		ScalaParameter param = null;
+
+		if (signature.contains("scala/Tuple2"))
+			param = new ScalaTuple2Parameter(signature, name, dir);
+		else if (signature.contains("scala/collection/Iterator"))
+			param = new ScalaIteratorParameter(signature, name, dir);
+		else if (Utils.isPrimitive(signature))
+			param = new ScalaScalarParameter(signature, name, dir);	
+		else if (signature.startsWith("[") && Utils.isPrimitive(signature.substring(1)))
+			param = new ScalaArrayParameter(signature, name, dir);
+		else
+			param = new ScalaObjectParameter(signature, name, dir);
+
+		return param;
 	}
 
 	/*

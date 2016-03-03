@@ -16,6 +16,15 @@ import java.util.logging.*;
 
 public abstract class MethodModel {
 
+	public static enum METHODTYPE {
+		OTHERS,
+		GETTER,
+		SETTER,
+		CHECKER,
+		CONSTRUCTOR
+	}
+	protected METHODTYPE methodType;
+
 	private static Logger logger = Logger.getLogger(Config.getLoggerName());
 
 	private ExpressionList expressionList;
@@ -34,10 +43,6 @@ public abstract class MethodModel {
 	*/
 	private boolean usesByteWrites;
 
-	protected boolean methodIsGetter;
-
-	private boolean methodIsSetter;
-
 	private boolean methodIsPrivateMemoryGetter = false;
 
 	// Only setters can use putfield
@@ -47,12 +52,8 @@ public abstract class MethodModel {
 
 	private boolean noCL = false;
 
-	public boolean isGetter() {
-		return methodIsGetter;
-	}
-
-	public boolean isSetter() {
-		return methodIsSetter;
+	public METHODTYPE getMethodType() {
+		return methodType;
 	}
 
 	public boolean methodUsesPutfield() {
@@ -1499,9 +1500,9 @@ public abstract class MethodModel {
 										if (logger.isLoggable(Level.FINE))
 											logger.fine("Found " + methodName + " as a getter for " + varNameCandidateCamelCased.toLowerCase());
 
-										methodIsGetter = true;
+										methodType = METHODTYPE.GETTER;
 										setAccessorVariableFieldEntry(field);
-										assert methodIsSetter == false : " cannot be both";
+										assert methodType != METHODTYPE.SETTER : " cannot be both";
 									} else
 										throw new ClassParseException(ClassParseException.TYPE.BADGETTERTYPEMISMATCH, methodName);
 
@@ -1517,7 +1518,7 @@ public abstract class MethodModel {
 					setAccessorVariableFieldEntry(fieldEntry);
 					if (getAccessorVariableFieldEntry() == null)
 						throw new ClassParseException(ClassParseException.TYPE.BADGETTERNAMEMISMATCH, methodName);
-					methodIsGetter = true;
+					methodType = METHODTYPE.GETTER;
 					if (method.getClassModel().getPrivateMemorySize(
 					      fieldEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8()) != null)
 						methodIsPrivateMemoryGetter = true;
@@ -1568,14 +1569,14 @@ public abstract class MethodModel {
 								            + " of type " + fieldType);
 							}
 
-							methodIsSetter = true;
+							methodType = METHODTYPE.SETTER;
 							setAccessorVariableFieldEntry(field);
 
 							// Setters use putfield which will miss the normal store check
 							if (fieldType.equals("B") || fieldType.equals("Z"))
 								usesByteWrites = true;
 
-							assert methodIsGetter == false : " cannot be both";
+							assert methodType != METHODTYPE.GETTER : " cannot be both";
 						} else
 							throw new ClassParseException(ClassParseException.TYPE.BADSETTERTYPEMISMATCH, methodName);
 					} else
@@ -1824,6 +1825,7 @@ public abstract class MethodModel {
 		}
 	}
 
+	@SuppressWarnings("unchecked")
 	public LocalVariableTableEntry<LocalVariableInfo> getLocalVariableTableEntry() {
 		return ((LocalVariableTableEntry<LocalVariableInfo>) method.getLocalVariableTableEntry());
 	}
@@ -1853,6 +1855,18 @@ public abstract class MethodModel {
 	public String getReturnType() {
 		String desc = getDescriptor();
 		return desc.substring(desc.lastIndexOf(')') + 1);
+	}
+
+	public List<I_INVOKEINTERFACE> getInterfaceMethodCalls() {
+		final List<I_INVOKEINTERFACE> methodCalls = new ArrayList<I_INVOKEINTERFACE>();
+
+		for (Instruction i = getPCHead(); i != null; i = i.getNextPC()) {
+			if (i instanceof I_INVOKEINTERFACE) {
+				final I_INVOKEINTERFACE methodCall = (I_INVOKEINTERFACE) i;
+				methodCalls.add(methodCall);
+			}
+		}
+		return (methodCalls);
 	}
 
 	public List<MethodCall> getMethodCalls() {

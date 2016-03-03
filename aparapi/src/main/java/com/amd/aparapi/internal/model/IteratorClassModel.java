@@ -1,7 +1,7 @@
 package com.amd.aparapi.internal.model;
 
 import java.util.*;
-import com.amd.aparapi.internal.model.HardCodedMethodModel.METHODTYPE;
+import com.amd.aparapi.internal.model.MethodModel.METHODTYPE;
 import com.amd.aparapi.internal.writer.BlockWriter;
 
 public class IteratorClassModel extends HardCodedClassModel {
@@ -9,8 +9,8 @@ public class IteratorClassModel extends HardCodedClassModel {
 	public IteratorClassModel() {
 		super("scala/collection/Iterator");
 		arrayBasedOrNot = true;
-		methods.put("hasNext", new thisHardCodedMethodModel("hasNext", METHODTYPE.STATUS_CHECK));
-		methods.put("next", new thisHardCodedMethodModel("next", METHODTYPE.VAR_ACCESS));
+		methods.put("hasNext", new thisHardCodedMethodModel("hasNext", METHODTYPE.CHECKER));
+		methods.put("next", new thisHardCodedMethodModel("next", METHODTYPE.GETTER));
 	}
 
 	@Override
@@ -44,10 +44,10 @@ public class IteratorClassModel extends HardCodedClassModel {
 		}
 
 		public String getAccessString(String varName) {
-			if (methodType == METHODTYPE.VAR_ACCESS)
+			if (methodType == METHODTYPE.GETTER)
 				return "[ITER_INC(" + varName + BlockWriter.iteratorIndexSuffix + ", " + 
 					varName + BlockWriter.arrayItemLengthMangleSuffix + ")]";
-			else if (methodType == METHODTYPE.STATUS_CHECK)
+			else if (methodType == METHODTYPE.CHECKER)
 				// NOTICE: Only argument can have Iterator type. We don't generate
 				// the condition with "this->a__javaArrayLength"
 				// Not necessary to write variable name here since it has been written in advance
@@ -58,7 +58,7 @@ public class IteratorClassModel extends HardCodedClassModel {
 		}
 
 		public String getDeclareString(String varName) {
-			if (getMethodName().equals("next"))
+			if (getName().equals("next"))
 				return "";
 			else
 				return null;

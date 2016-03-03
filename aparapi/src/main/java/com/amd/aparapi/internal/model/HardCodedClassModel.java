@@ -1,7 +1,7 @@
 package com.amd.aparapi.internal.model;
 
 import java.util.*;
-import com.amd.aparapi.internal.model.HardCodedMethodModel.METHODTYPE;
+import com.amd.aparapi.internal.model.MethodModel.METHODTYPE;
 
 import com.amd.aparapi.internal.instruction.InstructionSet.TypeSpec;
 import com.amd.aparapi.internal.exception.AparapiException;
@@ -68,7 +68,7 @@ public abstract class HardCodedClassModel extends ClassModel {
 		if (methods.containsKey(methodName))
 			return methods.get(methodName).getMethodType();
 		else
-			return METHODTYPE.UNKNOWN;
+			return METHODTYPE.OTHERS;
 	}
 
 	public String getMethodAccessString(String varName, String methodName) {

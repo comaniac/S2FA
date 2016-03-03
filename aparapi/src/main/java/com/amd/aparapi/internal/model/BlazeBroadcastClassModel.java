@@ -1,13 +1,13 @@
 package com.amd.aparapi.internal.model;
 
 import java.util.*;
-import com.amd.aparapi.internal.model.HardCodedMethodModel.METHODTYPE;
+import com.amd.aparapi.internal.model.MethodModel.METHODTYPE;
 
 public class BlazeBroadcastClassModel extends HardCodedClassModel {
 	public BlazeBroadcastClassModel() {
 		super("org/apache/spark/blaze/BlazeBroadcast");
 		arrayBasedOrNot = false;
-		methods.put("value", new thisHardCodedMethodModel("value", METHODTYPE.VAR_ACCESS));
+		methods.put("value", new thisHardCodedMethodModel("value", METHODTYPE.GETTER));
 	}
 
 	@Override
@@ -41,7 +41,7 @@ public class BlazeBroadcastClassModel extends HardCodedClassModel {
 		}
 
 		public String getAccessString(String varName) {
-			if (methodType == METHODTYPE.VAR_ACCESS)
+			if (methodType == METHODTYPE.GETTER)
 				return "";
 			else
 				return null;

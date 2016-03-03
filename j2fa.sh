@@ -11,5 +11,3 @@ JARS="${JARS}:${BLAZE_HOME}/accrdd/target/blaze-1.0-SNAPSHOT.jar"
 
 scala	-classpath ${JARS} org.apache.j2fa.J2FA $1 $2 $3 $4
 
-# Example: /curr/cody/Spark_ACC/acc_runtime/examples/kmeans/app/target/sparkkmeans-0.0.0.jar KMeansClassified
-

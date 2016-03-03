@@ -1601,7 +1601,6 @@ public abstract class ClassModel {
 				for (int i = 0; i < localVariableTableLength; i++)
 					getPool().add(new AnnotationInfo(_byteReader));
 			}
-
 		}
 
 		private CodeEntry codeEntry = null;
@@ -1614,6 +1613,7 @@ public abstract class ClassModel {
 
 		private LineNumberTableEntry lineNumberTableEntry = null;
 
+		@SuppressWarnings("rawtypes")
 		private LocalVariableTableEntry localVariableTableEntry = null;
 
 		private RuntimeAnnotationsEntry runtimeVisibleAnnotationsEntry;
@@ -1673,12 +1673,13 @@ public abstract class ClassModel {
 				if (utf8Entry == null)
 					throw new IllegalStateException("corrupted state reading attributes for " + name);
 				final String attributeName = utf8Entry.getUTF8();
+
 				if (attributeName.equals(LOCALVARIABLETABLE_TAG)) {
 					localVariableTableEntry = new RealLocalVariableTableEntry(_byteReader, attributeNameIndex, length);
 					entry = (RealLocalVariableTableEntry) localVariableTableEntry;
-				} else if (attributeName.equals(CONSTANTVALUE_TAG))
+				} else if (attributeName.equals(CONSTANTVALUE_TAG)) {
 					entry = new ConstantValueEntry(_byteReader, attributeNameIndex, length);
-				else if (attributeName.equals(LINENUMBERTABLE_TAG)) {
+				} else if (attributeName.equals(LINENUMBERTABLE_TAG)) {
 					lineNumberTableEntry = new LineNumberTableEntry(_byteReader, attributeNameIndex, length);
 					entry = lineNumberTableEntry;
 				} else if (attributeName.equals(SOURCEFILE_TAG)) {
@@ -1690,9 +1691,9 @@ public abstract class ClassModel {
 				} else if (attributeName.equals(EXCEPTIONS_TAG)) {
 					exceptionEntry = new ExceptionEntry(_byteReader, attributeNameIndex, length);
 					entry = exceptionEntry;
-				} else if (attributeName.equals(INNERCLASSES_TAG))
+				} else if (attributeName.equals(INNERCLASSES_TAG)) {
 					entry = new InnerClassesEntry(_byteReader, attributeNameIndex, length);
-				else if (attributeName.equals(DEPRECATED_TAG)) {
+				} else if (attributeName.equals(DEPRECATED_TAG)) {
 					deprecatedEntry = new DeprecatedEntry(_byteReader, attributeNameIndex, length);
 					entry = deprecatedEntry;
 				} else if (attributeName.equals(CODE_TAG)) {
@@ -1754,6 +1755,7 @@ public abstract class ClassModel {
 			return (lineNumberTableEntry);
 		}
 
+		@SuppressWarnings("rawtypes")
 		public LocalVariableTableEntry getLocalVariableTableEntry() {
 			return (localVariableTableEntry);
 		}
@@ -1930,10 +1932,12 @@ public abstract class ClassModel {
 			return (getAttributePool().codeEntry.codeEntryAttributePool.lineNumberTableEntry);
 		}
 
+		@SuppressWarnings("rawtypes")
 		public LocalVariableTableEntry getLocalVariableTableEntry() {
 			return (getAttributePool().codeEntry.codeEntryAttributePool.localVariableTableEntry);
 		}
 
+		@SuppressWarnings("rawtypes")
 		void setLocalVariableTableEntry(LocalVariableTableEntry _localVariableTableEntry) {
 			getAttributePool().codeEntry.codeEntryAttributePool.localVariableTableEntry =
 			  _localVariableTableEntry;

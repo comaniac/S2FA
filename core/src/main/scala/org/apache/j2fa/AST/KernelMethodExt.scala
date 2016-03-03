@@ -126,7 +126,8 @@ class KernelMethodExt(annot: String) extends Traverser {
         _type.setName(name.toString)
 
     case _ => 
-      println("Cannot match the AST of signature")
+      println("Cannot match the AST of signature: ")
+      println(showRaw(_tree))
   }
  
   def getMethods = methodMap

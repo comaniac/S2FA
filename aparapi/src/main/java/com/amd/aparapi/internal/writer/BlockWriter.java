@@ -49,7 +49,7 @@ import com.amd.aparapi.internal.model.ClassModel.ConstantPool.*;
 import com.amd.aparapi.internal.model.ClassModel.*;
 import com.amd.aparapi.internal.model.*;
 import com.amd.aparapi.internal.model.ClassModel.ConstantPool.NameAndTypeEntry;
-import com.amd.aparapi.internal.model.HardCodedMethodModel.METHODTYPE;
+import com.amd.aparapi.internal.model.MethodModel.METHODTYPE;
 import com.amd.aparapi.Config;
 
 import java.util.*;
@@ -489,7 +489,7 @@ public abstract class BlockWriter {
 
 				String localType = convertType(descriptor, true);
 				if (Utils.isHardCodedClass(localType)) { // Assign to a hardcoded class type variable
-					Set<String> accessMethods = Utils.getHardCodedClassMethods(localType, METHODTYPE.VAR_ACCESS);
+					Set<String> accessMethods = Utils.getHardCodedClassMethods(localType, METHODTYPE.GETTER);
 
 					// Match pattern: aload/getfield -> invokevirtual -> checkcast -> astore
 					if (!(_instruction.getFirstChild() instanceof I_CHECKCAST))
@@ -797,8 +797,7 @@ public abstract class BlockWriter {
 			final String fullName = clazzName + "." + methodName + "()";
 			
 			if (!Utils.isHardCodedClass(clazzName))
-				throw new RuntimeException("Interface method call " + interfaceMethodCall + 
-						" is not from a hard coded class: " + fullName);
+				writeMethod(interfaceMethodCall, methodEntry);
 			else
 				writeHardCodedMethod(_instruction, fullName);
 		} else if (_instruction.getByteCode().equals(ByteCode.CLONE)) {
@@ -1078,6 +1077,29 @@ public abstract class BlockWriter {
 		return ;
 	}
 
+	public boolean writeMethod(I_INVOKEINTERFACE _methodCall,
+														 InterfaceMethodEntry _methodEntry) throws CodeGenException {
+		final Instruction instanceInstruction = _methodCall.getInstanceReference();
+		if (!(instanceInstruction instanceof I_ALOAD_0)) {
+			writeInstruction(instanceInstruction);
+			write(".");
+		} else
+			write("this->");
+
+		final int argc = _methodEntry.getStackConsumeCount();
+		write(_methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8());
+		write("(");
+
+		for (int arg = 0; arg < argc; arg++) {
+			if (arg != 0)
+				write(", ");
+			writeInstruction(_methodCall.getArg(arg));
+		}
+		write(")");
+	
+		return false;
+	}
+
 	public boolean writeMethod(MethodCall _methodCall,
 	                           MethodEntry _methodEntry) throws CodeGenException {
 		boolean noCL = _methodEntry.getOwnerClassModel().getNoCLMethods()
@@ -1108,7 +1130,7 @@ public abstract class BlockWriter {
 	}
 
 	public void writeMethodBody(MethodModel _methodModel) throws CodeGenException {
-		if (_methodModel.isGetter() && !_methodModel.isNoCL()) {
+		if (_methodModel.getMethodType() == METHODTYPE.GETTER && !_methodModel.isNoCL()) {
 			FieldEntry accessorVariableFieldEntry = _methodModel.getAccessorVariableFieldEntry();
 			writeGetterBlock(accessorVariableFieldEntry);
 		} else

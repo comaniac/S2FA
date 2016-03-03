@@ -64,7 +64,7 @@ public class ByteBuffer {
 	 */
 	ByteBuffer(InputStream _inputStream) {
 		final ByteArrayOutputStream baos = new ByteArrayOutputStream();
-		bytes = new byte[4096];
+		bytes = new byte[8192];
 		int bytesRead = 0;
 
 		try {

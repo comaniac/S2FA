@@ -57,7 +57,7 @@ object Logging {
   }
 
   def finest(msg: => String) {
-    if (logger.isLoggable(Level.FINEST))
+//    if (logger.isLoggable(Level.FINEST))
       logger.finest(msg)
   }
 

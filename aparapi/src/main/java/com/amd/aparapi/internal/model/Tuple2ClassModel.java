@@ -1,7 +1,7 @@
 package com.amd.aparapi.internal.model;
 
 import java.util.*;
-import com.amd.aparapi.internal.model.HardCodedMethodModel.METHODTYPE;
+import com.amd.aparapi.internal.model.MethodModel.METHODTYPE;
 
 public class Tuple2ClassModel extends HardCodedClassModel {
 
@@ -9,8 +9,8 @@ public class Tuple2ClassModel extends HardCodedClassModel {
 		super("scala/Tuple2");
 		arrayBasedOrNot = false;
 		methods.put("<init>", new thisHardCodedMethodModel("<init>", METHODTYPE.CONSTRUCTOR));
-		methods.put("_1", new thisHardCodedMethodModel("_1", METHODTYPE.VAR_ACCESS));
-		methods.put("_2", new thisHardCodedMethodModel("_2", METHODTYPE.VAR_ACCESS));
+		methods.put("_1", new thisHardCodedMethodModel("_1", METHODTYPE.GETTER));
+		methods.put("_2", new thisHardCodedMethodModel("_2", METHODTYPE.GETTER));
 	}
 
 	@Override
@@ -44,14 +44,14 @@ public class Tuple2ClassModel extends HardCodedClassModel {
 		}
 
 		public String getAccessString(String varName) {
-			if (methodType == METHODTYPE.VAR_ACCESS)
+			if (methodType == METHODTYPE.GETTER)
 				return name;
 			else
 				return null;
 		}
 
 		public String getDeclareString(String varName) {
-			if (methodType == METHODTYPE.VAR_ACCESS)
+			if (methodType == METHODTYPE.GETTER)
 				return name;
 			else
 				return null;

@@ -47,7 +47,7 @@ import com.amd.aparapi.internal.model.ClassModel.AttributePool.*;
 import com.amd.aparapi.internal.model.ClassModel.AttributePool.RuntimeAnnotationsEntry.*;
 import com.amd.aparapi.internal.model.ClassModel.*;
 import com.amd.aparapi.internal.model.HardCodedClassModel.TypeParameters;
-import com.amd.aparapi.internal.model.HardCodedMethodModel.METHODTYPE;
+import com.amd.aparapi.internal.model.MethodModel.METHODTYPE;
 import com.amd.aparapi.internal.model.ClassModel.ConstantPool.*;
 import com.amd.aparapi.internal.model.FullMethodSignature;
 import com.amd.aparapi.internal.model.FullMethodSignature.TypeSignature;
@@ -342,7 +342,7 @@ public abstract class KernelWriter extends BlockWriter {
 
 			String getterFieldName = null;
 			FieldEntry getterField = null;
-			if (m != null && m.isGetter())
+			if (m != null && m.getMethodType() == METHODTYPE.GETTER)
 				getterFieldName = m.getGetterField();
 
 			if (getterFieldName != null) {
@@ -633,7 +633,7 @@ public abstract class KernelWriter extends BlockWriter {
 			final StringBuilder assignLine = new StringBuilder();
 
 			String signature = field.getDescriptor();
-			ScalaParameter param = Utils.createScalaParameter(signature, field.getName(), ScalaParameter.DIRECTION.IN);
+			ScalaParameter param = ScalaParameter.createScalaParameter(signature, field.getName(), ScalaParameter.DIRECTION.IN);
 			param.setAsReference();
 
 			// check the suffix
@@ -871,7 +871,7 @@ public abstract class KernelWriter extends BlockWriter {
 									String desc = descArray[i];
 									descList.add(desc);
 								}
-								Set<String> fields = Utils.getHardCodedClassMethods(clazzDesc, METHODTYPE.VAR_ACCESS);
+								Set<String> fields = Utils.getHardCodedClassMethods(clazzDesc, METHODTYPE.GETTER);
 								for (String field : fields) {
 									fieldList.add(field);
 								}
@@ -1150,7 +1150,7 @@ public abstract class KernelWriter extends BlockWriter {
 									BlockWriter.arrayItemLengthMangleSuffix + "]");
 						}
 						else if (Utils.isHardCodedClass(p.getClassName())) { 
-							Set<String> fields = Utils.getHardCodedClassMethods(p.getClassName(), METHODTYPE.VAR_ACCESS);
+							Set<String> fields = Utils.getHardCodedClassMethods(p.getClassName(), METHODTYPE.GETTER);
 							for (String field : fields) {
 								if (!first) write(", ");
 								else first = false;
@@ -1163,7 +1163,7 @@ public abstract class KernelWriter extends BlockWriter {
 							throw new RuntimeException();
 					}
 					else { // MapPartitions
-						Set<String> fields = Utils.getHardCodedClassMethods(p.getClassName(), METHODTYPE.VAR_ACCESS);
+						Set<String> fields = Utils.getHardCodedClassMethods(p.getClassName(), METHODTYPE.GETTER);
 						for (String field : fields) {
 							if (!first)	write(", ");
 							else first = false;
@@ -1183,7 +1183,7 @@ public abstract class KernelWriter extends BlockWriter {
 					}
 					else if (Utils.isHardCodedClass(p.getClassName())) {
 logger.fine("Hardcoded arg");
-						Set<String> fields = Utils.getHardCodedClassMethods(p.getClassName(), METHODTYPE.VAR_ACCESS);
+						Set<String> fields = Utils.getHardCodedClassMethods(p.getClassName(), METHODTYPE.GETTER);
 						for (String field : fields) {
 							if (!first) write(", ");
 							else first = false;
@@ -1205,7 +1205,7 @@ logger.fine("Hardcoded arg");
 				write(", &" + outParam.getName() + "[" + aryIdxStr + " * " + outParam.getName() + 
 					BlockWriter.arrayItemLengthMangleSuffix + "]");
 			else if (Utils.isHardCodedClass(outParam.getClassName())) {
-				Set<String> fields = Utils.getHardCodedClassMethods(outParam.getClassName(), METHODTYPE.VAR_ACCESS);
+				Set<String> fields = Utils.getHardCodedClassMethods(outParam.getClassName(), METHODTYPE.GETTER);
 				if (!isMapPartitions) {
 					for (String field : fields) {
 						write(", &" + outParam.getName() + 

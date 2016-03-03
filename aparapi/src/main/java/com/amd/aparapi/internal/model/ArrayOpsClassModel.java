@@ -1,7 +1,7 @@
 package com.amd.aparapi.internal.model;
 
 import java.util.*;
-import com.amd.aparapi.internal.model.HardCodedMethodModel.METHODTYPE;
+import com.amd.aparapi.internal.model.MethodModel.METHODTYPE;
 import com.amd.aparapi.internal.writer.BlockWriter;
 
 public class ArrayOpsClassModel extends HardCodedClassModel {
@@ -9,7 +9,7 @@ public class ArrayOpsClassModel extends HardCodedClassModel {
 	public ArrayOpsClassModel() {
 		super("scala/collection/mutable/ArrayOps");
 		arrayBasedOrNot = true;
-		methods.put("iterator", new thisHardCodedMethodModel("iterator", METHODTYPE.VAR_ACCESS));
+		methods.put("iterator", new thisHardCodedMethodModel("iterator", METHODTYPE.GETTER));
 	}
 
 	@Override
@@ -43,10 +43,10 @@ public class ArrayOpsClassModel extends HardCodedClassModel {
 		}
 
 		public String getAccessString(String varName) {
-			if (getMethodName().equals("iterator"))
+			if (getName().equals("iterator"))
 				return "";
 			else
-				throw new RuntimeException("ArrayOps has no method " + getMethodName());
+				throw new RuntimeException("ArrayOps has no method " + getName());
 		}
 
 		public String getDeclareString(String varName) {

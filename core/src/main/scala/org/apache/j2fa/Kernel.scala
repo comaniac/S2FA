@@ -31,6 +31,7 @@ import com.amd.aparapi.internal.model.Entrypoint
 import com.amd.aparapi.internal.model.ClassModel
 import com.amd.aparapi.internal.writer.BlockWriter._
 import com.amd.aparapi.internal.writer._
+import com.amd.aparapi.internal.writer.ScalaParameter
 import com.amd.aparapi.internal.writer.ScalaParameter.DIRECTION
 import com.amd.aparapi.internal.model.HardCodedClassModels.ShouldNotCallMatcher
 import com.amd.aparapi.internal.writer.KernelWriter
@@ -50,6 +51,8 @@ class Kernel(accClazz: Class[_], mInfo: MethodInfo, loader: URLClassLoader) {
     val mName = mInfo.getName
     if (mInfo.getConfig("output_format") == "Merlin")
       System.setProperty("com.amd.aparapi.enable.MERLIN", "true")
+    else
+      System.setProperty("com.amd.aparapi.enable.MERLIN", "false")
 
     System.setProperty("com.amd.aparapi.kernelType", mInfo.getConfig("kernel_type"))
 
@@ -59,13 +62,13 @@ class Kernel(accClazz: Class[_], mInfo: MethodInfo, loader: URLClassLoader) {
       // Setup arguments and return values
       val params : LinkedList[ScalaParameter] = new LinkedList[ScalaParameter]
       mInfo.getArgs.foreach({ arg =>
-        val param = AparapiUtils.createScalaParameter(
+        val param = ScalaParameter.createScalaParameter(
             arg.getFullType, arg.getName, ScalaParameter.DIRECTION.IN)
         params.add(param)
       })
       if (mInfo.hasOutput) {
         val outArg = mInfo.getOutput
-        val param = AparapiUtils.createScalaParameter(
+        val param = ScalaParameter.createScalaParameter(
             outArg.getFullType, "j2faOut", ScalaParameter.DIRECTION.OUT)
         params.add(param)
       }

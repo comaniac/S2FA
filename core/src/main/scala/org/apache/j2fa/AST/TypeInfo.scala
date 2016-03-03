@@ -6,6 +6,8 @@ import org.apache.j2fa._
 
 class TypeInfo(var typeName: String) {
   var gTypes: List[TypeInfo] = List[TypeInfo]()
+  if (typeName != null && typeName.equals("Vector"))
+    typeName = "org/apache/spark/mllib/linalg/Vector"
 
   def this() = {
     this(null)
@@ -13,17 +15,22 @@ class TypeInfo(var typeName: String) {
 
   def setName(name: String) = {
     typeName = name
+    if (typeName.equals("Vector"))
+      typeName = "org/apache/spark/mllib/linalg/Vector"
   }
 
   def getName = typeName
 
-  def getShortName : String = typeName.replace("scala.", "") match {
+  def getShortName : String = {
+    val shortTypeName = typeName.substring(typeName.lastIndexOf('.') + 1)
+    shortTypeName match {
     case "Array" => 
       assert (gTypes.size == 1)
       "[" + gTypes(0).getShortName
 
     case _ =>
       Utils.asBytecodeType(typeName.replace("scala.", ""))
+    }
   }
 
   def getFullType : String = {

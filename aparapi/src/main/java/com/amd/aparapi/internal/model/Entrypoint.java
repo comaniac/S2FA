@@ -52,12 +52,14 @@ import com.amd.aparapi.internal.model.HardCodedClassModels.HardCodedClassModelMa
 import com.amd.aparapi.internal.model.HardCodedClassModels.DescMatcher;
 import com.amd.aparapi.internal.model.HardCodedClassModels.ShouldNotCallMatcher;
 import com.amd.aparapi.internal.model.HardCodedClassModel.TypeParameters;
-import com.amd.aparapi.internal.model.HardCodedMethodModel.METHODTYPE;
+import com.amd.aparapi.internal.model.MethodModel.METHODTYPE;
 
 import java.lang.reflect.*;
 import java.util.*;
 import java.util.logging.*;
 import java.net.URLClassLoader;
+import java.lang.Class;
+import java.lang.reflect.Field;
 
 public class Entrypoint implements Cloneable {
 
@@ -100,6 +102,17 @@ public class Entrypoint implements Cloneable {
 	private final Set<String> arrayFieldAssignments = new LinkedHashSet<String>();
 
 	private final Set<String> arrayFieldAccesses = new LinkedHashSet<String>();
+
+	// Derived cleaaes of interfaces
+	private final Map<String, List<String> > derivedClasses = new HashMap<String, List<String> >();
+
+	private boolean isKernelCalledInterfaceClass(String base) {
+		return derivedClasses.containsKey(base);
+	}
+
+	private void addOrUpdateDerivedClass(String base, List<String> clzList) {
+		derivedClasses.put(base, clzList);
+	}
 
 	// Classes of object array members
 	private final StringToModel objectArrayFieldsClasses = new StringToModel();
@@ -273,43 +286,44 @@ public class Entrypoint implements Cloneable {
 	public ClassModel getOrUpdateAllClassAccesses(String className,
 	    HardCodedClassModelMatcher matcher) throws AparapiException {
 		ClassModel memberClassModel = allFieldsClasses.get(className, ClassModel.wrap(className, matcher));
+		Class<?> memberClass = null;
 		if (memberClassModel == null) {
 			try {
-				final Class<?> memberClass = classLoader.loadClass(className);
-
-				// Immediately add this class and all its supers if necessary
-				memberClassModel = ClassModel.createClassModel(memberClass, this,
-				                   matcher);
-
-				if (logger.isLoggable(Level.FINEST))
-					logger.finest("adding class " + className);
-				allFieldsClasses.add(className, memberClassModel);
-				ClassModel superModel = memberClassModel.getSuperClazz();
-				while (superModel != null) {
-					// See if super is already added
-					final ClassModel oldSuper = allFieldsClasses.get(
-					                              superModel.getClassWeAreModelling().getName(),
-					                              new NameMatcher(superModel.getClassWeAreModelling().getName()));
-					if (oldSuper != null) {
-						if (oldSuper != superModel) {
-							memberClassModel.replaceSuperClazz(oldSuper);
-							if (logger.isLoggable(Level.FINEST))
-								logger.finest("replaced super " + oldSuper.getClassWeAreModelling().getName() + " for " +
-								              className);
-						}
-					} else {
-						allFieldsClasses.add(superModel.getClassWeAreModelling().getName(), superModel);
-						if (logger.isLoggable(Level.FINEST))
-							logger.finest("add new super " + superModel.getClassWeAreModelling().getName() + " for " +
-							              className);
-					}
-
-					superModel = superModel.getSuperClazz();
-				}
+				memberClass = classLoader.loadClass(className);
 			} catch (final Exception e) {
 				if (logger.isLoggable(Level.INFO))
-					logger.info("Cannot find: " + className);
+					logger.info("Cannot load: " + className);
 				throw new AparapiException(e);
+			}
+
+			// Immediately add this class and all its supers if necessary
+			memberClassModel = ClassModel.createClassModel(memberClass, this,
+			                   matcher);
+
+			if (logger.isLoggable(Level.FINEST))
+				logger.finest("adding class " + className);
+			allFieldsClasses.add(className, memberClassModel);
+			ClassModel superModel = memberClassModel.getSuperClazz();
+			while (superModel != null) {
+				// See if super is already added
+				final ClassModel oldSuper = allFieldsClasses.get(
+				                              superModel.getClassWeAreModelling().getName(),
+				                              new NameMatcher(superModel.getClassWeAreModelling().getName()));
+				if (oldSuper != null) {
+					if (oldSuper != superModel) {
+						memberClassModel.replaceSuperClazz(oldSuper);
+						if (logger.isLoggable(Level.FINEST))
+							logger.finest("replaced super " + oldSuper.getClassWeAreModelling().getName() + " for " +
+							              className);
+					}
+				} else {
+					allFieldsClasses.add(superModel.getClassWeAreModelling().getName(), superModel);
+					if (logger.isLoggable(Level.FINEST))
+						logger.finest("add new super " + superModel.getClassWeAreModelling().getName() + " for " +
+						              className);
+				}
+
+				superModel = superModel.getSuperClazz();
 			}
 		}
 
@@ -600,12 +614,12 @@ public class Entrypoint implements Cloneable {
 				continue;
 
 			addClass(param.getClassName(), param.getDescArray());
-			logger.fine("Add a customized class " + param.getClassName());
 		}
 
 		// Collect all methods called directly from kernel's run method
 		for (final MethodCall methodCall : methodModel.getMethodCalls()) {
 			ClassModelMethod m = resolveCalledMethod(methodCall, classModel);
+			logger.finest("In-kernel method call: " + methodCall.toString());
 			if ((m != null) && !methodMap.keySet().contains(m) && 
 					!noCL(m) && !Utils.isHardCodedClass(m.getClassModel().toString())
 			) {
@@ -617,9 +631,44 @@ public class Entrypoint implements Cloneable {
 			}
 		}
 
+		// Collect all interface methods called from the kernel and their implementations
+		Object [] classList = null;
+		Class<?> loaderClazz = classLoader.getClass();
+		while (loaderClazz != java.lang.ClassLoader.class)
+			loaderClazz = loaderClazz.getSuperclass();
+		try {
+			Field fieldClazz = loaderClazz.getDeclaredField("classes");
+			fieldClazz.setAccessible(true);
+			classList = ((Vector) fieldClazz.get(classLoader)).toArray();
+		} catch (Exception e) {
+			throw new RuntimeException("Fail to load class list");
+		}
+
+		for (final I_INVOKEINTERFACE interfaceCall : methodModel.getInterfaceMethodCalls()) {
+			final InterfaceMethodEntry methodEntry = interfaceCall.getConstantPoolInterfaceMethodEntry();
+			final String clazzName = methodEntry.getClassEntry().getNameUTF8Entry().getUTF8().replace('/', '.');
+			if (isKernelCalledInterfaceClass(clazzName))
+				continue;
+			logger.finest("Collect classes for interface methods: " + clazzName);
+			List<String> clzList = new ArrayList<String>();
+			for (final Object clazz : classList) {
+				Class<?> [] interfaceList = ((Class) clazz).getInterfaces();
+				if (interfaceList.length == 0)
+					continue ;
+				for (final Class<?> itf : interfaceList) {
+					if (itf.getName().equals(clazzName)) {
+						logger.finest("Found: " + ((Class<?>) clazz).getName());
+						clzList.add(((Class<?>) clazz).getName());
+						break ;
+					}
+				}
+			}
+			addOrUpdateDerivedClass(clazzName, clzList);
+		}
+
 		// methodMap now contains a list of method called by run itself().
 		// Walk the whole graph of called methods and add them to the methodMap
-		while (!fallback && discovered) {
+		while (discovered) {
 			discovered = false;
 			for (final MethodModel mm : new ArrayList<MethodModel>(methodMap.values())) {
 				for (final MethodCall methodCall : mm.getMethodCalls()) {
@@ -652,370 +701,366 @@ public class Entrypoint implements Cloneable {
 
 		methodModel.checkForRecursion(new HashSet<MethodModel>());
 
-		if (logger.isLoggable(Level.FINE))
-			logger.fine("fallback=" + fallback);
+		calledMethods.addAll(methodMap.values());
+		Collections.reverse(calledMethods);
+		final List<MethodModel> methods = new ArrayList<MethodModel>(calledMethods);
 
-		if (!fallback) {
-			calledMethods.addAll(methodMap.values());
-			Collections.reverse(calledMethods);
-			final List<MethodModel> methods = new ArrayList<MethodModel>(calledMethods);
+		// add method to the calledMethods so we can include in this list
+		methods.add(methodModel);
+		final Set<String> fieldAssignments = new HashSet<String>();
 
-			// add method to the calledMethods so we can include in this list
-			methods.add(methodModel);
-			final Set<String> fieldAssignments = new HashSet<String>();
+		final Set<String> fieldAccesses = new HashSet<String>();
 
-			final Set<String> fieldAccesses = new HashSet<String>();
+		// This is just a prepass that collects metadata, we don't actually write kernels at this point
+		for (final MethodModel methodModel : methods) {
+			for (Instruction instruction = methodModel.getPCHead(); instruction != null; instruction =
+			       instruction.getNextPC()) {
+				if (instruction instanceof AssignToArrayElement) {
+					final AssignToArrayElement assignment = (AssignToArrayElement) instruction;
 
-			// This is just a prepass that collects metadata, we don't actually write kernels at this point
-			for (final MethodModel methodModel : methods) {
-				for (Instruction instruction = methodModel.getPCHead(); instruction != null; instruction =
-				       instruction.getNextPC()) {
-					if (instruction instanceof AssignToArrayElement) {
-						final AssignToArrayElement assignment = (AssignToArrayElement) instruction;
+					final Instruction arrayRef = assignment.getArrayRef();
+					// AccessField here allows instance and static array refs
+					if (arrayRef instanceof I_GETFIELD) {
+						final I_GETFIELD getField = (I_GETFIELD) arrayRef;
+						final FieldEntry field = getField.getConstantPoolFieldEntry();
+						final String assignedArrayFieldName = field.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+						arrayFieldAssignments.add(assignedArrayFieldName);
+						addToReferencedFieldNames(assignedArrayFieldName, null);
+						arrayFieldArrayLengthUsed.add(assignedArrayFieldName);
 
-						final Instruction arrayRef = assignment.getArrayRef();
-						// AccessField here allows instance and static array refs
-						if (arrayRef instanceof I_GETFIELD) {
-							final I_GETFIELD getField = (I_GETFIELD) arrayRef;
-							final FieldEntry field = getField.getConstantPoolFieldEntry();
-							final String assignedArrayFieldName = field.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
-							arrayFieldAssignments.add(assignedArrayFieldName);
-							addToReferencedFieldNames(assignedArrayFieldName, null);
-							arrayFieldArrayLengthUsed.add(assignedArrayFieldName);
+					}
+				} else if (instruction instanceof AccessArrayElement) {
+					final AccessArrayElement access = (AccessArrayElement) instruction;
 
-						}
-					} else if (instruction instanceof AccessArrayElement) {
-						final AccessArrayElement access = (AccessArrayElement) instruction;
+					final Instruction arrayRef = access.getArrayRef();
+					// AccessField here allows instance and static array refs
+					if (arrayRef instanceof I_GETFIELD) {
+						final I_GETFIELD getField = (I_GETFIELD) arrayRef;
+						final FieldEntry field = getField.getConstantPoolFieldEntry();
+						final String accessedArrayFieldName = field.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+						arrayFieldAccesses.add(accessedArrayFieldName);
+						addToReferencedFieldNames(accessedArrayFieldName, null);
+						arrayFieldArrayLengthUsed.add(accessedArrayFieldName);
+					}
+				} else if (instruction instanceof I_ARRAYLENGTH) {
+					Instruction child = instruction.getFirstChild();
 
-						final Instruction arrayRef = access.getArrayRef();
-						// AccessField here allows instance and static array refs
-						if (arrayRef instanceof I_GETFIELD) {
-							final I_GETFIELD getField = (I_GETFIELD) arrayRef;
-							final FieldEntry field = getField.getConstantPoolFieldEntry();
-							final String accessedArrayFieldName = field.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
-							arrayFieldAccesses.add(accessedArrayFieldName);
-							addToReferencedFieldNames(accessedArrayFieldName, null);
-							arrayFieldArrayLengthUsed.add(accessedArrayFieldName);
-						}
-					} else if (instruction instanceof I_ARRAYLENGTH) {
-						Instruction child = instruction.getFirstChild();
+					// Issue #33: We may have an invokevirtual before getField.
+					while (child instanceof I_AALOAD || child instanceof I_INVOKEVIRTUAL ||
+					       child instanceof I_CHECKCAST)
+						child = child.getFirstChild();
 
-						// Issue #33: We may have an invokevirtual before getField.
-						while (child instanceof I_AALOAD || child instanceof I_INVOKEVIRTUAL ||
-						       child instanceof I_CHECKCAST)
-							child = child.getFirstChild();
+					if (!(child instanceof AccessField)) {
+						System.out.println("Expecting AccessField, but found: " + child.toString());
+						throw new ClassParseException(ClassParseException.TYPE.LOCALARRAYLENGTHACCESS);
+					}
 
-						if (!(child instanceof AccessField)) {
-							System.out.println("Expecting AccessField, but found: " + child.toString());
-							throw new ClassParseException(ClassParseException.TYPE.LOCALARRAYLENGTHACCESS);
-						}
+					final AccessField childField = (AccessField) child;
+					String arrayName = childField.getConstantPoolFieldEntry()
+					                   .getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+					arrayFieldArrayLengthUsed.add(arrayName);
+					if (logger.isLoggable(Level.FINE))
+						logger.fine("Noted arraylength in " + methodModel.getName() + " on " + arrayName);
+				} else if (instruction instanceof AccessField) {
+					final AccessField access = (AccessField) instruction;
+					final FieldEntry field = access.getConstantPoolFieldEntry();
+					final String accessedFieldName = field.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+					fieldAccesses.add(accessedFieldName);
 
-						final AccessField childField = (AccessField) child;
-						String arrayName = childField.getConstantPoolFieldEntry()
-						                   .getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
-						arrayFieldArrayLengthUsed.add(arrayName);
-						if (logger.isLoggable(Level.FINE))
-							logger.fine("Noted arraylength in " + methodModel.getName() + " on " + arrayName);
-					} else if (instruction instanceof AccessField) {
-						final AccessField access = (AccessField) instruction;
-						final FieldEntry field = access.getConstantPoolFieldEntry();
-						final String accessedFieldName = field.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
-						fieldAccesses.add(accessedFieldName);
+					final String signature;
+					if (access instanceof ScalaGetObjectRefField) {
+						ScalaGetObjectRefField scalaGet = (ScalaGetObjectRefField)access;
+						I_CHECKCAST cast = scalaGet.getCast();
+						signature = cast.getConstantPoolClassEntry().getNameUTF8Entry().getUTF8().replace('.', '/');
+						addToReferencedFieldNames(accessedFieldName, "L" + signature);
+					} else {
+						// Get signature (class name) of the field.
+						// Example: signature BlazeBroadcast for BlazeBroadcast[Tuple2[_,_]]
+						signature = field.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
 
-						final String signature;
-						if (access instanceof ScalaGetObjectRefField) {
-							ScalaGetObjectRefField scalaGet = (ScalaGetObjectRefField)access;
-							I_CHECKCAST cast = scalaGet.getCast();
-							signature = cast.getConstantPoolClassEntry().getNameUTF8Entry().getUTF8().replace('.', '/');
-							addToReferencedFieldNames(accessedFieldName, "L" + signature);
-						} else {
-							// Get signature (class name) of the field.
-							// Example: signature BlazeBroadcast for BlazeBroadcast[Tuple2[_,_]]
-							signature = field.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
+						// trnasformed class. Generic type has to be fetched here.
+						if (Utils.isHardCodedClass(signature)) {
+							Instruction next = instruction.getNextPC();
+							if (!(next instanceof I_INVOKEVIRTUAL)) // No type info.
+								throw new RuntimeException("Expecting invokevirtual after getfield, but found " + next);
 
-							// trnasformed class. Generic type has to be fetched here.
-							if (Utils.isHardCodedClass(signature)) {
-								Instruction next = instruction.getNextPC();
-								if (!(next instanceof I_INVOKEVIRTUAL)) // No type info.
-									throw new RuntimeException("Expecting invokevirtual after getfield, but found " + next);
+							String typeHint = findTypeHintForHardCodedClass(accessedFieldName, signature, next, true);
+							addToReferencedFieldNames(accessedFieldName, typeHint);
+						} else
+							addToReferencedFieldNames(accessedFieldName, null);
+					}
+					if (logger.isLoggable(Level.FINE))
+						logger.fine("AccessField field type= " + signature + " in " + methodModel.getName());
 
-								String typeHint = findTypeHintForHardCodedClass(accessedFieldName, signature, next, true);
-								addToReferencedFieldNames(accessedFieldName, typeHint);
-							} else
-								addToReferencedFieldNames(accessedFieldName, null);
-						}
-						if (logger.isLoggable(Level.FINE))
-							logger.fine("AccessField field type= " + signature + " in " + methodModel.getName());
+					// Add the customed class model for the referenced obj array FIXME: Not verify yet.
+					if (signature.startsWith("[L")) {
+						// Turn [Lcom/amd/javalabs/opencl/demo/DummyOOA; into com.amd.javalabs.opencl.demo.DummyOOA for example
+						final String className = (signature.substring(2, signature.length() - 1)).replace('/', '.');
+						HardCodedClassModelMatcher matcher = new HardCodedClassModelMatcher() {
+							@Override
+							public boolean matches(HardCodedClassModel model) {
+								return className.equals(model.getClassWeAreModelling().getName());
+							}
+						};
 
-						// Add the customed class model for the referenced obj array FIXME: Not verify yet.
-						if (signature.startsWith("[L")) {
-							// Turn [Lcom/amd/javalabs/opencl/demo/DummyOOA; into com.amd.javalabs.opencl.demo.DummyOOA for example
-							final String className = (signature.substring(2, signature.length() - 1)).replace('/', '.');
-							HardCodedClassModelMatcher matcher = new HardCodedClassModelMatcher() {
+						final ClassModel arrayFieldModel = getOrUpdateAllClassAccesses(className, matcher);
+						if (arrayFieldModel != null) {
+							if (arrayFieldModel instanceof HardCodedClassModel) {
+								addToReferencedFieldNames(accessedFieldName,
+								                          "[" + ((HardCodedClassModel)arrayFieldModel).getDescriptor());
+							}
+							final Class<?> memberClass = arrayFieldModel.getClassWeAreModelling();
+							final int modifiers = memberClass.getModifiers();
+							// if (!Modifier.isFinal(modifiers)) {
+							//    throw new ClassParseException(ClassParseException.TYPE.ACCESSEDOBJECTNONFINAL);
+							// }
+
+							final ClassModel refModel = getModelFromObjectArrayFieldsClasses(className,
+							new ClassModelMatcher() {
 								@Override
-								public boolean matches(HardCodedClassModel model) {
+								public boolean matches(ClassModel model) {
 									return className.equals(model.getClassWeAreModelling().getName());
 								}
-							};
+							});
+							if (refModel == null) {
 
-							final ClassModel arrayFieldModel = getOrUpdateAllClassAccesses(className, matcher);
-							if (arrayFieldModel != null) {
-								if (arrayFieldModel instanceof HardCodedClassModel) {
-									addToReferencedFieldNames(accessedFieldName,
-									                          "[" + ((HardCodedClassModel)arrayFieldModel).getDescriptor());
-								}
-								final Class<?> memberClass = arrayFieldModel.getClassWeAreModelling();
-								final int modifiers = memberClass.getModifiers();
-								// if (!Modifier.isFinal(modifiers)) {
-								//    throw new ClassParseException(ClassParseException.TYPE.ACCESSEDOBJECTNONFINAL);
-								// }
-
-								final ClassModel refModel = getModelFromObjectArrayFieldsClasses(className,
-								new ClassModelMatcher() {
-									@Override
-									public boolean matches(ClassModel model) {
-										return className.equals(model.getClassWeAreModelling().getName());
+								// Verify no other member with common parent
+								for (final ClassModel memberObjClass : objectArrayFieldsClasses) {
+									ClassModel superModel = memberObjClass;
+									while (superModel != null) {
+										if (superModel.isSuperClass(memberClass))
+											throw new ClassParseException(ClassParseException.TYPE.ACCESSEDOBJECTFIELDNAMECONFLICT);
+										superModel = superModel.getSuperClazz();
 									}
-								});
-								if (refModel == null) {
-
-									// Verify no other member with common parent
-									for (final ClassModel memberObjClass : objectArrayFieldsClasses) {
-										ClassModel superModel = memberObjClass;
-										while (superModel != null) {
-											if (superModel.isSuperClass(memberClass))
-												throw new ClassParseException(ClassParseException.TYPE.ACCESSEDOBJECTFIELDNAMECONFLICT);
-											superModel = superModel.getSuperClazz();
-										}
-									}
-
-									addToObjectArrayFieldsClasses(className, arrayFieldModel);
-									if (logger.isLoggable(Level.FINE))
-										logger.fine("adding class to objectArrayFields: " + className);
 								}
-							}
-							lexicalOrdering.add(className);
-						} 
-						else {
-							final String className = (field.getClassEntry().getNameUTF8Entry().getUTF8()).replace('/', '.');
-							final Set<String> ignoreScalaRuntimeStuff = new HashSet<String>();
-							ignoreScalaRuntimeStuff.add("scala.runtime.RichInt$");
-							ignoreScalaRuntimeStuff.add("scala.Predef$");
-							ignoreScalaRuntimeStuff.add("scala.ObjectRef");
-							ignoreScalaRuntimeStuff.add("scala.runtime.ObjectRef");
-							ignoreScalaRuntimeStuff.add("scala.runtime.IntRef");
-							ignoreScalaRuntimeStuff.add("scala.math.package$");
 
-							if (!ignoreScalaRuntimeStuff.contains(className)) {
-								// Look for object data member access
-								if (!className.equals(getClassModel().getClassWeAreModelling().getName())
-								    && (getFieldFromClassHierarchy(getClassModel().getClassWeAreModelling(),
-								                                   accessedFieldName) == null)) {
-									updateObjectMemberFieldAccesses(className, field);
-								}
+								addToObjectArrayFieldsClasses(className, arrayFieldModel);
+								if (logger.isLoggable(Level.FINE))
+									logger.fine("adding class to objectArrayFields: " + className);
 							}
 						}
-					} else if (instruction instanceof AssignToField) {
-						final AssignToField assignment = (AssignToField) instruction;
-						final FieldEntry field = assignment.getConstantPoolFieldEntry();
-						final String assignedFieldName = field.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
-						fieldAssignments.add(assignedFieldName);
-						addToReferencedFieldNames(assignedFieldName, null);
-
+						lexicalOrdering.add(className);
+					} 
+					else {
 						final String className = (field.getClassEntry().getNameUTF8Entry().getUTF8()).replace('/', '.');
-						// Look for object data member access
-						if (!className.equals(getClassModel().getClassWeAreModelling().getName())
-						    && (getFieldFromClassHierarchy(getClassModel().getClassWeAreModelling(),
-						                                   assignedFieldName) == null))
-							updateObjectMemberFieldAccesses(className, field);
-						else {
+						final Set<String> ignoreScalaRuntimeStuff = new HashSet<String>();
+						ignoreScalaRuntimeStuff.add("scala.runtime.RichInt$");
+						ignoreScalaRuntimeStuff.add("scala.Predef$");
+						ignoreScalaRuntimeStuff.add("scala.ObjectRef");
+						ignoreScalaRuntimeStuff.add("scala.runtime.ObjectRef");
+						ignoreScalaRuntimeStuff.add("scala.runtime.IntRef");
+						ignoreScalaRuntimeStuff.add("scala.math.package$");
 
-							if ((!Config.enablePUTFIELD) && methodModel.methodUsesPutfield() && !methodModel.isSetter())
-								throw new ClassParseException(ClassParseException.TYPE.ACCESSEDOBJECTONLYSUPPORTSSIMPLEPUTFIELD);
-
-						}
-
-					} else if (instruction instanceof I_INVOKEVIRTUAL) {
-						final I_INVOKEVIRTUAL invokeInstruction = (I_INVOKEVIRTUAL) instruction;
-						MethodModel invokedMethod = invokeInstruction.getMethod();
-						FieldEntry getterField = getSimpleGetterField(invokedMethod);
-						if (getterField != null)
-							addToReferencedFieldNames(getterField.getNameAndTypeEntry().getNameUTF8Entry().getUTF8(), null);
-						else {
-							final MethodEntry methodEntry = invokeInstruction.getConstantPoolMethodEntry();
-							if (Kernel.isMappedMethod(methodEntry)) { // only do this for intrinsics
-
-								if (Kernel.usesAtomic32(methodEntry)) {
-									throw new RuntimeException("We don't support atomic builtin functions.");
-									//setRequiresAtomics32Pragma(true);
-								}
-
-								final Arg methodArgs[] = methodEntry.getArgs();
-								if ((methodArgs.length > 0) && methodArgs[0].isArray()) { //currently array arg can only take slot 0
-									final Instruction arrInstruction = invokeInstruction.getArg(0);
-									if (arrInstruction instanceof AccessField) {
-										final AccessField access = (AccessField) arrInstruction;
-										final FieldEntry field = access.getConstantPoolFieldEntry();
-										final String accessedFieldName = field.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
-										arrayFieldAssignments.add(accessedFieldName);
-										addToReferencedFieldNames(accessedFieldName, null);
-									} else
-										throw new ClassParseException(ClassParseException.TYPE.ACCESSEDOBJECTSETTERARRAY);
-								}
-							}
-							else if (instruction.getPrevPC() instanceof AccessLocalVariable) { 
-								// Check if we want type hint from this instruction
-								// Pattern: aload -> invokevirtual
-
-								Instruction inst = instruction.getPrevPC();
-								int loadIdx = ((AccessLocalVariable) inst).getLocalVariableTableIndex();
-								if (loadIdx <= 1) // Skip "this" and input data
-									continue;
-
-								// Backtrack to find corresponding astore
-								while (inst != null) {
-									if (inst instanceof AssignToLocalVariable) {
-										int storeIdx = ((AccessLocalVariable) inst).getLocalVariableTableIndex();
-											if (loadIdx == storeIdx)
-												break;
-									}
-									inst = inst.getPrevPC();
-								}
-								if (inst == null)
-									throw new RuntimeException("Cannot find aload/astore pair.");
-
-								// Focus on pattern "invokevirtual/interface -> checkcast -> astore"
-								if (!(inst.getPrevPC() instanceof I_CHECKCAST) ||
-										(!(inst.getPrevPC().getPrevPC() instanceof I_INVOKEVIRTUAL) &&
-										 !(inst.getPrevPC().getPrevPC() instanceof I_INVOKEINTERFACE))) {
-									continue;
-								}
-
-								Instruction varInst = inst.getPrevPC().getPrevPC().getPrevPC();
-								String varName = null;
-								String typeHint = null;
-
-								if (!(varInst instanceof AccessField))
-									continue;
-
-								varName = ((AccessField) varInst).getConstantPoolFieldEntry()
-														.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
-								typeHint = getReferencedFieldTypeHint(varName);
-							
-								if (typeHint == null)
-									throw new RuntimeException("Variable " + varName + " is neither field nor argument.");
-
-								final String clazzName = methodEntry.getClassEntry().getNameUTF8Entry().getUTF8();
-								final String methodName = methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
-								final String methodDesc = methodEntry.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
-								final String realType = methodDesc.substring(methodDesc.lastIndexOf(')') + 1);
-								final String pureMethodName = Utils.cleanMethodName(clazzName, methodName);
-								if (pureMethodName == null)
-									throw new RuntimeException("Method " + methodName + " doesn't be modeled in class " + clazzName);
-			
-								typeHint = typeHint.replace(pureMethodName, realType);
-								addToReferencedFieldNames(varName, typeHint);
+						if (!ignoreScalaRuntimeStuff.contains(className)) {
+							// Look for object data member access
+							if (!className.equals(getClassModel().getClassWeAreModelling().getName())
+							    && (getFieldFromClassHierarchy(getClassModel().getClassWeAreModelling(),
+							                                   accessedFieldName) == null)) {
+								updateObjectMemberFieldAccesses(className, field);
 							}
 						}
-					} else if (instruction instanceof I_NEWARRAY) {
-						Instruction child = instruction.getFirstChild();
-						if (!(child instanceof BytecodeEncodedConstant) && // i_const
-						    !(child instanceof ImmediateConstant)) // push
-							throw new ClassParseException(ClassParseException.TYPE.NEWDYNAMICARRAY);
 					}
+				} else if (instruction instanceof AssignToField) {
+					final AssignToField assignment = (AssignToField) instruction;
+					final FieldEntry field = assignment.getConstantPoolFieldEntry();
+					final String assignedFieldName = field.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+					fieldAssignments.add(assignedFieldName);
+					addToReferencedFieldNames(assignedFieldName, null);
+
+					final String className = (field.getClassEntry().getNameUTF8Entry().getUTF8()).replace('/', '.');
+					// Look for object data member access
+					if (!className.equals(getClassModel().getClassWeAreModelling().getName())
+					    && (getFieldFromClassHierarchy(getClassModel().getClassWeAreModelling(),
+					                                   assignedFieldName) == null))
+						updateObjectMemberFieldAccesses(className, field);
+					else {
+
+						if ((!Config.enablePUTFIELD) && methodModel.methodUsesPutfield() 
+							&& methodModel.getMethodType() != METHODTYPE.SETTER)
+							throw new ClassParseException(ClassParseException.TYPE.ACCESSEDOBJECTONLYSUPPORTSSIMPLEPUTFIELD);
+
+					}
+
+				} else if (instruction instanceof I_INVOKEVIRTUAL) {
+					final I_INVOKEVIRTUAL invokeInstruction = (I_INVOKEVIRTUAL) instruction;
+					MethodModel invokedMethod = invokeInstruction.getMethod();
+					FieldEntry getterField = getSimpleGetterField(invokedMethod);
+					if (getterField != null)
+						addToReferencedFieldNames(getterField.getNameAndTypeEntry().getNameUTF8Entry().getUTF8(), null);
+					else {
+						final MethodEntry methodEntry = invokeInstruction.getConstantPoolMethodEntry();
+						if (Kernel.isMappedMethod(methodEntry)) { // only do this for intrinsics
+
+							if (Kernel.usesAtomic32(methodEntry)) {
+								throw new RuntimeException("We don't support atomic builtin functions.");
+								//setRequiresAtomics32Pragma(true);
+							}
+
+							final Arg methodArgs[] = methodEntry.getArgs();
+							if ((methodArgs.length > 0) && methodArgs[0].isArray()) { //currently array arg can only take slot 0
+								final Instruction arrInstruction = invokeInstruction.getArg(0);
+								if (arrInstruction instanceof AccessField) {
+									final AccessField access = (AccessField) arrInstruction;
+									final FieldEntry field = access.getConstantPoolFieldEntry();
+									final String accessedFieldName = field.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+									arrayFieldAssignments.add(accessedFieldName);
+									addToReferencedFieldNames(accessedFieldName, null);
+								} else
+									throw new ClassParseException(ClassParseException.TYPE.ACCESSEDOBJECTSETTERARRAY);
+							}
+						}
+						else if (instruction.getPrevPC() instanceof AccessLocalVariable) { 
+							// Check if we want type hint from this instruction
+							// Pattern: aload -> invokevirtual
+
+							Instruction inst = instruction.getPrevPC();
+							int loadIdx = ((AccessLocalVariable) inst).getLocalVariableTableIndex();
+							if (loadIdx <= 1) // Skip "this" and input data
+								continue;
+
+							// Backtrack to find corresponding astore
+							while (inst != null) {
+								if (inst instanceof AssignToLocalVariable) {
+									int storeIdx = ((AccessLocalVariable) inst).getLocalVariableTableIndex();
+										if (loadIdx == storeIdx)
+											break;
+								}
+								inst = inst.getPrevPC();
+							}
+							if (inst == null)
+								throw new RuntimeException("Cannot find aload/astore pair.");
+
+							// Focus on pattern "invokevirtual/interface -> checkcast -> astore"
+							if (!(inst.getPrevPC() instanceof I_CHECKCAST) ||
+									(!(inst.getPrevPC().getPrevPC() instanceof I_INVOKEVIRTUAL) &&
+									 !(inst.getPrevPC().getPrevPC() instanceof I_INVOKEINTERFACE))) {
+								continue;
+							}
+
+							Instruction varInst = inst.getPrevPC().getPrevPC().getPrevPC();
+							String varName = null;
+							String typeHint = null;
+
+							if (!(varInst instanceof AccessField))
+								continue;
+
+							varName = ((AccessField) varInst).getConstantPoolFieldEntry()
+													.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+							typeHint = getReferencedFieldTypeHint(varName);
+						
+							if (typeHint == null)
+								throw new RuntimeException("Variable " + varName + " is neither field nor argument.");
+
+							final String clazzName = methodEntry.getClassEntry().getNameUTF8Entry().getUTF8();
+							final String methodName = methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+							final String methodDesc = methodEntry.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
+							final String realType = methodDesc.substring(methodDesc.lastIndexOf(')') + 1);
+							final String pureMethodName = Utils.cleanMethodName(clazzName, methodName);
+							if (pureMethodName == null)
+								throw new RuntimeException("Method " + methodName + " doesn't be modeled in class " + clazzName);
+		
+							typeHint = typeHint.replace(pureMethodName, realType);
+							addToReferencedFieldNames(varName, typeHint);
+						}
+					}
+				} else if (instruction instanceof I_NEWARRAY) {
+					Instruction child = instruction.getFirstChild();
+					if (!(child instanceof BytecodeEncodedConstant) && // i_const
+					    !(child instanceof ImmediateConstant)) // push
+						throw new ClassParseException(ClassParseException.TYPE.NEWDYNAMICARRAY);
+				}
+			}
+		}
+
+		// Process referenced fields to a list for KernelWriter
+		for (final Map.Entry<String, String> referencedField : referencedFieldNames.entrySet()) {
+			String referencedFieldName = referencedField.getKey();
+			String typeHint = referencedField.getValue(); // may be null
+
+			try {
+				final Class<?> clazz = classModel.getClassWeAreModelling();
+				final Field field = getFieldFromClassHierarchy(clazz, referencedFieldName);
+				if (field != null) {
+					referencedFields.add(field);
+					final ClassModelField ff = classModel.getField(referencedFieldName);
+					assert ff != null : "ff should not be null for " + clazz.getName() + "." + referencedFieldName;
+					if (typeHint != null) ff.setTypeHint(typeHint);
+					referencedClassModelFields.add(ff);
+				}
+			} catch (final SecurityException e) {
+				e.printStackTrace();
+			}
+		}
+
+		// Build data needed for oop form transforms if necessary
+		if (!objectArrayFieldsClasses.isEmpty()) {
+			for (final ClassModel memberObjClass : objectArrayFieldsClasses) {
+				// At this point we have already done the field override safety check, so
+				// add all the superclass fields into the kernel member class to be
+				// sorted by size and emitted into the struct
+				ClassModel superModel = memberObjClass.getSuperClazz();
+				while (superModel != null) {
+					if (logger.isLoggable(Level.FINEST)) {
+						logger.finest("adding = " + superModel.getClassWeAreModelling().getName() + " fields into "
+						              + memberObjClass.getClassWeAreModelling().getName());
+					}
+					memberObjClass.getStructMembers().addAll(superModel.getStructMembers());
+					superModel = superModel.getSuperClazz();
 				}
 			}
 
-			// Process referenced fields to a list for KernelWriter
-			for (final Map.Entry<String, String> referencedField : referencedFieldNames.entrySet()) {
-				String referencedFieldName = referencedField.getKey();
-				String typeHint = referencedField.getValue(); // may be null
+			// Sort fields of each class biggest->smallest
+			final Comparator<FieldNameInfo> fieldSizeComparator = new Comparator<FieldNameInfo>() {
+				@Override public int compare(FieldNameInfo aa, FieldNameInfo bb) {
+					final String aType = aa.desc;
+					final String bType = bb.desc;
 
-				try {
-					final Class<?> clazz = classModel.getClassWeAreModelling();
-					final Field field = getFieldFromClassHierarchy(clazz, referencedFieldName);
-					if (field != null) {
-						referencedFields.add(field);
-						final ClassModelField ff = classModel.getField(referencedFieldName);
-						assert ff != null : "ff should not be null for " + clazz.getName() + "." + referencedFieldName;
-						if (typeHint != null) ff.setTypeHint(typeHint);
-						referencedClassModelFields.add(ff);
-					}
-				} catch (final SecurityException e) {
-					e.printStackTrace();
+					// Booleans get converted down to bytes
+					final int aSize = getSizeOf(aType);
+					final int bSize = getSizeOf(bType);
+
+					if (logger.isLoggable(Level.FINEST))
+						logger.finest("aType= " + aType + " aSize= " + aSize + " . . bType= " + bType + " bSize= " + bSize);
+
+					// Note this is sorting in reverse order so the biggest is first
+					if (aSize > bSize)
+						return -1;
+					else if (aSize == bSize)
+						return 0;
+					else
+						return 1;
 				}
-			}
+			};
 
-			// Build data needed for oop form transforms if necessary
-			if (!objectArrayFieldsClasses.isEmpty()) {
-				for (final ClassModel memberObjClass : objectArrayFieldsClasses) {
-					// At this point we have already done the field override safety check, so
-					// add all the superclass fields into the kernel member class to be
-					// sorted by size and emitted into the struct
-					ClassModel superModel = memberObjClass.getSuperClazz();
-					while (superModel != null) {
-						if (logger.isLoggable(Level.FINEST)) {
-							logger.finest("adding = " + superModel.getClassWeAreModelling().getName() + " fields into "
-							              + memberObjClass.getClassWeAreModelling().getName());
+			for (String className : lexicalOrdering) {
+				for (final ClassModel c : objectArrayFieldsClasses) {
+					final ArrayList<FieldNameInfo> fields = c.getStructMembers();
+					if (fields.size() > 0) {
+						Collections.sort(fields, fieldSizeComparator);
+						// Now compute the total size for the struct
+						int alignTo = 0;
+						int totalSize = 0;
+
+						for (final FieldNameInfo f : fields) {
+							// Record field offset for use while copying
+							// Get field we will copy out of the kernel member object
+							final Field rfield = getFieldFromClassHierarchy(c.getClassWeAreModelling(), f.name);
+
+							long fieldOffset = UnsafeWrapper.objectFieldOffset(rfield);
+							final String fieldType = f.desc;
+
+							c.addStructMember(fieldOffset, TypeSpec.valueOf(fieldType), f.name);
+
+							final int fSize = getSizeOf(fieldType);
+							if (fSize > alignTo)
+								alignTo = fSize;
+							totalSize += fSize;
 						}
-						memberObjClass.getStructMembers().addAll(superModel.getStructMembers());
-						superModel = superModel.getSuperClazz();
-					}
-				}
 
-				// Sort fields of each class biggest->smallest
-				final Comparator<FieldNameInfo> fieldSizeComparator = new Comparator<FieldNameInfo>() {
-					@Override public int compare(FieldNameInfo aa, FieldNameInfo bb) {
-						final String aType = aa.desc;
-						final String bType = bb.desc;
-
-						// Booleans get converted down to bytes
-						final int aSize = getSizeOf(aType);
-						final int bSize = getSizeOf(bType);
-
-						if (logger.isLoggable(Level.FINEST))
-							logger.finest("aType= " + aType + " aSize= " + aSize + " . . bType= " + bType + " bSize= " + bSize);
-
-						// Note this is sorting in reverse order so the biggest is first
-						if (aSize > bSize)
-							return -1;
-						else if (aSize == bSize)
-							return 0;
-						else
-							return 1;
-					}
-				};
-
-				for (String className : lexicalOrdering) {
-					for (final ClassModel c : objectArrayFieldsClasses) {
-						final ArrayList<FieldNameInfo> fields = c.getStructMembers();
-						if (fields.size() > 0) {
-							Collections.sort(fields, fieldSizeComparator);
-							// Now compute the total size for the struct
-							int alignTo = 0;
-							int totalSize = 0;
-
-							for (final FieldNameInfo f : fields) {
-								// Record field offset for use while copying
-								// Get field we will copy out of the kernel member object
-								final Field rfield = getFieldFromClassHierarchy(c.getClassWeAreModelling(), f.name);
-
-								long fieldOffset = UnsafeWrapper.objectFieldOffset(rfield);
-								final String fieldType = f.desc;
-
-								c.addStructMember(fieldOffset, TypeSpec.valueOf(fieldType), f.name);
-
-								final int fSize = getSizeOf(fieldType);
-								if (fSize > alignTo)
-									alignTo = fSize;
-								totalSize += fSize;
-							}
-
-							// compute total size for OpenCL buffer
-							int totalStructSize = 0;
-							totalStructSize = totalSize;
-							c.setTotalStructSize(totalStructSize);
-						}
+						// compute total size for OpenCL buffer
+						int totalStructSize = 0;
+						totalStructSize = totalSize;
+						c.setTotalStructSize(totalStructSize);
 					}
 				}
 			}
@@ -1043,10 +1088,6 @@ public class Entrypoint implements Cloneable {
 
 	private FieldEntry getSimpleGetterField(MethodModel method) {
 		return method.getAccessorVariableFieldEntry();
-	}
-
-	public boolean shouldFallback() {
-		return (fallback);
 	}
 
 	public List<ClassModel.ClassModelField> getReferencedClassModelFields() {
@@ -1141,7 +1182,7 @@ public class Entrypoint implements Cloneable {
 		String returnType = fieldMethodEntry.getNameAndTypeEntry().getDescriptorUTF8Entry()
 												.getUTF8().replace("()", "");
 
-		if(Utils.getHardCodedClassMethodUsage(signature, fieldMethodName) != METHODTYPE.VAR_ACCESS) {
+		if(Utils.getHardCodedClassMethodUsage(signature, fieldMethodName) != METHODTYPE.GETTER) {
 			//System.err.println("Skip method " + methodName);
 			return "";
 		}

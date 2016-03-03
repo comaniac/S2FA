@@ -1,7 +1,7 @@
 package com.amd.aparapi.internal.util;
 
 import java.util.*;
-import com.amd.aparapi.internal.model.HardCodedMethodModel.METHODTYPE;
+import com.amd.aparapi.internal.model.MethodModel.METHODTYPE;
 import com.amd.aparapi.internal.model.*;
 import com.amd.aparapi.internal.writer.*;
 import com.amd.aparapi.internal.writer.ScalaParameter.DIRECTION;
@@ -107,7 +107,7 @@ public class Utils {
 			return hardCodedClasses.get(tname).getMethodType(methodName);
 		}
 		else
-			return METHODTYPE.UNKNOWN;
+			return METHODTYPE.OTHERS;
 	}
 
 	public static String getAccessHardCodedMethodString(String clazz, String methodName, String varName) {
@@ -180,7 +180,7 @@ public class Utils {
 			pClazzName += "<";
 			Map<String, HardCodedMethodModel> modeledClazzMethods = modeledClazz.getMethods();
 			for (Map.Entry<String, HardCodedMethodModel> method: modeledClazzMethods.entrySet()) {
-				if (method.getValue().getMethodType() == METHODTYPE.VAR_ACCESS) {
+				if (method.getValue().getMethodType() == METHODTYPE.GETTER) {
 					if (!first)
 						pClazzName += ",";
 					pClazzName += method.getKey();
@@ -190,20 +190,5 @@ public class Utils {
 			pClazzName += ">";
 			return pClazzName;
 		}
-	}
-
-	public static ScalaParameter createScalaParameter(String signature, String name, DIRECTION dir) {
-		ScalaParameter param = null;
-
-		if (signature.contains("scala/Tuple2"))
-			param = new ScalaTuple2Parameter(signature, name, dir);
-		else if (signature.contains("scala/collection/Iterator"))
-			param = new ScalaIteratorParameter(signature, name, dir);
-		else if (signature.startsWith("["))
-			param = new ScalaArrayParameter(signature, name, dir);
-		else
-			param = new ScalaScalarParameter(signature, name, dir);
-
-		return param;
 	}
 }
