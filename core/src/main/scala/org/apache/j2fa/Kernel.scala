@@ -23,10 +23,12 @@ import scala.io._
 import scala.sys.process._
 
 import java.util._
+import java.util.logging.Logger
 import java.io._
 import java.net._
 import java.util.LinkedList
 
+import com.amd.aparapi.Config
 import com.amd.aparapi.internal.model.Entrypoint
 import com.amd.aparapi.internal.model.ClassModel
 import com.amd.aparapi.internal.writer.BlockWriter._
@@ -41,13 +43,9 @@ import com.amd.aparapi.internal.util.{Utils => AparapiUtils}
 import org.apache.j2fa.AST._
 
 class Kernel(accClazz: Class[_], mInfo: MethodInfo, loader: URLClassLoader) {
+  val logger = Logger.getLogger(Config.getLoggerName)
 
   def generate: Option[String] = {
-
-    System.setProperty("com.amd.aparapi.logLevel", Logging.getLevel)
-    System.setProperty("com.amd.aparapi.enable.NEW", "true")
-    System.setProperty("com.amd.aparapi.enable.INVOKEINTERFACE", "true")
-
     val mName = mInfo.getName
     if (mInfo.getConfig("output_format") == "Merlin")
       System.setProperty("com.amd.aparapi.enable.MERLIN", "true")
@@ -88,7 +86,7 @@ class Kernel(accClazz: Class[_], mInfo: MethodInfo, loader: URLClassLoader) {
             fun = m
         } catch {
           case _: Throwable =>
-            Logging.warn("Transform method fail: " + m.toString)
+            logger.warning("Transform method fail: " + m.toString)
         }
       })
 
@@ -97,14 +95,14 @@ class Kernel(accClazz: Class[_], mInfo: MethodInfo, loader: URLClassLoader) {
       val writerAndKernel = KernelWriter.writeToString(entryPoint, params)
       var kernelString = writerAndKernel.kernel
       kernelString = KernelWriter.applyXilinxPatch(kernelString)
-      Logging.info("Generate the kernel successfully")
+      logger.info("Generate the kernel successfully")
       Some(kernelString)
     } catch {
       case e: Throwable =>
         val sw = new StringWriter
         e.printStackTrace(new PrintWriter(sw))
         val fullMsg = sw.toString
-        Logging.severe("Kernel generated failed: " + fullMsg)
+        logger.severe("Kernel generated failed: " + fullMsg)
         None
     }
   } 

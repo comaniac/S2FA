@@ -271,9 +271,6 @@ public abstract class MethodModel {
 			if ((!Config.enablePUTSTATIC) && (instruction instanceof I_PUTSTATIC))
 				throw new ClassParseException(instruction, ClassParseException.TYPE.PUTFIELD);
 
-			if ((!Config.enableINVOKEINTERFACE) && (instruction instanceof I_INVOKEINTERFACE))
-				throw new ClassParseException(instruction, ClassParseException.TYPE.INVOKEINTERFACE);
-
 			if ((!Config.enableGETSTATIC) && (instruction instanceof I_GETSTATIC))
 				throw new ClassParseException(instruction, ClassParseException.TYPE.GETSTATIC);
 
@@ -283,9 +280,6 @@ public abstract class MethodModel {
 			if ((!Config.enableMONITOR) && ((instruction instanceof I_MONITORENTER) ||
 			                                (instruction instanceof I_MONITOREXIT)))
 				throw new ClassParseException(instruction, ClassParseException.TYPE.SYNCHRONIZE);
-
-			if ((!Config.enableNEW) && (instruction instanceof New))
-				throw new ClassParseException(instruction, ClassParseException.TYPE.NEW);
 
 			if (instruction instanceof I_AASTORE)
 				throw new ClassParseException(instruction, ClassParseException.TYPE.ARRAYALIAS);
@@ -1754,7 +1748,7 @@ public abstract class MethodModel {
 	}
 
 	protected void init(ClassModelMethod _method) throws AparapiException {
-		try {
+//		try {
 			method = _method;
 			expressionList = new ExpressionList(this);
 			ClassModel owner = _method.getOwnerClassModel();
@@ -1815,6 +1809,7 @@ public abstract class MethodModel {
 				logger.fine("end \n" + expressionList.dumpDiagram(null));
 			if (Config.instructionListener != null)
 				Config.instructionListener.showAndTell("end", expressionList.getHead(), null);
+/*
 		} catch (final Throwable _t) {
 			if (_t instanceof ClassParseException) {
 				_t.printStackTrace();
@@ -1823,6 +1818,7 @@ public abstract class MethodModel {
 			throw new ClassParseException(_t);
 
 		}
+*/
 	}
 
 	@SuppressWarnings("unchecked")

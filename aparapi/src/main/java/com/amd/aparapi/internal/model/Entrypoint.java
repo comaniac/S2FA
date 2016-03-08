@@ -103,15 +103,52 @@ public class Entrypoint implements Cloneable {
 
 	private final Set<String> arrayFieldAccesses = new LinkedHashSet<String>();
 
-	// Derived cleaaes of interfaces
+	// Derived classes
 	private final Map<String, List<String> > derivedClasses = new HashMap<String, List<String> >();
 
-	private boolean isKernelCalledInterfaceClass(String base) {
-		return derivedClasses.containsKey(base);
+	private boolean hasDerivedClassList(String clazz) {
+		return derivedClasses.containsKey(clazz);
+	}
+
+	private Set<String> getKernelCalledInterfaceClasses() {
+		return derivedClasses.keySet();
 	}
 
 	private void addOrUpdateDerivedClass(String base, List<String> clzList) {
 		derivedClasses.put(base, clzList);
+	}
+
+	private List<String> getDerivedClasses(String base) {
+		if (derivedClasses.containsKey(base))
+			return derivedClasses.get(base);
+		return null;
+	}
+
+	// Possible interface method implementation list
+	private final Map<String, List<MethodModel> > interfaceMethodImpl = new HashMap<String, List<MethodModel> >();
+
+	private boolean hasMethodImplList(String fullSig) {
+		return interfaceMethodImpl.containsKey(fullSig);
+	}
+
+	private Set<String> getKernelCalledInterfaceMethods() {
+		return interfaceMethodImpl.keySet();
+	}
+
+	private void addOrUpdateMethodImpl(String fullSig, MethodModel method) {
+		List<MethodModel> implList = null;
+		if (interfaceMethodImpl.containsKey(fullSig))
+			implList = interfaceMethodImpl.get(fullSig);
+		else
+			implList = new ArrayList<MethodModel>();
+		implList.add(method);
+		interfaceMethodImpl.put(fullSig, implList);
+	}
+
+	private List<MethodModel> getMethodImpls(String fullSig) {
+		if (interfaceMethodImpl.containsKey(fullSig))
+			return interfaceMethodImpl.get(fullSig);
+		return null;
 	}
 
 	// Classes of object array members
@@ -616,22 +653,7 @@ public class Entrypoint implements Cloneable {
 			addClass(param.getClassName(), param.getDescArray());
 		}
 
-		// Collect all methods called directly from kernel's run method
-		for (final MethodCall methodCall : methodModel.getMethodCalls()) {
-			ClassModelMethod m = resolveCalledMethod(methodCall, classModel);
-			logger.finest("In-kernel method call: " + methodCall.toString());
-			if ((m != null) && !methodMap.keySet().contains(m) && 
-					!noCL(m) && !Utils.isHardCodedClass(m.getClassModel().toString())
-			) {
-				final MethodModel target = new LoadedMethodModel(m, this);
-				methodMap.put(m, target);
-				methodModel.getCalledMethods().add(target);
-				discovered = true;
-				logger.finest("Collect method to be generated: " + target.getName());
-			}
-		}
-
-		// Collect all interface methods called from the kernel and their implementations
+		// Build a loaded class list
 		Object [] classList = null;
 		Class<?> loaderClazz = classLoader.getClass();
 		while (loaderClazz != java.lang.ClassLoader.class)
@@ -644,26 +666,127 @@ public class Entrypoint implements Cloneable {
 			throw new RuntimeException("Fail to load class list");
 		}
 
+		// Collect all interface methods called from the kernel and their implementations
+		// TODO: Support multi-level inheritance. i.e. interface A -> B extends A -> [C] extends B
 		for (final I_INVOKEINTERFACE interfaceCall : methodModel.getInterfaceMethodCalls()) {
 			final InterfaceMethodEntry methodEntry = interfaceCall.getConstantPoolInterfaceMethodEntry();
 			final String clazzName = methodEntry.getClassEntry().getNameUTF8Entry().getUTF8().replace('/', '.');
-			if (isKernelCalledInterfaceClass(clazzName))
+			final String methodName = methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+			final String methodDesc = methodEntry.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
+			final String fullSig = clazzName + "." + methodName + methodDesc;
+
+			if (Utils.isHardCodedClass(clazzName))
 				continue;
-			logger.finest("Collect classes for interface methods: " + clazzName);
-			List<String> clzList = new ArrayList<String>();
-			for (final Object clazz : classList) {
-				Class<?> [] interfaceList = ((Class) clazz).getInterfaces();
-				if (interfaceList.length == 0)
-					continue ;
-				for (final Class<?> itf : interfaceList) {
-					if (itf.getName().equals(clazzName)) {
-						logger.finest("Found: " + ((Class<?>) clazz).getName());
-						clzList.add(((Class<?>) clazz).getName());
-						break ;
+
+			// Avoid redundent work
+			if (hasMethodImplList(fullSig))
+				continue;
+
+			List<String> clzList = null;
+
+			// Avoid redundent class scanning
+			if (hasDerivedClassList(clazzName))
+				clzList = getDerivedClasses(clazzName);
+			else {
+				// Scan all loaded classes to find derived classes
+				clzList = new ArrayList<String>();
+				for (final Object clazz : classList) {
+					Class<?> [] interfaceList = ((Class) clazz).getInterfaces();
+					if (interfaceList.length == 0)
+						continue ;
+					for (final Class<?> itf : interfaceList) {
+						if (itf.getName().equals(clazzName)) {
+							clzList.add(((Class<?>) clazz).getName());
+							break ;
+						}
 					}
 				}
+				addOrUpdateDerivedClass(clazzName, clzList);
 			}
-			addOrUpdateDerivedClass(clazzName, clzList);
+
+			// Check if the base class has the method implementation
+			Class<?> baseClazz = null;
+			try {
+				baseClazz = classLoader.loadClass(clazzName);
+			} catch (final Exception e) {
+				if (logger.isLoggable(Level.INFO))
+					logger.info("Cannot load " + clazzName);
+				throw new AparapiException(e);
+			}
+			ClassModel baseClassModel = ClassModel.createClassModel(baseClazz, this, null);
+			ClassModelMethod baseMethodImpl = baseClassModel.getMethod(methodName, methodDesc);
+			if (baseMethodImpl.getCodeEntry() != null) { // FIXME: What can't load method from interface??
+				try {
+					MethodModel method = new LoadedMethodModel(baseMethodImpl, this);
+					addOrUpdateMethodImpl(fullSig, method);
+				} catch (final Exception e) {
+					throw new AparapiException(e);
+				}
+			}
+			else {
+				if (logger.isLoggable(Level.FINEST))
+					logger.fine(fullSig + " has no implementation");
+			}
+		
+			// Create method models for overritten methods in derived classes
+			for (final String derivedClazzName : clzList) {
+				Class<?> derivedClazz = null;
+				try {
+					derivedClazz = classLoader.loadClass(derivedClazzName);
+				} catch (final Exception e) {
+					if (logger.isLoggable(Level.INFO))
+						logger.info("Cannot load " + derivedClazzName);
+					throw new AparapiException(e);
+				}
+				ClassModel derivedClassModel = ClassModel.createClassModel(derivedClazz, this, null);
+				ClassModelMethod methodImpl = derivedClassModel.getMethod(methodName, methodDesc);
+				MethodModel method = new LoadedMethodModel(methodImpl, this);
+				addOrUpdateMethodImpl(fullSig, method);
+
+				// Add derived class to customized class list
+				logger.fine("Add field class " + derivedClazzName);
+				allFieldsClasses.add(derivedClazzName, derivedClassModel);
+
+				// Add interface implementations to methodMap
+				methodMap.put(methodImpl, method);
+				methodModel.getCalledMethods().add(method);
+			}
+		}
+
+		if (logger.isLoggable(Level.FINE)) {
+			Set<String> baseSet = getKernelCalledInterfaceClasses();
+			for (final String base : baseSet) {			
+				String msg = "Interface class " + base + " has implemented by ";
+				List<String> derivedList = getDerivedClasses(base);
+				for (final String derived : derivedList)
+					msg += derived + " ";
+				logger.fine(msg);
+			}
+
+			Set<String> itfMethodSet = getKernelCalledInterfaceMethods();
+			for (final String sig : itfMethodSet) {
+				List<MethodModel> methodImpls = getMethodImpls(sig);
+				String msg = "Interface method " + sig + " has " + methodImpls.size() + 
+						" possible implementations ";
+				for (final MethodModel impl : methodImpls)
+					msg += impl.getName() + " ";
+				logger.fine(msg);
+			}
+		}
+
+		// Collect all methods called directly from kernel's run method
+		for (final MethodCall methodCall : methodModel.getMethodCalls()) {
+			logger.finest("In-kernel method call: " + methodCall);
+			ClassModelMethod m = resolveCalledMethod(methodCall, classModel);
+			if ((m != null) && !methodMap.keySet().contains(m) && 
+					!noCL(m) && !Utils.isHardCodedClass(m.getClassModel().toString())
+			) {
+				final MethodModel target = new LoadedMethodModel(m, this);
+				methodMap.put(m, target);
+				methodModel.getCalledMethods().add(target);
+				discovered = true;
+				logger.finest("Collect method to be generated: " + target.getName());
+			}
 		}
 
 		// methodMap now contains a list of method called by run itself().

@@ -202,7 +202,7 @@ public class ExpressionList {
 		}
 
 		tail = _instruction;
-		logger.log(Level.FINE, "After PUSH of " + _instruction + " tail=" + tail);
+		logger.finest("After PUSH of " + _instruction + " tail=" + tail);
 		return (tail);
 	}
 
@@ -418,17 +418,17 @@ public class ExpressionList {
 		boolean handled = false;
 		try {
 
-			if (logger.isLoggable(Level.FINE)) {
-				System.out.println("foldComposite: curr = " + _instruction);
-				System.out.println(dumpDiagram(_instruction));
-				// System.out.println(dumpDiagram(null, _instruction));
+			if (logger.isLoggable(Level.FINEST)) {
+				System.err.println("foldComposite: curr = " + _instruction);
+				System.err.println(dumpDiagram(_instruction));
+				// System.err.println(dumpDiagram(null, _instruction));
 			}
 			if (_instruction.isForwardBranchTarget() || ((tail != null) && tail.isBranch() &&
 			    tail.asBranch().isReverseConditional())) {
 				while (_instruction.isForwardBranchTarget()
 				       || ((tail != null) && tail.isBranch() && tail.asBranch().isReverseConditional())) {
 					if (logger.isLoggable(Level.FINE))
-						System.out.println(dumpDiagram(_instruction));
+						System.err.println(dumpDiagram(_instruction));
 
 					handled = false;
 
@@ -449,7 +449,7 @@ public class ExpressionList {
 						 * do {BODY} while(??)
 						 *    [BODY] ?? ?< ...
 						 *    <-----------
-						 *
+						 
 						 * eclipse while (??){BODY} ...
 						 *    >> [BODY] ?? ?< ...
 						 *     -------->
@@ -633,9 +633,9 @@ public class ExpressionList {
 
 								if (logger.isLoggable(Level.FINEST)) {
 									Instruction next = branchSet.getFirst().getNextExpr();
-									System.out.println("### for/while candidate exprs: " + branchSet.getFirst());
+									System.err.println("### for/while candidate exprs: " + branchSet.getFirst());
 									while (next != null) {
-										System.out.println("### expr = " + next);
+										System.err.println("### expr = " + next);
 										next = next.getNextExpr();
 									}
 								}
@@ -671,7 +671,7 @@ public class ExpressionList {
 									inst = reverseGoto.getPrevExpr();
 									if (hasOtherVariables(localVariableInfo, inst.getFirstChild())) {
 										if (logger.isLoggable(Level.FINEST))
-											System.out.println("Find other local variables are referred by the loop variable increment");
+											System.err.println("Find other local variables are referred by the loop variable increment");
 										foldtoForLoop = false;
 									}
 									else {
@@ -683,7 +683,7 @@ public class ExpressionList {
 													inst).getLocalVariableInfo();
 												if (localVariableInfo.getVariableIndex() == otherLocalVariableInfo.getVariableIndex()) {
 													if (logger.isLoggable(Level.FINEST)) {
-														System.out.println("Find multiple assignments of loop variable " + 
+														System.err.println("Find multiple assignments of loop variable " + 
 															localVariableInfo.getVariableName() + ": " + inst + " assign to " + 
 															otherLocalVariableInfo.getVariableName());
 													}
@@ -698,12 +698,12 @@ public class ExpressionList {
 
 								if (!foldtoForLoop) {
 									if (logger.isLoggable(Level.FINEST))
-										System.out.println("Fold to while-loop");
+										System.err.println("Fold to while-loop");
 									addAsComposites(ByteCode.COMPOSITE_WHILE, loopTop, branchSet);
 								}
 								else {
 									if (logger.isLoggable(Level.FINEST))
-										System.out.println("Fold to sun_for-loop");
+										System.err.println("Fold to sun_for-loop");
 									addAsComposites(ByteCode.COMPOSITE_FOR_SUN, loopTop, branchSet);
 								}
 								handled = true;
@@ -779,11 +779,11 @@ public class ExpressionList {
 											if (doesNotContainCompositeOrBranch(elseBranchSet.getLast().getNextExpr(), elseGoto)) {
 												if (doesNotContainCompositeOrBranch(afterElseGoto.getNextExpr(), thisGoto)) {
 													if (logger.isLoggable(Level.FINE))
-														System.out.println(dumpDiagram(_instruction));
+														System.err.println(dumpDiagram(_instruction));
 													elseBranchSet.unhook();
 													elseGoto.unhook();
 													if (logger.isLoggable(Level.FINE))
-														System.out.println(dumpDiagram(_instruction));
+														System.err.println(dumpDiagram(_instruction));
 
 
 													final CompositeInstruction composite = CompositeInstruction.create(

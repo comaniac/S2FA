@@ -37,9 +37,11 @@ under those regulations, please refer to the U.S. Bureau of Industry and Securit
  */
 package com.amd.aparapi;
 
-import java.util.logging.Handler;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import java.util.logging.*;
+import java.util.Locale;
+import java.util.Date;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 
 import com.amd.aparapi.internal.instruction.Instruction;
 import com.amd.aparapi.internal.tool.InstructionViewer;
@@ -63,7 +65,7 @@ public class Config {
 	// Logging setup
 	private static final String logPropName = propPkgName + ".logLevel";
 
-	private static final Logger logger = Logger.getLogger(Config.getLoggerName());
+	public static final Logger logger = Logger.getLogger(Config.getLoggerName());
 
 	/**
 	 * Disable Unsafe
@@ -90,12 +92,7 @@ public class Config {
 	public static final boolean enableGETSTATIC =
 	  true; //Boolean.getBoolean(propPkgName + ".enable.GETSTATIC");
 
-	public static final boolean enableINVOKEINTERFACE = Boolean.getBoolean(
-	      propPkgName + ".enable.INVOKEINTERFACE");
-
 	public static final boolean enableMONITOR = Boolean.getBoolean(propPkgName + ".enable.MONITOR");
-
-	public static final boolean enableNEW = Boolean.getBoolean(propPkgName + ".enable.NEW");
 
 	public static final boolean enableATHROW = Boolean.getBoolean(propPkgName + ".enable.ATHROW");
 
@@ -135,15 +132,17 @@ public class Config {
 
 	static {
 		try {
-			final Level level = Level.parse(System.getProperty(getLoggerName(), "WARNING"));
-
-			final Handler[] handlers = Logger.getLogger("").getHandlers();
-			for (final Handler handler : handlers)
-				handler.setLevel(level);
+			final Level level = Level.parse(System.getProperty(getLoggerName(), "FINE"));
 
 			logger.setLevel(level);
+			logger.setUseParentHandlers(false);
+			LogFormatter formatter = new LogFormatter();
+			ConsoleHandler handler = new ConsoleHandler();
+			handler.setLevel(level);
+			handler.setFormatter(formatter);
+      logger.addHandler(handler);
 		} catch (final Exception e) {
-			System.out.println("Exception " + e + " in Aparapi logging setup");
+			System.err.println("Exception " + e + " in Aparapi logging setup");
 			e.printStackTrace();
 		}
 	};
@@ -179,3 +178,22 @@ public class Config {
 		return logPropName;
 	}
 }
+
+class LogFormatter extends Formatter {
+	private static final DateFormat df = new SimpleDateFormat("dd/MM/yy HH:mm:ss.SSS");
+
+	public String format(LogRecord record) {
+		StringBuilder builder = new StringBuilder(1024);
+    builder.append(df.format(new Date(record.getMillis()))).append(" ");
+    builder.append("[").append(record.getLevel()).append("]");
+		String className = record.getSourceClassName();
+		if (className.lastIndexOf(".") != -1)
+			className = className.substring(className.lastIndexOf(".") + 1);
+    builder.append("[").append(className).append(".");
+    builder.append(record.getSourceMethodName()).append("] ");
+    builder.append(formatMessage(record));
+    builder.append("\n");
+  	return builder.toString();
+	}
+}
+

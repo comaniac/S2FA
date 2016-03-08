@@ -439,10 +439,13 @@ public abstract class KernelWriter extends BlockWriter {
 					 */
 				} else {
 					// Must be a library call like rsqrt // FIXME: Tuple2
-					if (!isMapped && !isScalaMapped && !isSelfMapped && !_methodEntry.toString().contains("scala/Tuple2"))
-						throw new RuntimeException(_methodEntry + " should be mapped method!");
+					if (!isMapped && !isScalaMapped && !isSelfMapped && !_methodEntry.toString().contains("scala/Tuple2")) {
+						isIntrinsic = false;
+//						throw new RuntimeException(_methodEntry + " should be mapped method!");
+					}
+					else
+						isIntrinsic = true;
 					write(methodName);
-					isIntrinsic = true;
 				}
 			} else
 				write(intrinsicMapping);

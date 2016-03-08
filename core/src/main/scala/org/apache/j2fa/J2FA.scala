@@ -16,28 +16,28 @@
  */
 package org.apache.j2fa
 
-import ModeledType._
-
 import scala.reflect.ClassTag
 import scala.io._
 import scala.sys.process._
 
 import java.io._
 import java.net._
+import java.util.logging.Logger
 import java.util.LinkedList
 import java.util.jar.JarFile
 
 import org.apache.j2fa.AST._
+import com.amd.aparapi.Config
 
 object J2FA {
-
+  val logger = Logger.getLogger(Config.getLoggerName)
+ 
   def main(args : Array[String]) {
     if (args.length < 4) {
       System.err.println("Usage: J2FA <Source file> <jar paths> <Accelerator class name> <Output kernel file>")
       System.exit(1)
     }
-    Logging.info("J2FA -- Java to FPGA Accelerator Framework")
-    Logging.info("Logging level: " + Logging.getLevel)
+    logger.info("J2FA -- Java to FPGA Accelerator Framework")
 
     // Parse source code to identify kernel methods
     val srcTree = ASTUtils.getSourceTree(args(0))
@@ -59,12 +59,12 @@ object J2FA {
         val je = entity.nextElement
         if (!je.isDirectory && je.getName.endsWith(".class")) {
           val clazzName = je.getName.substring(0, je.getName.length - 6).replace('/', '.')
-          Logging.finest("Load class " + clazzName)
+          logger.finest("Load class " + clazzName)
           try {
             loader.loadClass(clazzName)
           } catch {
             case _ : Throwable =>
-              Logging.fine("Cannot find class " + clazzName + " in provided packages")
+              logger.fine("Cannot find class " + clazzName + " in provided packages")
           }
         }
       }
@@ -75,7 +75,7 @@ object J2FA {
     // Compile each kernel method to accelerator kernel
     kernelMethods.foreach({
       case (mName, mInfo) =>
-        Logging.info("Compiling kernel " + mInfo.toString)
+        logger.info("Compiling kernel " + mInfo.toString)
         val kernel = new Kernel(clazz, mInfo, loader)
         val kernelString = kernel.generate
         if (kernelString.isEmpty == false) {

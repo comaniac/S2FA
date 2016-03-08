@@ -20,15 +20,18 @@ import scala.io._
 import scala.sys.process._
 
 import java.util._
+import java.util.logging.Logger
 import java.io._
 import java.net._
 import java.util.LinkedList
 
 import org.scalatest.{FunSuite, Outcome, Ignore}
 
+import com.amd.aparapi.Config
 import org.apache.j2fa.AST._
 
 abstract class J2FAFunSuite extends FunSuite {
+  val logger = Logger.getLogger(Config.getLoggerName)
 
   final protected def runTest(srcFileURL: URL, jarFileURL: URL, className: String) = {
     val srcTree = ASTUtils.getSourceTree(srcFileURL.toString.replace("file:", ""))
@@ -43,7 +46,7 @@ abstract class J2FAFunSuite extends FunSuite {
     var success = 0
     kernelMethods.foreach({
       case (mName, mInfo) =>
-        Logging.info("Compiling kernel " + mInfo.toString)
+        logger.info("Compiling kernel " + mInfo.toString)
         val kernel = new Kernel(clazz, mInfo, loader)
         val result = kernel.generate
         if (result.isEmpty == false) {
