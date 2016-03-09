@@ -38,6 +38,7 @@ under those regulations, please refer to the U.S. Bureau of Industry and Securit
 package com.amd.aparapi.internal.model;
 
 import com.amd.aparapi.*;
+import com.amd.aparapi.classlibrary.*;
 import com.amd.aparapi.internal.exception.*;
 import com.amd.aparapi.internal.instruction.*;
 import com.amd.aparapi.internal.instruction.InstructionSet.*;
@@ -77,6 +78,19 @@ public class Entrypoint implements Cloneable {
 	private final HardCodedClassModels hardCodedClassModels;
 
 	private final URLClassLoader classLoader;
+
+	private final Object [] loadedClasses;
+
+	private final Object [] systemClasses;
+
+	private final Map<String, Class<CustomizedClassModel>> customizedClassModels = new
+	HashMap<String, Class<CustomizedClassModel>>();
+
+	public Class<CustomizedClassModel> getCustomizedClassModel(String className) {
+		if (customizedClassModels.containsKey(className))
+			return customizedClassModels.get(className);
+		return null;
+	}
 
 	public HardCodedClassModels getHardCodedClassModels() {
 		return hardCodedClassModels;
@@ -631,6 +645,61 @@ public class Entrypoint implements Cloneable {
 
 		boolean discovered = true;
 
+		// Build a loaded class list
+		Class<?> loaderClazz = classLoader.getClass();
+		while (loaderClazz != java.lang.ClassLoader.class)
+			loaderClazz = loaderClazz.getSuperclass();
+		try {
+			Field fieldClazz = loaderClazz.getDeclaredField("classes");
+			fieldClazz.setAccessible(true);
+
+			// Load classes from user input classpath
+			loadedClasses = ((Vector) fieldClazz.get(classLoader)).toArray();
+
+			// Load com.amd.aparapi.classlibrary
+			CustomizedClassModel.class.getClassLoader().loadClass("com.amd.aparapi.classlibrary.DenseVectorClassModel");
+			systemClasses = ((Vector) fieldClazz.get(CustomizedClassModel.class.getClassLoader())).toArray();
+		} catch (Exception e) {
+			throw new RuntimeException("Fail to load class list");
+		}
+
+		// Build customized class model list from user
+		ArrayList<String> customizedClassList = findDerivedClasses("CustomizedClassModel");
+		for (String name : customizedClassList) {
+			try {
+				Class<?> clazz = classLoader.loadClass(name);
+				@SuppressWarnings("unchecked")
+				Class<CustomizedClassModel> customizedClass = (Class<CustomizedClassModel>) clazz;
+				Constructor<?> cstr = customizedClass.getConstructor();
+				String fullName = ((CustomizedClassModel) cstr.newInstance()).getClassName();
+			} catch (Exception e) {
+				throw new RuntimeException("Cannot load customized class model from user input class path " + 
+					name + ": " + e);
+			}
+		}
+
+		// Build customized class model list from system
+		ArrayList<String> systemCustomizedClassList = findDefaultCustomizedClassModels();
+		for (String name : systemCustomizedClassList) {
+			try {
+				Class<?> clazz = Class.forName(name);
+				@SuppressWarnings("unchecked")
+				Class<CustomizedClassModel> customizedClass = (Class<CustomizedClassModel>) clazz;
+				Constructor<?> cstr = customizedClass.getConstructor();
+				String fullName = ((CustomizedClassModel) cstr.newInstance()).getClassName();
+				customizedClassModels.put(fullName, customizedClass);
+			} catch (Exception e) {
+				throw new RuntimeException("Cannot load customized class model from system " + 
+					name + ": " + e);
+			}
+		}
+		if (logger.isLoggable(Level.FINE)) {
+			logger.fine("Loaded CustomizedClassModels:");
+			Set<String> customizedClassNames = customizedClassModels.keySet();
+			for (String name : customizedClassNames)
+				System.err.println(name);
+		}
+
 		// Record which pragmas we need to enable
 		if (methodModel.requiresDoublePragma()) {
 			usesDoubles = true;
@@ -651,19 +720,6 @@ public class Entrypoint implements Cloneable {
 				continue;
 
 			addClass(param.getClassName(), param.getDescArray());
-		}
-
-		// Build a loaded class list
-		Object [] classList = null;
-		Class<?> loaderClazz = classLoader.getClass();
-		while (loaderClazz != java.lang.ClassLoader.class)
-			loaderClazz = loaderClazz.getSuperclass();
-		try {
-			Field fieldClazz = loaderClazz.getDeclaredField("classes");
-			fieldClazz.setAccessible(true);
-			classList = ((Vector) fieldClazz.get(classLoader)).toArray();
-		} catch (Exception e) {
-			throw new RuntimeException("Fail to load class list");
 		}
 
 		// Collect all interface methods called from the kernel and their implementations
@@ -689,18 +745,7 @@ public class Entrypoint implements Cloneable {
 				clzList = getDerivedClasses(clazzName);
 			else {
 				// Scan all loaded classes to find derived classes
-				clzList = new ArrayList<String>();
-				for (final Object clazz : classList) {
-					Class<?> [] interfaceList = ((Class) clazz).getInterfaces();
-					if (interfaceList.length == 0)
-						continue ;
-					for (final Class<?> itf : interfaceList) {
-						if (itf.getName().equals(clazzName)) {
-							clzList.add(((Class<?>) clazz).getName());
-							break ;
-						}
-					}
-				}
+				clzList = findDerivedClasses(clazzName);
 				addOrUpdateDerivedClass(clazzName, clzList);
 			}
 
@@ -1188,6 +1233,47 @@ public class Entrypoint implements Cloneable {
 				}
 			}
 		}
+	}
+
+	public ArrayList<String> findDerivedClasses(String baseClass) {
+		ArrayList<String> clzList = new ArrayList<String>();
+		for (final Object clazz : loadedClasses) {
+			boolean found = false;
+
+			// Check interfaces
+			Class<?> [] interfaceList = ((Class) clazz).getInterfaces();
+			if (interfaceList.length == 0)
+				continue ;
+			for (final Class<?> itf : interfaceList) {
+				if (itf.getName().equals(baseClass)) {
+					clzList.add(((Class<?>) clazz).getName());
+					found = true;
+					break ;
+				}
+			}
+
+			// Check super class
+			if (found == false) {
+				Class<?> superClazz = ((Class) clazz).getSuperclass();
+				if (superClazz == null)
+					continue ;
+				if (superClazz.getName().contains(baseClass))
+					clzList.add(((Class<?>) clazz).getName());
+			}
+		}
+		return clzList;	
+	}
+
+	public ArrayList<String> findDefaultCustomizedClassModels() {
+		ArrayList<String> clzList = new ArrayList<String>();
+		for (final Object clazz : systemClasses) {
+			Class<?> superClazz = ((Class) clazz).getSuperclass();
+			if (superClazz == null)
+				continue ;
+			if (superClazz.getName().contains("CustomizedClassModel"))
+				clzList.add(((Class<?>) clazz).getName());
+		}
+		return clzList;	
 	}
 
 	public int getSizeOf(String desc) {

@@ -83,8 +83,6 @@ object J2FA {
           kernelFile.write(kernelString.get)
           kernelFile.close
         }
-
-      case _ =>
     })
   }
 }

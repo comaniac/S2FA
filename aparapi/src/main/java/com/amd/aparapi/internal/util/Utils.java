@@ -84,6 +84,29 @@ public class Utils {
 		return newType;
 	}
 
+	public static String mapShortType(String type) {
+		String newType = "";
+
+		if (type.contains("[]")) {
+			type = type.replace("[]", "").trim();
+			newType = newType + "[";
+		}
+
+		if (type.equals("int"))
+			newType = newType + "I";
+		else if (type.equals("float"))
+			newType = newType + "F";
+		else if (type.equals("double"))
+			newType = newType + "D";
+		else if (type.equals("long"))
+			newType = newType + "J";
+		else
+			newType = newType + type;
+
+		return newType;
+	}
+
+
 	public static boolean isHardCodedClass(String name) {
 		// TODO: DenseVector, etc
 		String tname = cleanClassName(name);

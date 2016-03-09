@@ -536,7 +536,7 @@ public abstract class KernelWriter extends BlockWriter {
 		write("typedef struct ");
 		if (!useMerlinKernel)
 			write("__attribute__ ((packed)) ");
-		write(mangledClassName + "_s{");
+		write(mangledClassName + "_s {");
 		in();
 		newLine();
 
