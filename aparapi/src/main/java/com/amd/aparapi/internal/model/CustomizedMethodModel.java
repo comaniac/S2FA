@@ -51,7 +51,9 @@ public abstract class CustomizedMethodModel<T extends CustomizedClassModel>
 
 	public String getDeclareCode(String varName) {
 		StringBuilder sb = new StringBuilder();
-		final String returnType = getReturnType(clazzModel);
+		String returnType = getReturnType(clazzModel);
+		if (returnType.contains("[]"))
+			returnType = returnType.replace("[]", "").trim() + " *";
 		sb.append(returnType + " " + this.name + "(");
 		sb.append(clazzModel.getClassName() + " *this");
 		for (String arg : getArgs(clazzModel))

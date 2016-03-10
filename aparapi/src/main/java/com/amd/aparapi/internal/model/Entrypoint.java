@@ -55,10 +55,15 @@ import com.amd.aparapi.internal.model.HardCodedClassModels.ShouldNotCallMatcher;
 import com.amd.aparapi.internal.model.HardCodedClassModel.TypeParameters;
 import com.amd.aparapi.internal.model.MethodModel.METHODTYPE;
 
+import java.io.File;
 import java.lang.reflect.*;
 import java.util.*;
 import java.util.logging.*;
+import java.util.jar.JarFile;
+import java.util.jar.JarEntry;
+import java.net.URL;
 import java.net.URLClassLoader;
+import java.net.URLDecoder;
 import java.lang.Class;
 import java.lang.reflect.Field;
 
@@ -645,6 +650,28 @@ public class Entrypoint implements Cloneable {
 
 		boolean discovered = true;
 
+		// Load com.amd.aparapi.classlibrary
+		try {
+			ClassLoader cl = CustomizedClassModel.class.getClassLoader();
+			URL pkgURL = Thread.currentThread().getContextClassLoader()
+				.getResource("com/amd/aparapi");
+			String jarFileName = URLDecoder.decode(pkgURL.getFile(), "UTF-8");
+			jarFileName = jarFileName.substring(5, jarFileName.indexOf("!"));
+			JarFile jarFile = new JarFile(jarFileName);
+
+			Enumeration<JarEntry> jarEntries = jarFile.entries();
+			while (jarEntries.hasMoreElements()) {
+				String entryName = jarEntries.nextElement().getName();
+				if (entryName.startsWith("com/amd/aparapi/classlibrary") && 
+						entryName.endsWith(".class") && 
+						!entryName.contains("$")) {
+					cl.loadClass(entryName.replace("/", ".").substring(0, entryName.length() - 6));
+				}
+			}
+		} catch (Exception e) {
+			throw new RuntimeException("Fail to load com.amd.aparapi.classlibaray");
+		}
+
 		// Build a loaded class list
 		Class<?> loaderClazz = classLoader.getClass();
 		while (loaderClazz != java.lang.ClassLoader.class)
@@ -657,7 +684,6 @@ public class Entrypoint implements Cloneable {
 			loadedClasses = ((Vector) fieldClazz.get(classLoader)).toArray();
 
 			// Load com.amd.aparapi.classlibrary
-			CustomizedClassModel.class.getClassLoader().loadClass("com.amd.aparapi.classlibrary.DenseVectorClassModel");
 			systemClasses = ((Vector) fieldClazz.get(CustomizedClassModel.class.getClassLoader())).toArray();
 		} catch (Exception e) {
 			throw new RuntimeException("Fail to load class list");

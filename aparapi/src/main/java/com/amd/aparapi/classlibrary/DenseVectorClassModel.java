@@ -29,7 +29,7 @@ public class DenseVectorClassModel extends CustomizedClassModel {
 
 			@Override
 			public String getBody(DenseVectorClassModel clazzModel) {
-				return "return " + getFieldModel("size").accessCode() + ";";
+				return "return " + getFieldModel("size").genAccess() + ";";
 			}
 		};
 		addMethod(getSizeMethod);
@@ -50,7 +50,7 @@ public class DenseVectorClassModel extends CustomizedClassModel {
 
 			@Override
 			public String getBody(DenseVectorClassModel clazzModel) {
-				return "return " + getFieldModel("values").accessCode("index") + ";";
+				return "return " + getFieldModel("values").genArrayElementAccess("index") + ";";
 			}	
 		};
 		addMethod(getValueMethod);

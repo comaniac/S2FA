@@ -64,13 +64,17 @@ public class CustomizedFieldModel {
 		return ary;
 	}
 
-  public String accessCode(String idx) {
-    return "this->" + this.name + "[" + idx + "]";
-  }
+	// User APIs for customized method body
 
-  public String accessCode() {
-		if (this.ary == true)
-			throw new RuntimeException("Access array field " + this.name + " without index");
-    return accessCode(null);
+	public String genArrayElementAccess(String idx) {
+		if (this.ary == false) {
+			throw new RuntimeException("Access scalar field " + this.name + " with index, " + 
+				"use genAccess() instead.");
+		}
+		return "this->" + this.name + "[" + idx + "]";
+	}
+
+  public String genAccess() {
+    return "this->" + this.name;
   }
 }
