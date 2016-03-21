@@ -17,17 +17,17 @@ public class CustomizedFieldModel {
   public CustomizedFieldModel(String type, String name, int offset) {
     this.name = name;
     if (type.contains("[]")) {
-      this.type = type.replace("[]", "").trim();
+      this.type = Utils.convertToCType(type.replace("[]", "").trim());
       this.ary = true;
     }
     else {
-      this.type = type;
+      this.type = Utils.convertToCType(type);
       this.ary = false;
     }
     this.offset = offset;
 
 		boolean matchTypeSpec = false;
-		shortType = Utils.mapShortType(this.type);
+		shortType = Utils.convertToBytecodeType(type.replace("[]", "").trim());
 		for (TypeSpec t : TypeSpec.values()) {
 			if (t.getShortName().equals(shortType)) {
 				matchTypeSpec = true;
@@ -62,6 +62,13 @@ public class CustomizedFieldModel {
 
 	public boolean isArray() {
 		return ary;
+	}
+
+	public String getDeclareCode() {
+		String s = type + " ";
+		if (isArray())
+			s += "*";
+		return s + name;
 	}
 
 	// User APIs for customized method body

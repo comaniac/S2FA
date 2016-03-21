@@ -46,7 +46,7 @@ import com.amd.aparapi.internal.model.*;
 import com.amd.aparapi.internal.model.ClassModel.AttributePool.*;
 import com.amd.aparapi.internal.model.ClassModel.AttributePool.RuntimeAnnotationsEntry.*;
 import com.amd.aparapi.internal.model.ClassModel.*;
-import com.amd.aparapi.internal.model.HardCodedClassModel.TypeParameters;
+import com.amd.aparapi.internal.model.CustomizedClassModel.TypeParameters;
 import com.amd.aparapi.internal.model.MethodModel.METHODTYPE;
 import com.amd.aparapi.internal.model.ClassModel.ConstantPool.*;
 import com.amd.aparapi.internal.model.FullMethodSignature;
@@ -83,7 +83,7 @@ public abstract class KernelWriter extends BlockWriter {
 
 	private boolean processingConstructor = false;
 
-	private boolean isArrayTypeOutput = false;
+	private boolean isPassByAddrOutput = false;
 
 	private boolean isMapPartitions = false;
 
@@ -211,7 +211,7 @@ public abstract class KernelWriter extends BlockWriter {
 	}
 
 	@Override public void writeReturn(Return ret) throws CodeGenException {
-		if (isArrayTypeOutput)
+		if (isPassByAddrOutput)
 			writeInstruction(ret.getFirstChild());
 		else {
 
@@ -265,7 +265,7 @@ public abstract class KernelWriter extends BlockWriter {
 
 		write(typeName + " _" + varName + ";");
 		newLine();
-		write(typeName + " * " + varName + " = &_" + varName + ";");
+		write(typeName + " *" + varName + " = &_" + varName + ";");
 		newLine();
 		write(m.getName() + "(" + varName);
 
@@ -280,6 +280,8 @@ public abstract class KernelWriter extends BlockWriter {
 			write(";");
 			newLine();
 			write("return (_" + varName);
+			// writeReturn writes: ( writeMethod ), but we delete
+			// the left one to construct a new object.
 		}
 	}
 
@@ -586,10 +588,10 @@ public abstract class KernelWriter extends BlockWriter {
 		public boolean matches(ClassModel model) {
 			String modelDesc = "L" + model.getClassWeAreModelling().getName().replace('.', '/') + ";";
 			if (modelDesc.equals(targetSig.getBaseType())) {
-				if (model instanceof HardCodedClassModel) {
-					HardCodedClassModel hc = (HardCodedClassModel)model;
+				if (model instanceof CustomizedClassModel) {
+					CustomizedClassModel hc = (CustomizedClassModel)model;
 
-					TypeParameters hcTypes = hc.getTypeParamDescs();
+					TypeParameters hcTypes = hc.getTypeParams();
 					List<String> targetTypes = targetSig.getTypeParameters();
 
 					if (hcTypes.size() == targetTypes.size()) {
@@ -616,11 +618,9 @@ public abstract class KernelWriter extends BlockWriter {
 	}
 
 	@Override public void write(Entrypoint _entryPoint,
-	                            Collection<ScalaParameter> params) throws CodeGenException {
-		String thisArgs = "";
-		String thisArgsWithType = "";
-		final List<String> argLines = new ArrayList<String>();
-		final List<String> assigns = new ArrayList<String>();
+	                            Collection<JParameter> params) throws CodeGenException {
+		String refArgsCall = "";
+		String refArgsDef = "";
 
 		entryPoint = _entryPoint;
 
@@ -630,72 +630,41 @@ public abstract class KernelWriter extends BlockWriter {
 			isMapPartitions = true;
 		useMerlinKernel = entryPoint.config.enableMerlinKernel;
 
-		// Add reference fields to 1) "this", 2) argument of main, 3) "this" assignment
+		// Add reference fields to argument list
 		for (final ClassModelField field : _entryPoint.getReferencedClassModelFields()) {
-			final StringBuilder argLine = new StringBuilder();
-			final StringBuilder assignLine = new StringBuilder();
-
 			String signature = field.getDescriptor();
-			ScalaParameter param = ScalaParameter.createScalaParameter(signature, field.getName(), ScalaParameter.DIRECTION.IN);
+			JParameter param = JParameter.createParameter(signature, field.getName(), JParameter.DIRECTION.IN);
+			logger.fine("Create reference JParameter: " + param.toString());
 			param.setAsReference();
-
-			// check the suffix
+			param.init(entryPoint);
+			// FIXME: Customized reference class without class model.
 
 			boolean isPointer = signature.startsWith("[");
 
-			argLine.append(param.getInputParameterString(this));
-			String paramAssignStr = param.getAssignString(this);
-			assignLine.append(paramAssignStr);
+			refArgsDef += param.getParameterCode() + ", ";
+			refArgsCall += param.getName() + ", ";
 
-			assigns.add(assignLine.toString());
-			paramAssignStr = paramAssignStr.substring(0, paramAssignStr.indexOf(" ="));
-			thisArgsWithType += paramAssignStr + ", ";
-			thisArgs += "this_" + param.getName() + ", ";
-			argLines.add(argLine.toString());
-
-			// Add int field into "this" variables for supporting java arraylength op
+			// Add int field into arguements for supporting java arraylength op
 			// named like foo__javaArrayLength
 			if (isPointer && _entryPoint.getArrayFieldArrayLengthUsed().contains(field.getName())) {
-				final StringBuilder lenArgLine = new StringBuilder();
-				final StringBuilder lenAssignLine = new StringBuilder();
+				String lenName = field.getName() + BlockWriter.arrayLengthMangleSuffix;
 
-				String suffix = "";
-				String lenName = field.getName() + BlockWriter.arrayLengthMangleSuffix + suffix;
-
-				lenAssignLine.append("int this_");
-				lenAssignLine.append(lenName);
-				lenAssignLine.append(" = ");
-				lenAssignLine.append(lenName);
-
-				lenArgLine.append("int " + lenName);
-
-				assigns.add(lenAssignLine.toString());
-				thisArgsWithType += "int this_" + lenName + ", ";
-				thisArgs += "this_" + lenName + ", ";
-				argLines.add(lenArgLine.toString());
+				refArgsDef += "int " + lenName + ", ";
+				refArgsCall += lenName + ", ";
 			}
 		}
 
 		// Remove the last ", "
-		if (thisArgs.length() > 0) {
-			thisArgsWithType = thisArgsWithType.substring(0, thisArgsWithType.length() - 2);	
-			thisArgs = thisArgs.substring(0, thisArgs.length() - 2);
+		if (refArgsCall.length() > 0) {
+			refArgsDef = refArgsDef.substring(0, refArgsDef.length() - 2);	
+			refArgsCall = refArgsCall.substring(0, refArgsCall.length() - 2);
 		}
-
-// 2/2/16: We don't use these features now.
-		// Include self mapped function libaray
-//		write("#include \"boko.h\"");
-//		newLine();
 
 		// Macros
 		write("#include <math.h>");
 		newLine();
 		write("#include <assert.h>");
 		newLine();
-		if (isMapPartitions) {
-			write("#define ITER_INC(x, inc) (((x)+=(inc))-(inc))");
-			newLine();
-		}
 		write("#define PE 16");
 		newLine();
 		write("#define MAX_PARTITION_SIZE 32767");
@@ -716,6 +685,7 @@ public abstract class KernelWriter extends BlockWriter {
 		}
 
 		// Emit structs for oop transformation accessors
+		// FIXME: Should find customized class models and call getStructCode()
 		List<String> lexicalOrdering = _entryPoint.getLexicalOrderingOfObjectClasses();
 		Set<String> emitted = new HashSet<String>();
 		for (String className : lexicalOrdering) {
@@ -729,40 +699,27 @@ public abstract class KernelWriter extends BlockWriter {
 			}
 		}
 
-/*	We now flat "this" struct
-		write("typedef struct This_s {");
-
-		in();
-		newLine();
-		for (final String line : thisStruct) {
-			write(line);
-			writeln(";");
-		}
-		out();
-		write("} This;");
-		newLine();
-*/
-		final List<MethodModel> merged = new ArrayList<MethodModel>(_entryPoint.getCalledMethods().size() +
-		    1);
+		final List<MethodModel> merged = new ArrayList<MethodModel>(_entryPoint.getCalledMethods().size() + 1);
 		merged.addAll(_entryPoint.getCalledMethods());
 		merged.add(_entryPoint.getMethodModel());
 
-/* Old code for customized class, not use now
-		for (HardCodedClassModel model : _entryPoint.getHardCodedClassModels()) {
-			for (HardCodedMethodModel method : model.getMethods()) {
-				if (!method.isGetter()) {
+		// Write customized class method declarations
+		for (CustomizedClassModel model : _entryPoint.getCustomizedClassModels()) {
+			for (CustomizedMethodModel<?> method : model.getMethods()) {
+				if (method.getMethodType() != METHODTYPE.GETTER) {
 					newLine();
-					write(method.getMethodDef(model, this));
+					write(method.getDeclareCode());
 					newLine();
 					newLine();
 				}
 			}
 		}
-*/
+
+		// Write method declaration
 		for (final MethodModel mm : merged) {
-			// write declaration :)
 			if (mm.isPrivateMemoryGetter())
 				continue;
+			logger.fine("Writing method " + mm.getName());
 
 			final String returnType = mm.getReturnType();
 			this.currentReturnType = returnType;
@@ -784,9 +741,8 @@ public abstract class KernelWriter extends BlockWriter {
 					fullReturnType = cm.getMangledClassName();
 				else {
 					String returnTypeHint = _entryPoint.getArgumentTypeHint("j2faOut");
-					// FIXME: Tuple2 <T, U> ?
 					returnTypeHint = returnTypeHint.substring(returnTypeHint.indexOf("<") + 1, returnTypeHint.indexOf(">"));
-					fullReturnType = Utils.mapPrimitiveType(returnTypeHint);
+					fullReturnType = Utils.convertToCType(returnTypeHint);
 				}
 			} else
 				fullReturnType = convertedReturnType;
@@ -794,7 +750,7 @@ public abstract class KernelWriter extends BlockWriter {
 			if (!useMerlinKernel)
 				write("static ");
 
-			isArrayTypeOutput = false;
+			isPassByAddrOutput = false;
 			processingConstructor = false;
 
 			if (mm.getSimpleName().equals("<init>")) {
@@ -802,23 +758,13 @@ public abstract class KernelWriter extends BlockWriter {
 				ClassModel owner = mm.getMethod().getClassModel();
 				write(__global + "void ");
 				processingConstructor = true;
-			} else if (returnType.startsWith("L") && !Utils.isHardCodedClass(returnType)) {
-				write(__global + fullReturnType + " ");
-			} else {
+			} else if (returnType.startsWith("[")) {
 				// Issue #40 Array type output support:
 				// Change the return type to void
-				if (returnType.startsWith("[") || Utils.isArrayBasedClass(returnType)) {
-					write("/* [Blaze CodeGen] WARNING: This method tries to return an array in Bytecode.");
-					newLine();
-					write("   This function must be called by the main function of the kernel, ");
-					newLine();
-					write("   or the kernel might not be synthesized or compiled. */");
-					newLine();
-					write("void ");
-					isArrayTypeOutput = true;
-				} else
-					write(fullReturnType);
-			}
+				write("void ");
+				isPassByAddrOutput = true;
+			} else
+				write(fullReturnType + " ");
 
 			write(mm.getName() + "(");
 
@@ -826,9 +772,10 @@ public abstract class KernelWriter extends BlockWriter {
 				if ((mm.getMethod().getClassModel() == _entryPoint.getClassModel())
 				    || mm.getMethod().getClassModel().isSuperClass(
 				      _entryPoint.getClassModel().getClassWeAreModelling()))
-					write(thisArgsWithType);
+					write(refArgsDef);
 				else {
 					// Call to an object member or superclass of member
+					// Write "this" argument. ex: Tuple2_I_D__1(Tuple2_I_D *this)
 					Iterator<ClassModel> classIter = _entryPoint.getObjectArrayFieldsClassesIterator();
 					while (classIter.hasNext()) {
 						final ClassModel c = classIter.next();
@@ -848,106 +795,64 @@ public abstract class KernelWriter extends BlockWriter {
 			boolean alreadyHasFirstArg = !mm.getMethod().isStatic();
 
 			// No reference arguments
-			if (alreadyHasFirstArg == true && thisArgsWithType.length() == 0)
+			if (alreadyHasFirstArg == true && refArgsDef.length() == 0)
 				alreadyHasFirstArg = false;
 
-			@SuppressWarnings("unchecked")
-			final Map<String, String> promoteLocalArguments = new HashMap<String, String>();
-			final Set<String> iterArguments = new HashSet<String>();
-
+			// Write arguments
 			final LocalVariableTableEntry<LocalVariableInfo> lvte = mm.getLocalVariableTableEntry();
 			for (final LocalVariableInfo lvi : lvte) {
 				if ((lvi.getStart() == 0) && ((lvi.getVariableIndex() != 0) ||
 				                              mm.getMethod().isStatic())) { // full scope but skip this
-					final String clazzDesc = lvi.getVariableDescriptor();
-					List<String> descList = new LinkedList<String>();
-					List<String> fieldList = new LinkedList<String>();
+					final String descriptor = lvi.getVariableDescriptor();
 
-					// Issue #49: Support the argument with type parameter.
-					// NOTICE: Only support "call" method with the argument has type parameter. FIXME
-					if (mm.getName().contains("call") && Utils.isHardCodedClass(clazzDesc)) {
-						for (ScalaParameter p : params) {
-						  String paramString = null;
-						  if (p.getDir() == ScalaParameter.DIRECTION.IN) {
-						    String [] descArray = p.getDescArray();
-								for (int i = 0; i < descArray.length; i += 1) {
-									String desc = descArray[i];
-									descList.add(desc);
-								}
-								Set<String> fields = Utils.getHardCodedClassMethods(clazzDesc, METHODTYPE.GETTER);
-								for (String field : fields) {
-									fieldList.add(field);
-								}
-								break;
-							}
-						}
-					}
-					else
-						descList.add(clazzDesc);
+					if (alreadyHasFirstArg)
+						write(", ");
 
-					for (int i = 0; i < descList.size(); i += 1) {
-						String descriptor = descList.get(i);
+					if (descriptor.startsWith("[") || descriptor.startsWith("L"))
+						write(" " + __global);
 
-						if (alreadyHasFirstArg)
-							write(", ");
+					final String convertedType;
+					if (descriptor.startsWith("L")) {
+						final String converted = convertType(descriptor, true).trim();
+						final SignatureEntry sigEntry = mm.getMethod().getAttributePool().getSignatureEntry();
+						final TypeSignature sig;
 
-						if (descriptor.startsWith("[") || Utils.isArrayBasedClass(clazzDesc) || 
-								descriptor.startsWith("L"))
-							write(" " + __global);
-
-						final String convertedType;
-						if (descriptor.startsWith("L")) {
-							final String converted = convertType(descriptor, true).trim();
-							final SignatureEntry sigEntry = mm.getMethod().getAttributePool().getSignatureEntry();
-							final TypeSignature sig;
-
-							if (sigEntry != null) {
-								final int argumentOffset = (mm.getMethod().isStatic() ?
-								                            lvi.getVariableIndex() : lvi.getVariableIndex() - 1);
-								final FullMethodSignature methodSig = new FullMethodSignature(
-								  sigEntry.getSignature());
-								sig =
-								  methodSig.getTypeParameters().get(argumentOffset);
-							} else
-								sig = new TypeSignature(descriptor);
-							ClassModel cm = entryPoint.getModelFromObjectArrayFieldsClasses(
-							                  converted, new SignatureMatcher(sig));
-							convertedType = cm.getMangledClassName() + "* ";
+						if (sigEntry != null) {
+							final int argumentOffset = (mm.getMethod().isStatic() ?
+							                            lvi.getVariableIndex() : lvi.getVariableIndex() - 1);
+							final FullMethodSignature methodSig = new FullMethodSignature(
+							  sigEntry.getSignature());
+							sig = methodSig.getTypeParameters().get(argumentOffset);
 						} else
-							convertedType = convertType(descriptor, true);
-						write(convertedType);
-
-						String varName = lvi.getVariableName();
-						if (fieldList.size() != 0) { // Explicit hard coded class method as variable name
-							if (Utils.isArrayBasedClass(clazzDesc))
-								write ("* ");
-							varName = varName + Utils.getDeclareHardCodedMethodString(clazzDesc, fieldList.get(i), varName);
+							sig = new TypeSignature(descriptor);
+						ClassModel cm = entryPoint.getModelFromObjectArrayFieldsClasses(
+						                  converted, new SignatureMatcher(sig));
+						if (cm == null) { // Looking for customized class models
+//							String [] typeParams = 
+//							cm = entryPoint.getCustomizedClassModels.get(converted, new CustomizedClassModelMatcher());
+							if (cm == null)
+								throw new RuntimeException("Cannot match class model: " + converted + " " + sig);
 						}
-						if (Utils.isIteratorClass(clazzDesc)) // Add iterator variable
-							iterArguments.add(varName + BlockWriter.iteratorIndexSuffix);
+						convertedType = cm.getMangledClassName() + " *";
+					} else
+						convertedType = convertType(descriptor, true);
+					write(convertedType);
 
-						// Issue #39: Replace variable name with "_" for local variable promotion
-						// 2/2/16: We now leverage Merlin Compiler to perform memory burst.
-						//if (useFPGAStyle && lvi.getVariableName().contains("j2faLocal")) {
-						//	write("_" + lvi.getVariableName());
-						//	promoteLocalArguments.put(varName, convertedType.toString());
-						//} else
-							write(varName);
+					write(lvi.getVariableName());
 
-						// Add array length argument for mapPartitions.
-						if (isMapPartitions)
-							write(", int " + lvi.getVariableName() + BlockWriter.arrayLengthMangleSuffix);
+					// Add array length argument for mapPartitions.
+					if (isMapPartitions)
+						write(", int " + lvi.getVariableName() + BlockWriter.arrayLengthMangleSuffix);
 
-						// Add item length argument for input array.
-						if (descriptor.startsWith("[") || Utils.isArrayBasedClass(clazzDesc))
-							write(", int " + lvi.getVariableName() + BlockWriter.arrayItemLengthMangleSuffix);
-						alreadyHasFirstArg = true;
-					}
+					// Add item length argument for input array.
+					if (descriptor.startsWith("["))
+						write(", int " + lvi.getVariableName() + BlockWriter.arrayItemLengthMangleSuffix);
+					alreadyHasFirstArg = true;
 				}
 			}
 
 			// Issue #40: Add output array as an argument.
-			if (isArrayTypeOutput) {
+			if (isPassByAddrOutput) {
 
 				// Find the local variable name used for the return value in Java.
 				// aload/invoke/cast	<- the 2nd instruction from the last
@@ -962,13 +867,6 @@ public abstract class KernelWriter extends BlockWriter {
 
 				final LocalVariableInfo localVariable = ((AccessLocalVariable) loadVar).getLocalVariableInfo();
 				String varName = localVariable.getVariableName();
-				// 2/2/16: We now leverage Merlin Compiler to perform memory burst.
-				//if (fullReturnType.contains("float"))
-				//	promoteLocalArguments.put(varName, "0.0f");
-				//else if (fullReturnType.contains("double"))
-				//	promoteLocalArguments.put(varName, "0.0");
-				//else
-				//	promoteLocalArguments.put(varName, "0");
 
 				// Skip return value when writing method body
 				// since we want to assign the value to the output argument directly
@@ -982,73 +880,37 @@ public abstract class KernelWriter extends BlockWriter {
 
 				// Skip local variable declaration when writing method body
 				// since we want to send this through argument
-				Instruction newArrayInst = mm.getPCHead();
-				while (newArrayInst.getNextPC() != null) {
-					if (newArrayInst instanceof I_NEWARRAY) {
+				Instruction newInst = mm.getPCHead();
+				while (newInst.getNextPC() != null) {
+					if (newInst instanceof I_NEWARRAY || newInst instanceof I_NEW) {
 						// Get variable name from astore (parent instruction)
-						Instruction parent = newArrayInst.getParentExpr();
+						Instruction parent = newInst.getParentExpr();
 						if (parent instanceof LocalVariableTableIndexAccessor) {
 							LocalVariableTableIndexAccessor var = (LocalVariableTableIndexAccessor) parent;
 							if (var.getLocalVariableInfo().getVariableName().equals(varName)) {
-								newArrayInst.setByteCode(ByteCode.NONE);
+								newInst.setByteCode(ByteCode.NONE);
 								parent.setByteCode(ByteCode.NONE);
 								break; 
 							}
 						}
 					}
-					newArrayInst = newArrayInst.getNextPC();
+					newInst = newInst.getNextPC();
 				}
-				if (newArrayInst == null)
-					System.err.println("WARNING: Cannot find local variable declaration for array type output.");
+				if (newInst == null)
+					System.err.println("WARNING: Cannot find local variable declaration for the pointer output.");
 
-				write(", " + __global + fullReturnType);
-				if (Utils.isArrayBasedClass(returnType))
-					write("* ");
-				write(varName);
+				write(", " + __global + fullReturnType + varName);
 				write(", int " + varName + BlockWriter.arrayItemLengthMangleSuffix);
 			}
 
 			write(")");
 			newLine();
-
-			write("{");
-			newLine();
-
-			// Write iterator variables
-			in();
-			for (String arg : iterArguments) {
-				write("int " + arg + " = 0;");
-				newLine();
-			}
-			out();
-/*
-			// 2/2/16: We now leverage Merlin Compiler to perform memory burst.
-			if (useFPGAStyle) {
-				// Issue #37: Local variable promotion for input arguments
-				// Issue #40: Inialize array type output
-				for (final String varName: promoteLocalArguments.keySet()) {
-					in();
-					newLine();
-					if (!writeLocalArrayAssign(null, varName, promoteLocalArguments.get(varName))) {
-						if (promoteLocalArguments.get(varName).equals("0"))
-							write("// [Blaze CodeGen] Cannot initial argument " + varName);
-						else
-							write(promoteLocalArguments.get(varName) + varName + " = _" + varName + ";");
-					}
-					out();
-					newLine();
-				}
-			}
-*/
 			writeMethodBody(mm);
-			newLine();
-
-			write("}");
 			newLine();
 		}
 
 		// Start writing main function
-		ScalaParameter outParam = null;
+		JParameter outParam = null;
 		write("__kernel ");
 		newLine();
 		write("void run(");
@@ -1058,7 +920,7 @@ public abstract class KernelWriter extends BlockWriter {
 
 		// Main method argunments: (dataNum, input, output, reference)
 		boolean first = true;
-		for (ScalaParameter p : params) {
+		for (JParameter p : params) {
 			if (first) {
 				first = false;
 				write("int N");
@@ -1067,19 +929,14 @@ public abstract class KernelWriter extends BlockWriter {
 			newLine();
 
 			// Write arguments and find output parameter
-			String paramString = null;
-			if (p.getDir() == ScalaParameter.DIRECTION.OUT) {
+			String paramCode = null;
+			if (p.getDir() == JParameter.DIRECTION.OUT) {
 				assert(outParam == null); // Expect only one output parameter.
 				outParam = p;
-				paramString = p.getOutputParameterString(this);
-			} else
-				paramString = p.getInputParameterString(this);
+			}
+			paramCode = p.getParameterCode();
 
-			// I/O must be an array for kernel.run
-// FIXME: Should be set in ScalaParameter
-//			if (!p.isArray())
-//				paramString = __global + paramString.replace(" ", " * ");
-			write(paramString);
+			write(paramCode);
 
 			// Add length and item number for 1-D array I/O.
 			if (p.isArray()) {
@@ -1093,9 +950,10 @@ public abstract class KernelWriter extends BlockWriter {
 			throw new RuntimeException("MapParitions can only be adopted by FPGA kernel.");
 
 		// Write reference data
-		for (final String line : argLines) {
+		if (refArgsDef.length() > 0) {
 			write(", ");
-			write(line);
+			newLine();
+			write(refArgsDef);
 		}
 
 		write(") {");
@@ -1107,11 +965,6 @@ public abstract class KernelWriter extends BlockWriter {
 		if (!useFPGAStyle) {
 			writeln("int nthreads = get_global_size(0);");
 			writeln("int idx = get_global_id(0);");
-		}
-
-		for (final String line : assigns) {
-			write(line);
-			writeln(";");
 		}
 
 		String aryIdxStr = "idx";
@@ -1136,93 +989,43 @@ public abstract class KernelWriter extends BlockWriter {
 
 		// Call the kernel function.
 		first = true;
-		if (!outParam.isArray() && !isMapPartitions) // Issue #40: We don't use return value for array type
+
+		// Issue #40: We don't use return value for pointer type
+		if (!outParam.isArray() && !isMapPartitions) 
 			write(outParam.getName() + "[" + aryIdxStr + "] = ");
 		write(_entryPoint.getMethodModel().getName() + "(");
-		write(thisArgs);
-		if (thisArgs.length() > 0)
+		write(refArgsCall);
+		if (refArgsCall.length() > 0)
 			first = false;
 
-		for (ScalaParameter p : params) {
-			if (p.getDir() == ScalaParameter.DIRECTION.IN) {
+		for (JParameter p : params) {
+			if (p.getDir() == JParameter.DIRECTION.IN) {
+				if (!first)	
+					write(", ");
 				if (p.isArray()) { // Deserialized access
 					if (!isMapPartitions) {
-						if (p.isPrimitive()) { // Primitive type
-							if (!first)	write(", ");
-							write("&" + p.getName() + "[" + aryIdxStr + " * " + p.getName() + 
-									BlockWriter.arrayItemLengthMangleSuffix + "]");
-						}
-						else if (Utils.isHardCodedClass(p.getClassName())) { 
-							Set<String> fields = Utils.getHardCodedClassMethods(p.getClassName(), METHODTYPE.GETTER);
-							for (String field : fields) {
-								if (!first) write(", ");
-								else first = false;
-								write("&" + p.getName() + Utils.getDeclareHardCodedMethodString(p.getClassName(), 
-										field, p.getName()) + "[" + aryIdxStr + " * " + p.getName() + 
-										BlockWriter.arrayItemLengthMangleSuffix + "]");
-							}
-						}
-						else // Object array is not allowed.
-							throw new RuntimeException();
+						write("&" + p.getName() + "[" + aryIdxStr + " * " + p.getName() + 
+								BlockWriter.arrayItemLengthMangleSuffix + "]");
 					}
-					else { // MapPartitions
-						Set<String> fields = Utils.getHardCodedClassMethods(p.getClassName(), METHODTYPE.GETTER);
-						for (String field : fields) {
-							if (!first)	write(", ");
-							else first = false;
-							write(p.getName() + Utils.getDeclareHardCodedMethodString(p.getClassName(), 
-							field, p.getName()));
-						}
-						if (!first) write(", ");
-						write("N"); // Data length is necessary for mapPartitions
-					}
-					if (!first) write(", ");
-					write(p.getName() + BlockWriter.arrayItemLengthMangleSuffix);
+					else // MapPartitions
+						write(p.getName() + ", N");
+					write(", " + p.getName() + BlockWriter.arrayItemLengthMangleSuffix);
 				}
 				else { // One-by-one access
-					if (p.isPrimitive()) { // Primitive type
-						if (!first) write(", ");
-						write(p.getName() + "[" + aryIdxStr + "]");
-					}
-					else if (Utils.isHardCodedClass(p.getClassName())) {
-logger.fine("Hardcoded arg");
-						Set<String> fields = Utils.getHardCodedClassMethods(p.getClassName(), METHODTYPE.GETTER);
-						for (String field : fields) {
-							if (!first) write(", ");
-							else first = false;
-							write(p.getName() + 
-								Utils.getDeclareHardCodedMethodString(p.getClassName(), field, p.getName()) + "[" + aryIdxStr + "]");
-						}
-					}
-					else { // User defined class
-						if (!first) write(", ");
-						write("&" + p.getName() + "[" + aryIdxStr + "]");
-					}
+					if (!p.isPrimitive())
+						write("&");
+					write(p.getName() + "[" + aryIdxStr + "]");
 				}
 				first = false;
 			}
 		}
 
-		if (isArrayTypeOutput) { // Issue #40: Add another argument for output array.
-			if (outParam.isPrimitive() || outParam.isCustomized())
-				write(", &" + outParam.getName() + "[" + aryIdxStr + " * " + outParam.getName() + 
+		if (isPassByAddrOutput) { // Issue #40: Add another argument for output array.
+			if (!isMapPartitions)
+				write(", &" + outParam.getName() + "[" + aryIdxStr + " *" + outParam.getName() + 
 					BlockWriter.arrayItemLengthMangleSuffix + "]");
-			else if (Utils.isHardCodedClass(outParam.getClassName())) {
-				Set<String> fields = Utils.getHardCodedClassMethods(outParam.getClassName(), METHODTYPE.GETTER);
-				if (!isMapPartitions) {
-					for (String field : fields) {
-						write(", &" + outParam.getName() + 
-							Utils.getDeclareHardCodedMethodString(outParam.getClassName(), field, outParam.getName()) + 
-							"[" + aryIdxStr + " * " + outParam.getName() + BlockWriter.arrayItemLengthMangleSuffix + "]");
-					}
-				}
-				else {
-					for (String field : fields) {
-						write(", " + outParam.getName() + 
-							Utils.getDeclareHardCodedMethodString(outParam.getClassName(), field, outParam.getName()));
-					}
-				}
-			}
+			else
+				write(", " + outParam.getName());
 			write(", " + outParam.getName() + BlockWriter.arrayItemLengthMangleSuffix);
 		}
 
@@ -1306,7 +1109,7 @@ logger.fine("Hardcoded arg");
 	}
 
 	public static WriterAndKernel writeToString(Entrypoint _entrypoint,
-	    Collection<ScalaParameter> params) throws CodeGenException, AparapiException {
+	    Collection<JParameter> params) throws CodeGenException, AparapiException {
 
 		final StringBuilder openCLStringBuilder = new StringBuilder();
 		final KernelWriter openCLWriter = new KernelWriter() {

@@ -2,7 +2,7 @@ package com.amd.aparapi.internal.model;
 
 import java.util.*;
 
-import com.amd.aparapi.internal.instruction.InstructionSet.TypeSpec; // FIXME: How to use?
+import com.amd.aparapi.internal.instruction.InstructionSet.TypeSpec;
 import com.amd.aparapi.internal.exception.AparapiException;
 
 public abstract class CustomizedClassModel extends ClassModel {
@@ -10,6 +10,7 @@ public abstract class CustomizedClassModel extends ClassModel {
 	private final ArrayList<CustomizedMethodModel<?>> methods;
 	private final ArrayList<CustomizedFieldModel> fields;
 	private final TypeParameters typeParams;
+	private final HashMap<String, Integer> method2Param;
 
 	public CustomizedClassModel(String clazzName, TypeParameters typeParams) {
 		this.className = clazzName;
@@ -19,12 +20,17 @@ public abstract class CustomizedClassModel extends ClassModel {
 			this.typeParams = new TypeParameters();
 		this.methods = new ArrayList<CustomizedMethodModel<?>>();
 		this.fields = new ArrayList<CustomizedFieldModel>();
+		this.method2Param = new HashMap<String, Integer>();
 	}
 
 	// Class related
 
 	public String getClassName() {
 		return className;
+	}
+
+	public String getDescriptor() {
+		return className + typeParams.toString();
 	}
 
 	private boolean isSubclassOf(String target, String superclass) {
@@ -44,7 +50,10 @@ public abstract class CustomizedClassModel extends ClassModel {
 
 	@Override
 	public String getMangledClassName() {
-		return className.replace('.', '_');
+		String name = className.replace('.', '_');
+		for (String s : typeParams.list())
+			name += "_" + s;
+		return name;
 	}
 
 	// Field related
@@ -59,6 +68,10 @@ public abstract class CustomizedClassModel extends ClassModel {
 		    return field;
 		}
 		return null;		
+	}
+
+	public List<CustomizedFieldModel> getFieldModels() {
+		return fields;
 	}
 
 	@Override
@@ -84,6 +97,11 @@ public abstract class CustomizedClassModel extends ClassModel {
 
 	public void addMethod(CustomizedMethodModel<?> method) {
 		methods.add(method);
+	}
+
+	public void addMethod(CustomizedMethodModel<?> method, int paramMapping) {
+		methods.add(method);
+		method2Param.put(method.getName(), new Integer(paramMapping));
 	}
 
 	public ArrayList<CustomizedMethodModel<?>> getMethods() {
@@ -119,19 +137,31 @@ public abstract class CustomizedClassModel extends ClassModel {
 		return null;
 	}
 
-	// FIXME: To be renamed in ClassModel
 	@Override
-	public MethodModel checkForHardCodedMethods(String name, String desc)
+	public MethodModel checkForCustomizedMethods(String name, String desc)
 	throws AparapiException {
 		return getMethodModel(name, desc);
 	}
 
-	public String getMethodDeclareCode(String varName, String methodName) {
+	public String getMethodDeclareCode(String methodName) {
 		CustomizedMethodModel<?> method = getCustomizedMethod(methodName);
 		if (method != null)
-			return method.getDeclareCode(varName);
+			return method.getDeclareCode();
 		else
 			return null;
+	}
+
+	public String getMethod2ParamMapping() {
+		boolean first = true;
+		String s = "<";
+		for (String method : method2Param.keySet()) {
+			if (!first)
+				s += ",";
+			s += method2Param.get(method);
+			first = false;
+		}
+		s += ">";
+		return s;
 	}
 
 	// Type parameter related
@@ -163,6 +193,10 @@ public abstract class CustomizedClassModel extends ClassModel {
 
 		public int size() {
 			return typeParams.size();
+		}
+
+		public List<String> list() {
+			return typeParams;
 		}
 
 		@Override
@@ -204,10 +238,10 @@ public abstract class CustomizedClassModel extends ClassModel {
 		@Override
 		public String toString() {
 			StringBuilder sb = new StringBuilder();
-			sb.append("[ ");
+			sb.append("<");
 			for (String p : typeParams)
-				sb.append(p + " ");
-			sb.append("]");
+				sb.append(p + ",");
+			sb.append(">");
 			return sb.toString();
 		}
 	}

@@ -46,8 +46,8 @@ import com.amd.aparapi.internal.model.ClassModel.AttributePool.*;
 import com.amd.aparapi.internal.model.ClassModel.ConstantPool.*;
 import com.amd.aparapi.internal.reader.*;
 
-import com.amd.aparapi.internal.writer.ScalaParameter;
-import com.amd.aparapi.internal.model.HardCodedClassModels.ShouldNotCallMatcher;
+import com.amd.aparapi.internal.writer.JParameter;
+import com.amd.aparapi.internal.model.CustomizedClassModels.CustomizedClassModelMatcher;
 
 import java.io.*;
 import java.lang.reflect.*;
@@ -88,7 +88,7 @@ public class LoadedClassModel extends ClassModel {
 	}
 
 	@Override
-	public MethodModel checkForHardCodedMethods(String name, String desc) throws AparapiException {
+	public MethodModel checkForCustomizedMethods(String name, String desc) throws AparapiException {
 		return null;
 	}
 
@@ -120,7 +120,7 @@ public class LoadedClassModel extends ClassModel {
 		// not occur in normal use
 		if ((mySuper != null) && (!mySuper.getName().equals(Kernel.class.getName()))
 		    && (!mySuper.getName().equals("java.lang.Object")))
-			superClazz = ClassModel.createClassModel(mySuper, null, new ShouldNotCallMatcher());
+			superClazz = ClassModel.createClassModel(mySuper, null, new CustomizedClassModelMatcher(null));
 	}
 
 	LoadedClassModel(InputStream _inputStream) throws ClassParseException {

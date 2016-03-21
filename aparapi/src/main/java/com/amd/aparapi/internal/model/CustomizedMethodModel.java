@@ -49,7 +49,7 @@ public abstract class CustomizedMethodModel<T extends CustomizedClassModel>
 		return null;
 	}
 
-	public String getDeclareCode(String varName) {
+	public String getDeclareCode() {
 		StringBuilder sb = new StringBuilder();
 		String returnType = getReturnType(clazzModel);
 		if (returnType.contains("[]"))
@@ -69,5 +69,6 @@ public abstract class CustomizedMethodModel<T extends CustomizedClassModel>
 	public abstract ArrayList<String> getArgs(T clazzModel);
 
 	public abstract String getBody(T clazzModel);
+
 }
 

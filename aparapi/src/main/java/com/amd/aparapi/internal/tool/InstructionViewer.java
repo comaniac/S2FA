@@ -57,10 +57,10 @@ import com.amd.aparapi.internal.instruction.InstructionSet.CompositeInstruction;
 import com.amd.aparapi.internal.model.ClassModel;
 import com.amd.aparapi.internal.model.Entrypoint;
 import com.amd.aparapi.internal.model.MethodModel;
+import com.amd.aparapi.internal.model.CustomizedClassModels.CustomizedClassModelMatcher;
 import com.amd.aparapi.internal.tool.InstructionViewer.Form.Check;
 import com.amd.aparapi.internal.tool.InstructionViewer.Form.Template;
 import com.amd.aparapi.internal.tool.InstructionViewer.Form.Toggle;
-import com.amd.aparapi.internal.model.HardCodedClassModels.ShouldNotCallMatcher;
 
 public class InstructionViewer implements Config.InstructionListener {
 
@@ -639,7 +639,7 @@ public class InstructionViewer implements Config.InstructionListener {
 
 		try {
 			classModel = ClassModel.createClassModel(Class.forName(_name), null,
-			             new ShouldNotCallMatcher());
+			             new CustomizedClassModelMatcher(null));
 		} catch (final ClassParseException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();

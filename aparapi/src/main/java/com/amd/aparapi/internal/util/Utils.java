@@ -4,25 +4,15 @@ import java.util.*;
 import com.amd.aparapi.internal.model.MethodModel.METHODTYPE;
 import com.amd.aparapi.internal.model.*;
 import com.amd.aparapi.internal.writer.*;
-import com.amd.aparapi.internal.writer.ScalaParameter.DIRECTION;
+import com.amd.aparapi.internal.writer.JParameter.DIRECTION;
 
 /**
  * This utility class encapsulates the necessary actions required when processing and generating the kernel.
  */
 public class Utils {
 
-	static private final Map<String, HardCodedClassModel> hardCodedClasses = 
-		new HashMap<String, HardCodedClassModel>(); 
-
-	static {
-		hardCodedClasses.put("scala/Tuple2", new Tuple2ClassModel());
-		hardCodedClasses.put("org/apache/spark/blaze/BlazeBroadcast", new BlazeBroadcastClassModel());
-		hardCodedClasses.put("scala/collection/Iterator", new IteratorClassModel());
-		hardCodedClasses.put("scala/collection/mutable/ArrayOps", new ArrayOpsClassModel());
-	}
-
 	public static String cleanClassName(String clazz) {
-		String tname = clazz.replace('.', '/').replace(";", "").replace(" ", "");
+		String tname = clazz.replace(".", "/").replace(";", "").trim();
 		if (tname.contains("$")) // Get rid of inner class names
 			tname = tname.substring(0, tname.indexOf("$"));
 		if (tname.startsWith("L"))
@@ -30,39 +20,19 @@ public class Utils {
 		return tname;
 	}
 
-	public static String cleanMethodName(String clazz, String methodName) {
-		String clazzName = cleanClassName(clazz);
-		if(!hardCodedClasses.containsKey(clazzName))
-			return null;
-		else
-			return hardCodedClasses.get(clazzName).getPureMethodName(methodName);
-	}
+	public static boolean isPrimitive(String _type) {
+		String type = _type.replace("[", "").trim();
 
-	public static boolean isArrayBasedClass(String clazz) {
-		String pClazzName = cleanClassName(clazz);
-		if (hardCodedClasses.containsKey(pClazzName))
-			return hardCodedClasses.get(pClazzName).isArrayBased();
-		else
-			return false;
-	}
-
-	public static boolean isIteratorClass(String clazz) {
-		String pClazzName = cleanClassName(clazz);
-		if (hardCodedClasses.containsKey(pClazzName))
-			return (hardCodedClasses.get(pClazzName) instanceof IteratorClassModel);
-		else
-			return false;
-	}
-
-	public static boolean isPrimitive(String type) {
 		if (type.startsWith("I") || type.startsWith("F") || 
-				type.startsWith("D") ||type.startsWith("J"))
+				type.startsWith("D") || type.startsWith("J") || 
+				type.startsWith("B") || type.startsWith("C") ||
+				type.startsWith("S") || type.startsWith("Z"))
 			return true;
 		else
 			return false;
 	}
 
-	public static String mapPrimitiveType(String type) {
+	public static String convertToCType(String type) {
 		String newType = "";
 
 		if (type.startsWith("[")) {
@@ -70,21 +40,26 @@ public class Utils {
 			type = type.substring(1);
 		}
 
-		if (type.equals("I"))
-			newType = newType + "int ";
+		if (type.equals("I") || type.equals("Z"))
+			newType += "int";
 		else if (type.equals("F"))
-			newType = newType + "float ";
+			newType += "float";
 		else if (type.equals("D"))
-			newType = newType + "double ";
+			newType += "double";
 		else if (type.equals("J"))
-			newType = newType + "long ";
+			newType += "long";
+		else if (type.equals("S"))
+			newType += "short";
+		else if (type.equals("C") || type.equals("B"))
+			newType += "char";
+		else if (type.startsWith("L"))
+			newType += type.substring(1).replace("/", "_").replace(";", "");
 		else
-			newType = newType + type;
-
+			newType += type.replace("/", "_").replace(";", "");
 		return newType;
 	}
 
-	public static String mapShortType(String type) {
+	public static String convertToBytecodeType(String type) {
 		String newType = "";
 
 		if (type.contains("[]")) {
@@ -93,125 +68,23 @@ public class Utils {
 		}
 
 		if (type.equals("int"))
-			newType = newType + "I";
+			newType += "I";
 		else if (type.equals("float"))
-			newType = newType + "F";
+			newType += "F";
 		else if (type.equals("double"))
-			newType = newType + "D";
+			newType += "D";
 		else if (type.equals("long"))
-			newType = newType + "J";
+			newType += "J";
+		else if (type.equals("short"))
+			newType += "S";
+		else if (type.equals("char"))
+			newType += "C";
+		else if (type.equals("boolean"))
+			newType += "Z";
+		else if (type.equals("byte"))
+			newType += "B";
 		else
-			newType = newType + type;
-
+			newType += type;
 		return newType;
-	}
-
-
-	public static boolean isHardCodedClass(String name) {
-		// TODO: DenseVector, etc
-		String tname = cleanClassName(name);
-		if(hardCodedClasses.containsKey(tname))
-			return true;
-		else
-			return false;
-	}
-
-	public static Set<String> getHardCodedClassMethods(String clazz, METHODTYPE methodType) {
-		String tname = cleanClassName(clazz);
-		if (hardCodedClasses.containsKey(tname))
-			return (hardCodedClasses.get(tname).getMethodNames(methodType));
-		else
-			return null;
-	}
-
-	public static METHODTYPE getHardCodedClassMethodUsage(String clazz, String methodName) {
-		String tname = cleanClassName(clazz);
-		if (hardCodedClasses.containsKey(tname)) {
-			return hardCodedClasses.get(tname).getMethodType(methodName);
-		}
-		else
-			return METHODTYPE.OTHERS;
-	}
-
-	public static String getAccessHardCodedMethodString(String clazz, String methodName, String varName) {
-		String pClazzName = cleanClassName(clazz);
-		String pMethodName = cleanMethodName(pClazzName, methodName);
-
-		if (hardCodedClasses.containsKey(pClazzName)) {
-			if (hardCodedClasses.get(pClazzName).hasMethod(pMethodName)) {
-				return hardCodedClasses
-								.get(pClazzName)
-								.getMethodAccessString(varName, pMethodName);
-			}
-			else
-				throw new RuntimeException("Class " + pClazzName + " has no method " + pMethodName);
-		}
-		else
-			throw new RuntimeException("No hard coded class " + pClazzName);
-	}
-
-	public static String getDeclareHardCodedMethodString(String clazz, String methodName, String varName) {
-		String pClazzName = cleanClassName(clazz);
-		String pMethodName = cleanMethodName(pClazzName, methodName);
-
-		if (hardCodedClasses.containsKey(pClazzName)) {
-			if (hardCodedClasses.get(pClazzName).hasMethod(pMethodName)) {
-				return hardCodedClasses
-								.get(pClazzName)
-								.getMethodDeclareString(varName, pMethodName);
-			}
-			else
-				throw new RuntimeException("Class " + pClazzName + " has no method " + pMethodName);
-		}
-		else
-			throw new RuntimeException("No hard coded class " + pClazzName);
-	}
-
-	public static String getHardCodedClassMethod(String clazz, int idx) {
-		String tname = cleanClassName(clazz);
-		if (hardCodedClasses.containsKey(tname)) {
-			return hardCodedClasses.get(tname).getMethodNameByIdx(idx);
-		}
-		else
-			return null;
-	}
-
-	public static int getHardCodedClassMethodNum(String clazz) {
-		String tname = cleanClassName(clazz);
-		if (hardCodedClasses.containsKey(tname))
-			return (hardCodedClasses.get(tname).getMethodNum());
-		return 0;
-	}
-
-	public static boolean hasMethod(String clazz, String methodName) {
-		String pClazzName = cleanClassName(clazz);
-		if(!hardCodedClasses.containsKey(pClazzName))
-			return false;
-		else {
-			String pMethodName = cleanMethodName(pClazzName, methodName);
-			return hardCodedClasses.get(pClazzName).hasMethod(methodName);
-		}
-	}
-
-	public static String addHardCodedFieldTypeMapping(String clazz) {
-		String pClazzName = cleanClassName(clazz);
-		if(!hardCodedClasses.containsKey(pClazzName))
-			return pClazzName;
-		else {
-			boolean first = true;
-			HardCodedClassModel modeledClazz = hardCodedClasses.get(pClazzName);
-			pClazzName += "<";
-			Map<String, HardCodedMethodModel> modeledClazzMethods = modeledClazz.getMethods();
-			for (Map.Entry<String, HardCodedMethodModel> method: modeledClazzMethods.entrySet()) {
-				if (method.getValue().getMethodType() == METHODTYPE.GETTER) {
-					if (!first)
-						pClazzName += ",";
-					pClazzName += method.getKey();
-					first = false;
-				}
-			}
-			pClazzName += ">";
-			return pClazzName;
-		}
 	}
 }

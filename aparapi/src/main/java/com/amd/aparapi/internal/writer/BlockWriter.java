@@ -110,7 +110,7 @@ public abstract class BlockWriter {
 	public void newLine() {
 		write("\n");
 		for (int i = 0; i < indent; i++)
-			write("   ");
+			write("  ");
 	}
 
 	public void writeConditionalBranch16(ConditionalBranch16 _branch16,
@@ -488,76 +488,20 @@ public abstract class BlockWriter {
 				final String descriptor = localVariableInfo.getVariableDescriptor();
 
 				String localType = convertType(descriptor, true);
-				if (Utils.isHardCodedClass(localType)) { // Assign to a hardcoded class type variable
-					Set<String> accessMethods = Utils.getHardCodedClassMethods(localType, METHODTYPE.GETTER);
+				if (descriptor.startsWith("L"))
+					localType = localType.replace('.', '_');
 
-					// Match pattern: aload/getfield -> invokevirtual -> checkcast -> astore
-					if (!(_instruction.getFirstChild() instanceof I_CHECKCAST))
-						throw new CodeGenException(
-							"Expecting checkcast after hard coded class type local variable assign, but found "
-							 + _instruction.getFirstChild()
-						);
+				if (descriptor.startsWith("[") || descriptor.startsWith("L"))
+					write(" __global ");
+				write(localType);
 
-					// Expect aload/getfield to get the variable at RHS
-					Instruction loadInst = _instruction.getFirstChild();
-					while (loadInst != null && 
-								!(loadInst instanceof AccessLocalVariable) && 
-								!(loadInst instanceof AccessField)) {
-						loadInst = loadInst.getFirstChild();
-					}
-					String assignName = null;
+				if (descriptor.startsWith("L"))
+					write("*");
 
-					boolean isReference = false;
-					if (loadInst instanceof AccessLocalVariable) {
-						assignName = ((AccessLocalVariable) loadInst)
-									.getLocalVariableInfo()
-									.getVariableName();
-					}
-					else {
-						isReference = true;
-						assignName = ((AccessField) loadInst)
-									.getConstantPoolFieldEntry()
-									.getNameAndTypeEntry()
-									.getNameUTF8Entry().getUTF8();
-					}
-
-					// Get exact type name instead of hardcoded class type name and write
-					localType = entryPoint.getReferencedFieldTypeHint(assignName);
-					localType = localType.substring(localType.indexOf('<') + 1, localType.indexOf('>'));
-					for (String m : accessMethods) {
-						String type = null;
-						if (localType.indexOf(',') != -1)
-							type = localType.substring(0, localType.indexOf(','));
-						else
-							type = localType;
-
-						if (type.startsWith("["))
-							write("__global ");
-
-						write(Utils.mapPrimitiveType(type) + " " + varName + m + " = ");
-						if (isReference)
-							write("this_");
-						write(assignName + m + ";");
-						newLine();
-						localType = localType.substring(localType.indexOf(',') + 1);
-					}
-				}
-				else { // Primitive or non-modeled generic type
-					if (descriptor.startsWith("L"))
-						localType = localType.replace('.', '_');
-
-					if (descriptor.startsWith("[") || descriptor.startsWith("L"))
-						write(" __global ");
-					write(localType);
-
-					if (descriptor.startsWith("L"))
-						write("*"); // All local assigns to object-typed variables should be a constructor
-
-					write(varName + " = ");
-					for (Instruction operand = _instruction.getFirstChild(); operand != null;
-					     operand = operand.getNextExpr())
-						writeInstruction(operand);
-				}
+				write(varName + " = ");
+				for (Instruction operand = _instruction.getFirstChild(); operand != null;
+				     operand = operand.getNextExpr())
+					writeInstruction(operand);
 			}
 			else {
 				write(varName + " = ");
@@ -610,7 +554,7 @@ public abstract class BlockWriter {
 				                                     load).getConstantPoolFieldEntry().getNameAndTypeEntry();
 				if (isMultiDimensionalArray(nameAndTypeEntry)) {
 					String arrayName = nameAndTypeEntry.getNameUTF8Entry().getUTF8();
-					write(" * this_" + arrayName + arrayDimMangleSuffix + dim);
+					write(" * " + arrayName + arrayDimMangleSuffix + dim);
 				}
 			}
 
@@ -634,7 +578,6 @@ public abstract class BlockWriter {
 					// Customized object always pass by value and access by pointer
 					if (type.startsWith("L"))
 						write("&");
-					write("this_");
 				}
 			}
 			write(accessField.getConstantPoolFieldEntry().getNameAndTypeEntry().getNameUTF8Entry().getUTF8());
@@ -657,7 +600,7 @@ public abstract class BlockWriter {
 			                                     load).getConstantPoolFieldEntry().getNameAndTypeEntry();
 			final String arrayName = nameAndTypeEntry.getNameUTF8Entry().getUTF8();
 			String dimSuffix = isMultiDimensionalArray(nameAndTypeEntry) ? Integer.toString(dim) : "";
-			write("this_" + arrayName + arrayLengthMangleSuffix + dimSuffix);
+			write(arrayName + arrayLengthMangleSuffix + dimSuffix);
 		} else if (_instruction instanceof AssignToField) {
 //					write("/* assign to field */");
 			final AssignToField assignedField = (AssignToField) _instruction;
@@ -784,22 +727,16 @@ public abstract class BlockWriter {
 			final MethodEntry methodEntry = methodCall.getConstantPoolMethodEntry();
 			final String clazzName = methodEntry.toString().substring(0, methodEntry.toString().indexOf("."));
 
-			// Issue #34: Ignore modeled method. This should be an argument.
-			if (!Utils.isHardCodedClass(clazzName))
-				writeCheck = writeMethod(methodCall, methodEntry);
-			else
-				writeHardCodedMethod(_instruction, methodEntry.toString());
+			writeCheck = writeMethod(methodCall, methodEntry);
 		} else if (_instruction instanceof I_INVOKEINTERFACE) {
+			// TODO: Method dispatcher
 			final I_INVOKEINTERFACE interfaceMethodCall = (I_INVOKEINTERFACE) _instruction;
 			final InterfaceMethodEntry methodEntry = interfaceMethodCall.getConstantPoolInterfaceMethodEntry();
 			final String clazzName = methodEntry.getClassEntry().getNameUTF8Entry().getUTF8();
 			final String methodName = methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
 			final String fullName = clazzName + "." + methodName + "()";
 			
-			if (!Utils.isHardCodedClass(clazzName))
-				writeMethod(interfaceMethodCall, methodEntry);
-			else
-				writeHardCodedMethod(_instruction, fullName);
+			writeMethod(interfaceMethodCall, methodEntry);
 		} else if (_instruction.getByteCode().equals(ByteCode.CLONE)) {
 //					write("/* clone */");
 			final CloneInstruction cloneInstruction = (CloneInstruction) _instruction;
@@ -962,121 +899,6 @@ public abstract class BlockWriter {
 		return (AccessInstanceField) load;
 	}
 
-	public boolean writeLocalArrayAssign(Instruction _instruction, String varName,
-	                                     String type) throws CodeGenException {
-		String maxLength = null;
-		boolean isBrdcstVariable = true;
-		Instruction child = null;
-		MethodCall methodCall = null;
-		MethodEntry methodEntry = null;
-
-		// Issue #37: When promoting input argument, we don't have the assignment instruction.
-		// Instead, we rename input argument name with a prefix "_" and assign it to the local variable.
-		if (_instruction == null)
-			isBrdcstVariable = false;
-
-		if (varName.contains("Max"))
-			maxLength = varName.substring(varName.indexOf("Max") + 3);
-		else if (varName.contains("j2faLocal"))
-			maxLength = varName.substring(varName.indexOf("j2faLocal") + 10);
-		else // Argument with unknown size
-			maxLength = varName + arrayItemLengthMangleSuffix;
-
-		if (isBrdcstVariable) {
-			child = _instruction.getFirstChild();
-			while (!(child instanceof I_INVOKEVIRTUAL))
-				child = child.getFirstChild();
-
-			if (maxLength == null || !(child instanceof I_INVOKEVIRTUAL)) {
-				System.err.print("Local variable with length " + maxLength);
-				System.err.print(" , has invalid child " + _instruction.getFirstChild().toString());
-				System.err.println(", skip promotion.");
-				return false;
-			}
-			methodCall = (MethodCall) child;
-			methodEntry = methodCall.getConstantPoolMethodEntry();
-			String clazzName = methodEntry.toString().substring(0, methodEntry.toString().indexOf("."));
-			assert (clazzName.contains("BlazeBroadcast.value"));
-		}
-
-		if (!type.contains("0")) {
-			// Remove * for local array due to static array declaration
-			type = type.replace("*", "");
-			write("__local " + type + varName);
-
-			write("[" + maxLength + "];");
-			newLine();
-		}
-
-		write("for (int localAryCpy = 0; localAryCpy < ");
-		if (isBrdcstVariable && varName.contains("Max")) {
-			writeHardCodedMethod(child, methodEntry.toString());
-			write(arrayLengthMangleSuffix);
-		} else
-			write(maxLength);
-		write("; localAryCpy++)");
-		in();
-		newLine();
-		write(varName + "[localAryCpy] = ");
-		if (type.contains("0"))
-			write(type + ";");
-		else {
-			if (isBrdcstVariable)
-				writeHardCodedMethod(child, methodEntry.toString());
-			else
-				write("_" + varName);
-			write("[localAryCpy];");
-		}
-		newLine();
-		out();
-
-		return true;
-	}
-
-	public void writeHardCodedMethod(Instruction _instruction, String fullName) throws CodeGenException {
-
-		// Issue #34: Instead of writing variable access method, we traverse its previous instruction,
-		// which should be getField/aload, to know the variable name.
-		Instruction c = _instruction.getPrevPC();
-		String clazzName = fullName.substring(0, fullName.indexOf("."));
-
-		String varName = null;
-
-		// FIXME
-		if (c instanceof I_INVOKEVIRTUAL)
-			c = c.getPrevPC();
-
-		if (c instanceof AccessField) { // Reference transformed object access. e.q. BlazeBroadcast
-			String fieldName = ((AccessField) c)
-									.getConstantPoolFieldEntry()
-									.getNameAndTypeEntry()
-									.getNameUTF8Entry().getUTF8();
-			write("this_" + fieldName);
-			varName = fieldName;
-		}
-		else if (c instanceof AccessLocalVariable) { // Argument transformed object access. e.q. Tuple2/Vector
-			final AccessLocalVariable localVariableLoadInstruction = (AccessLocalVariable) c;
-			final LocalVariableInfo localVariable = localVariableLoadInstruction.getLocalVariableInfo();
-			varName = localVariable.getVariableName();
-			write(varName);
-		}
-		else if (c instanceof MethodCall) { // Consecutive method call, TODO
-			;
-		}
-		else if (c instanceof I_CHECKCAST) { // Consecutive method call, TODO
-			;
-		}
-		else
-			throw new RuntimeException("Expecting getfield/aload for " + _instruction + ", but found " + c);
-
-		String methodName = fullName.substring(fullName.indexOf(".") + 1, fullName.indexOf("("));
-		if (methodName.contains("$")) // Special case: Scala/Tuple2._1$mcD$sp()D (why?
-			methodName = methodName.substring(0, methodName.indexOf("$"));
-		write(Utils.getAccessHardCodedMethodString(clazzName, methodName, varName));
-
-		return ;
-	}
-
 	public boolean writeMethod(I_INVOKEINTERFACE _methodCall,
 														 InterfaceMethodEntry _methodEntry) throws CodeGenException {
 		final Instruction instanceInstruction = _methodCall.getInstanceReference();
@@ -1138,5 +960,5 @@ public abstract class BlockWriter {
 	}
 
 	public abstract void write(Entrypoint entryPoint,
-	                           Collection<ScalaParameter> params) throws CodeGenException;
+	                           Collection<JParameter> params) throws CodeGenException;
 }

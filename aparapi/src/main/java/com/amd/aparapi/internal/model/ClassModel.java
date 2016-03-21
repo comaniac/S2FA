@@ -9,10 +9,10 @@ import com.amd.aparapi.internal.model.ClassModel.AttributePool.*;
 import com.amd.aparapi.internal.model.ClassModel.ConstantPool.*;
 import com.amd.aparapi.internal.reader.*;
 
-import com.amd.aparapi.internal.model.HardCodedClassModel.TypeParameters;
-import com.amd.aparapi.internal.model.HardCodedClassModel.AllFieldInfo;
-import com.amd.aparapi.internal.model.HardCodedClassModels.HardCodedClassModelMatcher;
-import com.amd.aparapi.internal.model.HardCodedClassModels.DescMatcher;
+import com.amd.aparapi.internal.model.CustomizedClassModel.TypeParameters;
+import com.amd.aparapi.internal.model.CustomizedClassModels.CustomizedClassModelMatcher;
+import com.amd.aparapi.internal.model.CustomizedFieldModel;
+
 import com.amd.aparapi.internal.writer.*;
 
 import java.io.*;
@@ -24,7 +24,7 @@ import java.net.URLClassLoader;
 
 public abstract class ClassModel {
 
-	public abstract MethodModel checkForHardCodedMethods(String name,
+	public abstract MethodModel checkForCustomizedMethods(String name,
 	    String sig) throws AparapiException;
 	public abstract MethodModel getMethodModel(String _name, String _signature)
 	throws AparapiException;
@@ -2568,18 +2568,14 @@ public abstract class ClassModel {
 	});
 
 	public static ClassModel createClassModel(Class<?> _class,
-	    Entrypoint entryPoint, HardCodedClassModelMatcher matcher)
+			Entrypoint entryPoint, CustomizedClassModelMatcher matcher)
 	throws ClassParseException {
-		HardCodedClassModel hardCoded = null;
 		if (entryPoint != null) {
-			hardCoded = entryPoint.getHardCodedClassModels().getClassModelFor(
-			              _class.getName(), matcher);
-			if (hardCoded != null) return hardCoded;
+			CustomizedClassModel model = entryPoint.getCustomizedClassModels()
+				.get(_class.getName(), matcher);
+			if (model != null)
+				return model;	
 		}
-
-		if (CacheEnabler.areCachesEnabled())
-			return classModelCache.computeIfAbsent(_class);
-
 		return new LoadedClassModel(_class);
 	}
 
@@ -2932,7 +2928,7 @@ public abstract class ClassModel {
 	});
 
 	public Entrypoint getEntrypoint(String _entrypointName, String _descriptor,
-	                                Object _k, Collection<ScalaParameter> params, 
+	                                Object _k, Collection<JParameter> params, 
 																	URLClassLoader loader) throws AparapiException {
 		final MethodModel method = getMethodModel(_entrypointName, _descriptor);
 		return new Entrypoint(this, method, _k, params, loader);
@@ -2964,13 +2960,13 @@ public abstract class ClassModel {
 		return "ClassModel of " + getClassWeAreModelling();
 	}
 
-	public static ClassModelMatcher wrap(final String className,
-	                                     final HardCodedClassModelMatcher other) {
+	public static ClassModelMatcher getMatcher(final String className,
+	                                     final CustomizedClassModelMatcher other) {
 		return new ClassModelMatcher() {
 			@Override
 			public boolean matches(ClassModel model) {
-				if (model instanceof HardCodedClassModel)
-					return other.matches((HardCodedClassModel)model);
+				if (model instanceof CustomizedClassModel)
+					return other.matches((CustomizedClassModel)model);
 				else
 					return model.getClassWeAreModelling().getName().equals(className);
 			}

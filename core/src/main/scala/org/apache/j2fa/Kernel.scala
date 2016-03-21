@@ -33,9 +33,9 @@ import com.amd.aparapi.internal.model.Entrypoint
 import com.amd.aparapi.internal.model.ClassModel
 import com.amd.aparapi.internal.writer.BlockWriter._
 import com.amd.aparapi.internal.writer._
-import com.amd.aparapi.internal.writer.ScalaParameter
-import com.amd.aparapi.internal.writer.ScalaParameter.DIRECTION
-import com.amd.aparapi.internal.model.HardCodedClassModels.ShouldNotCallMatcher
+import com.amd.aparapi.internal.writer.JParameter
+import com.amd.aparapi.internal.writer.JParameter.DIRECTION
+import com.amd.aparapi.internal.model.CustomizedClassModels.CustomizedClassModelMatcher
 import com.amd.aparapi.internal.writer.KernelWriter
 import com.amd.aparapi.internal.writer.KernelWriter.WriterAndKernel
 import com.amd.aparapi.internal.util.{Utils => AparapiUtils}
@@ -54,20 +54,21 @@ class Kernel(accClazz: Class[_], mInfo: MethodInfo, loader: URLClassLoader) {
 
     System.setProperty("com.amd.aparapi.kernelType", mInfo.getConfig("kernel_type"))
 
-    val classModel : ClassModel = ClassModel.createClassModel(accClazz, null, new ShouldNotCallMatcher())
+    val classModel : ClassModel = ClassModel.createClassModel(accClazz, null, 
+      new CustomizedClassModelMatcher(null))
 
     try {
       // Setup arguments and return values
-      val params : LinkedList[ScalaParameter] = new LinkedList[ScalaParameter]
+      val params : LinkedList[JParameter] = new LinkedList[JParameter]
       mInfo.getArgs.foreach({ arg =>
-        val param = ScalaParameter.createScalaParameter(
-            arg.getFullType, arg.getName, ScalaParameter.DIRECTION.IN)
+        val param = JParameter.createParameter(
+            arg.getFullType, arg.getName, JParameter.DIRECTION.IN)
         params.add(param)
       })
       if (mInfo.hasOutput) {
         val outArg = mInfo.getOutput
-        val param = ScalaParameter.createScalaParameter(
-            outArg.getFullType, "j2faOut", ScalaParameter.DIRECTION.OUT)
+        val param = JParameter.createParameter(
+            outArg.getFullType, "j2faOut", JParameter.DIRECTION.OUT)
         params.add(param)
       }
 
