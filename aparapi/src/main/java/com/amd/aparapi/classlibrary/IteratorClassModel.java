@@ -9,7 +9,7 @@ import com.amd.aparapi.internal.model.CustomizedFieldModel;
 public class IteratorClassModel extends CustomizedClassModel {
 
 	public IteratorClassModel() {
-		super("scala.collection.Iterator", null);
+		this(new TypeParameters(Arrays.asList("void []")));
 	}
 
 	public IteratorClassModel(TypeParameters params) {

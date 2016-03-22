@@ -9,7 +9,7 @@ import com.amd.aparapi.internal.model.CustomizedFieldModel;
 public class Tuple2ClassModel extends CustomizedClassModel {
 
 	public Tuple2ClassModel() {
-		super("scala.Tuple2", null);
+		this(new TypeParameters(Arrays.asList("void", "void")));
 	}
 
 	public Tuple2ClassModel(TypeParameters params) {
@@ -36,7 +36,7 @@ public class Tuple2ClassModel extends CustomizedClassModel {
 				return "return " + getFieldModel("v1").genAccess() + ";";
 			}
 		};
-		addMethod(get_1Method, 0);
+		addMethod(get_1Method, getFieldModel("v1"));
 
 		CustomizedMethodModel<?> get_2Method = new CustomizedMethodModel<Tuple2ClassModel>(
 			this, "_2", METHODTYPE.GETTER) {
@@ -56,7 +56,7 @@ public class Tuple2ClassModel extends CustomizedClassModel {
 				return "return " + getFieldModel("v2").genAccess() + ";";
 			}
 		};
-		addMethod(get_2Method, 1);
+		addMethod(get_2Method, getFieldModel("v2"));
 
 	}
 }

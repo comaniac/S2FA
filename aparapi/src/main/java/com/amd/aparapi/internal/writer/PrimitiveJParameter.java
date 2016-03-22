@@ -29,11 +29,6 @@ public class PrimitiveJParameter extends JParameter {
 	}
 
 	@Override
-	public String getStructCode() {
-		return null;
-	}
-
-	@Override
 	public boolean isPrimitive() {
 		return true;
 	}

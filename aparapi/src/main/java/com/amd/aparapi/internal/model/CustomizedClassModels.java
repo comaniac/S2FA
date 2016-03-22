@@ -21,12 +21,16 @@ public class CustomizedClassModels implements Iterable<CustomizedClassModel> {
 		customizedClassModels.get(model.getClassName()).add(model);
 	}
 
-	// The first instance must be a sample (without type parameters)
-	public CustomizedClassModel get(String className) {
+	public List<CustomizedClassModel> get(String className) {
+		if (customizedClassModels.containsKey(className))
+			return customizedClassModels.get(className);
+		return null;	
+	}
+
+	public CustomizedClassModel getSample(String className) {
 		if (customizedClassModels.containsKey(className)) {
 			List<CustomizedClassModel> classModels = 
-				customizedClassModels.get(className);
-
+					customizedClassModels.get(className);
 			return classModels.get(0);
 		}
 		return null;	

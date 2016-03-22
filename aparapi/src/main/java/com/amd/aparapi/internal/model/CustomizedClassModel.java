@@ -4,6 +4,7 @@ import java.util.*;
 
 import com.amd.aparapi.internal.instruction.InstructionSet.TypeSpec;
 import com.amd.aparapi.internal.exception.AparapiException;
+import com.amd.aparapi.internal.util.Utils;
 
 public abstract class CustomizedClassModel extends ClassModel {
 	private final String className;
@@ -25,6 +26,7 @@ public abstract class CustomizedClassModel extends ClassModel {
 
 	// Class related
 
+	@Override
 	public String getClassName() {
 		return className;
 	}
@@ -43,6 +45,15 @@ public abstract class CustomizedClassModel extends ClassModel {
 		return false;
 	}
 
+	public String getStructCode() {
+		StringBuilder sb = new StringBuilder();
+	  sb.append("typedef struct " + getMangledClassName() + "_s {\n");
+	  for (CustomizedFieldModel f : getFieldModels())
+	  	sb.append("  " + f.getDeclareCode() + ";\n");
+	  sb.append("} " + getMangledClassName() + ";");
+	  return sb.toString();
+	}
+
 	@Override
 	public boolean classNameMatches(String className) {
 	  return className.equals(className);
@@ -52,7 +63,7 @@ public abstract class CustomizedClassModel extends ClassModel {
 	public String getMangledClassName() {
 		String name = className.replace('.', '_');
 		for (String s : typeParams.list())
-			name += "_" + s;
+			name += "_" + Utils.convertToCType(s);
 		return name;
 	}
 
@@ -99,9 +110,10 @@ public abstract class CustomizedClassModel extends ClassModel {
 		methods.add(method);
 	}
 
-	public void addMethod(CustomizedMethodModel<?> method, int paramMapping) {
+	public void addMethod(CustomizedMethodModel<?> method, CustomizedFieldModel field) {
+		method.setGetterField(field);
 		methods.add(method);
-		method2Param.put(method.getName(), new Integer(paramMapping));
+		method2Param.put(method.getName(), new Integer(field.getOffset()));
 	}
 
 	public ArrayList<CustomizedMethodModel<?>> getMethods() {
@@ -114,7 +126,7 @@ public abstract class CustomizedClassModel extends ClassModel {
 
 	public boolean hasMethod(String methodName) {
 		if (getCustomizedMethod(methodName) != null)
-			return true;
+			return true;	
 		return false;
 	}
 
@@ -130,8 +142,11 @@ public abstract class CustomizedClassModel extends ClassModel {
 
 	// TODO: Method overloading (consider sig as well)
 	public CustomizedMethodModel<?> getCustomizedMethod(String _name) {
+		String topMethodName = _name;
+		if (topMethodName.contains("$"))
+			topMethodName = topMethodName.substring(0, topMethodName.indexOf("$"));
 		for (CustomizedMethodModel<?> method : methods) {
-			if (method.getName().equals(_name))
+			if (method.getName().equals(topMethodName))
 				return method;
 		}
 		return null;

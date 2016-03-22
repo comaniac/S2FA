@@ -1,6 +1,7 @@
 package com.amd.aparapi.internal.model;
 
 import java.util.*;
+import com.amd.aparapi.internal.util.Utils;
 import com.amd.aparapi.internal.writer.KernelWriter;
 
 public abstract class CustomizedMethodModel<T extends CustomizedClassModel> 
@@ -11,12 +12,14 @@ public abstract class CustomizedMethodModel<T extends CustomizedClassModel>
 	protected	final String returnType;
 	protected final ArrayList<String> args;
 	protected final String body;
+	protected CustomizedFieldModel getterField;
 	protected String sig;
 
 	public CustomizedMethodModel(T clazzModel, String name, METHODTYPE methodType) {
 		this.clazzModel = clazzModel;
 		this.name = name;
 		this.methodType = methodType;
+		this.getterField = null;
 
 		this.returnType = getReturnType(clazzModel);
 		this.args = getArgs(clazzModel);
@@ -46,20 +49,26 @@ public abstract class CustomizedMethodModel<T extends CustomizedClassModel>
 
 	@Override
 	public String getGetterField() {
+		if (getterField != null)
+			return getterField.getName();
 		return null;
+	}
+
+	public void setGetterField(CustomizedFieldModel field) {
+		getterField = field;
 	}
 
 	public String getDeclareCode() {
 		StringBuilder sb = new StringBuilder();
-		String returnType = getReturnType(clazzModel);
-		if (returnType.contains("[]"))
-			returnType = returnType.replace("[]", "").trim() + " *";
-		sb.append(returnType + " " + this.name + "(");
-		sb.append(clazzModel.getClassName() + " *this");
-		for (String arg : getArgs(clazzModel))
-			sb.append(", " + arg);
-		sb.append("( {\n");
-		sb.append(getBody(clazzModel));
+		String returnType = Utils.convertToCType(getReturnType(clazzModel));
+		sb.append(returnType + " " + Utils.convertToCType(this.name));
+		sb.append("(" + clazzModel.getMangledClassName() + " *this");
+		if (getArgs(clazzModel) != null) {
+			for (String arg : getArgs(clazzModel))
+				sb.append(", " + arg);
+		}
+		sb.append(") {\n");
+		sb.append("  " + getBody(clazzModel) + "\n");
 		sb.append("}\n");
 		return sb.toString();
 	}

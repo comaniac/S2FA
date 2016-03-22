@@ -36,7 +36,7 @@ public class Utils {
 		String newType = "";
 
 		if (type.startsWith("[")) {
-			newType = " * ";
+			newType = " *";
 			type = type.substring(1);
 		}
 
@@ -52,10 +52,14 @@ public class Utils {
 			newType += "short";
 		else if (type.equals("C") || type.equals("B"))
 			newType += "char";
-		else if (type.startsWith("L"))
-			newType += type.substring(1).replace("/", "_").replace(";", "");
-		else
-			newType += type.replace("/", "_").replace(";", "");
+		else {
+			if (type.startsWith("L"))
+				newType += type.substring(1);
+			else
+				newType += type;
+			newType = newType.replace(".", "_")
+				.replace("/", "_").replace(";", "");
+		}
 		return newType;
 	}
 

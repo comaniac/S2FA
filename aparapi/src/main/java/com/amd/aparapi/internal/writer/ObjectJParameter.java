@@ -26,7 +26,7 @@ public class ObjectJParameter extends JParameter {
 
 	@Override
 	public String getParameterCode() {
-		String param = getCType() + " ";
+		String param = "__global " + getCType() + " ";
 		if (isArray() || !isReference())
 			param += "*";
 		param += name;
@@ -34,20 +34,11 @@ public class ObjectJParameter extends JParameter {
 	}
 
 	@Override
-	public String getStructCode() {
-		String s = "typedef struct " + getCType() + "_s {\n";
-		for (CustomizedFieldModel f : clazzModel.getFieldModels())
-			s += "  " + f.getDeclareCode() + ";\n";
-		s += "} " + getCType() + ";";
-		return s;
-	}
-
-	@Override
 	public void init(Entrypoint ep) {
 		CustomizedClassModels models = ep.getCustomizedClassModels();
 		if (models.hasClass(getTypeName())) {
 			TypeParameters typeParams = new TypeParameters(Arrays.asList(getDescArray()));
-			Class<?> clazz = models.get(getTypeName()).getClass();
+			Class<?> clazz = models.getSample(getTypeName()).getClass();
 			logger.fine("Initializing parameter " + this.toString() + " using " + clazz.toString());
 			try {
 				if (hasTypeParameters() == true) {

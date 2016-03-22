@@ -295,16 +295,15 @@ public abstract class KernelWriter extends BlockWriter {
 		final String methodClass =
 		  _methodEntry.getClassEntry().getNameUTF8Entry().getUTF8();
 
-		// comaniac: Issue #1, the struct used for kernel argument cannot have pointer type.
-		// Since we enforced scalar type of Tuple2 struct (elimiate *), here we have to send
-		// the reference of "Tuple2 struct" with "L" to the method by adding "&()".
-
+		// A constructor method called by invokespecial
+		// i.e. Obj obj = new Obj();
 		if (methodName.equals("<init>") && !_methodEntry.toString().equals("java/lang/Object.<init>()V")) {
 			writeConstructorCall(new ConstructorCall(((Instruction)_methodCall).getMethod(),
 			                     (I_INVOKESPECIAL)_methodCall, null));
 			return false;
 		}
 
+		// A box/unbox method called produced by Scala
 		if (methodClass.equals("scala/runtime/BoxesRunTime")) {
 			final Set<String> ignorableMethods = new HashSet<String>();
 			ignorableMethods.add("boxToInteger");
@@ -323,186 +322,152 @@ public abstract class KernelWriter extends BlockWriter {
 		final String barrierAndGetterMappings =
 		  javaToCLIdentifierMap.get(methodName + methodSignature);
 
-		if (barrierAndGetterMappings != null) {
-			write("/* WARNING: method call with barrier cannot be adapted for FPGA (Issue #1). */");
-			// this is one of the OpenCL barrier or size getter methods
-			// write the mapping and exit
-			if (argc > 0) {
-				write(barrierAndGetterMappings);
-				write("(");
-				for (int arg = 0; arg < argc; arg++) {
-					if ((arg != 0))
-						write(", ");
-					writeInstruction(_methodCall.getArg(arg));
-				}
-				write(")");
-			} else
-				write(barrierAndGetterMappings);
-		} else {
-			final boolean isSpecial = _methodCall instanceof I_INVOKESPECIAL;
-			MethodModel m = entryPoint.getCallTarget(_methodEntry, isSpecial);
+		if (barrierAndGetterMappings != null)
+			throw new RuntimeException("Method call that needs barriers cannot be compiled to FPGA.");
+			
+		final boolean isSpecial = _methodCall instanceof I_INVOKESPECIAL;
+		MethodModel m = entryPoint.getCallTarget(_methodEntry, isSpecial);
 
-			String getterFieldName = null;
-			FieldEntry getterField = null;
-			if (m != null && m.getMethodType() == METHODTYPE.GETTER)
-				getterFieldName = m.getGetterField();
+		String getterFieldName = null;
+		FieldEntry getterField = null;
+		if (m != null && m.getMethodType() == METHODTYPE.GETTER)
+			getterFieldName = m.getGetterField();
 
-			if (getterFieldName != null) {
-				boolean isObjectField = m.getReturnType().startsWith("L");
+		// Getter method, transform to field access
+		// i.e. a->getValue() --> a->value
+		if (getterFieldName != null) {
+			boolean isObjectField = m.getReturnType().startsWith("L");
 
-				if (isThis(_methodCall.getArg(0))) {
-					String fieldName = getterFieldName;
-
-					// Issue #1
-					if (isObjectField && m.getOwnerClassMangledName().contains("Tuple2"))
-						write("&(");
-
-					write("this->");
-					write(fieldName);
-
-					// Issue #1
-					if (isObjectField && m.getOwnerClassMangledName().contains("Tuple2"))
-						write(")");
-					return false;
-				} else if (_methodCall instanceof VirtualMethodCall) { // C: call an element in the struct
-					VirtualMethodCall virt = (VirtualMethodCall) _methodCall;
-					Instruction target = virt.getInstanceReference();
-					if (target instanceof I_CHECKCAST)
-						target = target.getPrevPC();
-
-					if (target instanceof LocalVariableConstIndexLoad) { // scalar element
-						LocalVariableConstIndexLoad ld = (LocalVariableConstIndexLoad)target;
-						LocalVariableInfo info = ld.getLocalVariableInfo();
-						if (!info.isArray()) {
-							// Issue #1
-							if (isObjectField && m.getOwnerClassMangledName().contains("Tuple2"))
-								write("&(");
-
-							write(info.getVariableName() + "->" + getterFieldName);
-
-							// Issue #1
-							if (isObjectField && m.getOwnerClassMangledName().contains("Tuple2"))
-								write(")");
-							return false;
-						}
-					} else if (target instanceof VirtualMethodCall) { // struct element
-						VirtualMethodCall nestedCall = (VirtualMethodCall)target;
-						writeMethod(nestedCall, nestedCall.getConstantPoolMethodEntry());
-						write("->" + getterFieldName);
-						return false;
-					} else if (target instanceof AccessArrayElement) { // array element
-						AccessArrayElement arrayAccess = (AccessArrayElement)target;
-
-						final Instruction refAccess = arrayAccess.getArrayRef();
-						//assert refAccess instanceof I_GETFIELD : "ref should come from getfield";
-						final String fieldName = ((AccessField) refAccess).getConstantPoolFieldEntry().getNameAndTypeEntry()
-						                         .getNameUTF8Entry().getUTF8();
-
-						// Issue #1
-						if (isObjectField && m.getOwnerClassMangledName().contains("Tuple2"))
-							write("&(");
-
-						write("(this_" + fieldName);
-						write("[");
-						writeInstruction(arrayAccess.getArrayIndex());
-						write("])." + getterFieldName);
-
-						// Issue #1
-						if (isObjectField && m.getOwnerClassMangledName().contains("Tuple2"))
-							write(")");
-
-						return false;
-					} else {
-						throw new RuntimeException("Unhandled target \"" +
-						                           target.toString() + "\" for getter " +
-						                           getterFieldName);
-					}
-				}
-			}
-			boolean noCL = _methodEntry.getOwnerClassModel().getNoCLMethods()
-			               .contains(_methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8());
-			if (noCL)
+			if (isThis(_methodCall.getArg(0))) {
+				// Getter has only one argument, if the argument is ALOAD_0 then it means
+				// we're accessing "this" object
+				write("this->");
+				write(getterFieldName);
 				return false;
-			final String intrinsicMapping = Kernel.getMappedMethodName(_methodEntry);
-			boolean isIntrinsic = false;
+			} else if (_methodCall instanceof VirtualMethodCall) {
+				// Normal method call. Transform to struct element access
+				VirtualMethodCall virt = (VirtualMethodCall) _methodCall;
+				Instruction target = virt.getInstanceReference();
 
-			if (intrinsicMapping == null) {
-				assert entryPoint != null : "entryPoint should not be null";
-				boolean isMapped = Kernel.isMappedMethod(_methodEntry);
-				boolean isScalaMapped = scalaMapped.contains(_methodEntry.toString());
-				boolean isSelfMapped = SelfMapped.contains(_methodEntry.toString());
+				// Object needs to be casted before invoking the method
+				if (target instanceof I_CHECKCAST)
+					target = target.getPrevPC();
 
-				if (m != null)
-					write(m.getName());
-				else if (_methodEntry.toString().equals("java/lang/Object.<init>()V")) {
-					/*
-					 * Do nothing if we're in a constructor calling the
-					 * java.lang.Object super constructor
-					 */
-				} else {
-					// Must be a library call like rsqrt // FIXME: Tuple2
-					if (!isMapped && !isScalaMapped && !isSelfMapped && !_methodEntry.toString().contains("scala/Tuple2")) {
-						isIntrinsic = false;
-//						throw new RuntimeException(_methodEntry + " should be mapped method!");
+				if (target instanceof LocalVariableConstIndexLoad) { // Scalar element
+					LocalVariableConstIndexLoad ld = (LocalVariableConstIndexLoad)target;
+					LocalVariableInfo info = ld.getLocalVariableInfo();
+					if (!info.isArray()) {
+						write(info.getVariableName() + "->" + getterFieldName);
+						return false;
 					}
-					else
-						isIntrinsic = true;
-					write(methodName);
-				}
-			} else
-				write(intrinsicMapping);
+				} else if (target instanceof VirtualMethodCall) { // Struct element
+					VirtualMethodCall nestedCall = (VirtualMethodCall)target;
+					writeMethod(nestedCall, nestedCall.getConstantPoolMethodEntry());
+					write("->" + getterFieldName);
+					return false;
+				} else if (target instanceof AccessArrayElement) { // Array element
+					AccessArrayElement arrayAccess = (AccessArrayElement)target;
 
-			// write arguments of real method call
-			write("(");
-
-			if ((intrinsicMapping == null) && (_methodCall instanceof VirtualMethodCall) && (!isIntrinsic)) {
-
-				Instruction i = ((VirtualMethodCall) _methodCall).getInstanceReference();
-				if (i instanceof CloneInstruction)
-					i = ((CloneInstruction)i).getReal();
-
-				if (i instanceof I_ALOAD_0)
-					write("this");
-				else if (i instanceof LocalVariableConstIndexLoad)
-					writeInstruction(i);
-				else if (i instanceof AccessArrayElement) {
-					final AccessArrayElement arrayAccess = (AccessArrayElement)i;
 					final Instruction refAccess = arrayAccess.getArrayRef();
-					//assert refAccess instanceof I_GETFIELD : "ref should come from getfield";
-					final String fieldName = ((AccessField) refAccess).getConstantPoolFieldEntry().getNameAndTypeEntry()
-					                         .getNameUTF8Entry().getUTF8();
-					write(" &(this_" + fieldName);
+					final String fieldName = ((AccessField) refAccess).getConstantPoolFieldEntry()
+								.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+					write("(" + fieldName);
 					write("[");
 					writeInstruction(arrayAccess.getArrayIndex());
-					write("])");
-				} else if (i instanceof New) {
-					// Constructor call
-					assert methodName.equals("<init>");
-					writeInstruction(i);
-				} else
-					throw new RuntimeException("unhandled call to " + _methodEntry + " from: " + i);
-			}
-			for (int arg = 0; arg < argc; arg++) {
-				if (((intrinsicMapping == null) && (_methodCall instanceof VirtualMethodCall) && (!isIntrinsic)) ||
-				    (arg != 0))
-					write(", ");
+					write("])." + getterFieldName);
 
-				// comaniac Issue #2, we have to match method arguments with Xilinx supported intrinsic functions.
-				if (isIntrinsic &&
-				    (_methodCall.getArg(arg) instanceof CastOperator)) {
-					final CastOperator castInstruction = (CastOperator) _methodCall.getArg(arg);
-					String targetType = convertCast(castInstruction.getOperator().getText());
-					targetType = targetType.substring(1, targetType.length() - 1);
-					String validType = getXilinxMethodArgType(methodName, arg);
-					if (!targetType.equals(validType)) {
-						write("(" + validType + ")");
-						writeInstruction(castInstruction.getUnary());
-					}
-				} else
-					writeInstruction(_methodCall.getArg(arg));
+					return false;
+				} else if (target instanceof I_INVOKEINTERFACE) {
+					// TODO
+				} else {
+					throw new RuntimeException("Unhandled target " + 
+							target.toString() + " for getter " + getterFieldName);
+				}
 			}
-			write(")");
 		}
+		boolean noCL = _methodEntry.getOwnerClassModel().getNoCLMethods()
+		               .contains(_methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8());
+		if (noCL)
+			return false;
+
+		final String intrinsicMapping = Kernel.getMappedMethodName(_methodEntry);
+		boolean isIntrinsic = false;
+
+		if (intrinsicMapping == null) {
+			assert entryPoint != null : "entryPoint should not be null";
+			boolean isMapped = Kernel.isMappedMethod(_methodEntry);
+			boolean isScalaMapped = scalaMapped.contains(_methodEntry.toString());
+			boolean isSelfMapped = SelfMapped.contains(_methodEntry.toString());
+
+			if (m != null)
+				write(m.getName());
+			else if (_methodEntry.toString().equals("java/lang/Object.<init>()V")) {
+				/*
+				 * Do nothing if we're in a constructor calling the
+				 * java.lang.Object super constructor
+				 */
+			} else {
+				// Must be a library call like rsqrt
+				if (!isMapped && !isScalaMapped && !isSelfMapped) {
+					isIntrinsic = false;
+					throw new RuntimeException(_methodEntry + " should be mapped method!");
+				}
+				else
+					isIntrinsic = true;
+				write(methodName);
+			}
+		} else
+			write(intrinsicMapping);
+
+		// write arguments of real method call
+		write("(");
+
+		if ((intrinsicMapping == null) && (_methodCall instanceof VirtualMethodCall) && (!isIntrinsic)) {
+			Instruction i = ((VirtualMethodCall) _methodCall).getInstanceReference();
+			if (i instanceof CloneInstruction)
+				i = ((CloneInstruction)i).getReal();
+
+			if (i instanceof I_ALOAD_0)
+				write("this");
+			else if (i instanceof LocalVariableConstIndexLoad)
+				writeInstruction(i);
+			else if (i instanceof AccessArrayElement) {
+				final AccessArrayElement arrayAccess = (AccessArrayElement)i;
+				final Instruction refAccess = arrayAccess.getArrayRef();
+				//assert refAccess instanceof I_GETFIELD : "ref should come from getfield";
+				final String fieldName = ((AccessField) refAccess).getConstantPoolFieldEntry().getNameAndTypeEntry()
+				                         .getNameUTF8Entry().getUTF8();
+				write(" &(" + fieldName);
+				write("[");
+				writeInstruction(arrayAccess.getArrayIndex());
+				write("])");
+			} else if (i instanceof New) {
+				// Constructor call
+				assert methodName.equals("<init>");
+				writeInstruction(i);
+			} else
+				throw new RuntimeException("unhandled call to " + _methodEntry + " from: " + i);
+		}
+		for (int arg = 0; arg < argc; arg++) {
+			if (((intrinsicMapping == null) && (_methodCall instanceof VirtualMethodCall) && (!isIntrinsic)) ||
+			    (arg != 0))
+				write(", ");
+
+			// comaniac Issue #2, we have to match method arguments with Xilinx supported intrinsic functions.
+			if (isIntrinsic &&
+			    (_methodCall.getArg(arg) instanceof CastOperator)) {
+				final CastOperator castInstruction = (CastOperator) _methodCall.getArg(arg);
+				String targetType = convertCast(castInstruction.getOperator().getText());
+				targetType = targetType.substring(1, targetType.length() - 1);
+				String validType = getXilinxMethodArgType(methodName, arg);
+				if (!targetType.equals(validType)) {
+					write("(" + validType + ")");
+					writeInstruction(castInstruction.getUnary());
+				}
+			} else
+				writeInstruction(_methodCall.getArg(arg));
+		}
+		write(")");
 		return false; // FIXME: Previous: alloc check
 	}
 
@@ -683,9 +648,9 @@ public abstract class KernelWriter extends BlockWriter {
 			writePragma("cl_khr_fp64", true);
 			newLine();
 		}
+		newLine();
 
 		// Emit structs for oop transformation accessors
-		// FIXME: Should find customized class models and call getStructCode()
 		List<String> lexicalOrdering = _entryPoint.getLexicalOrderingOfObjectClasses();
 		Set<String> emitted = new HashSet<String>();
 		for (String className : lexicalOrdering) {
@@ -699,21 +664,40 @@ public abstract class KernelWriter extends BlockWriter {
 			}
 		}
 
-		final List<MethodModel> merged = new ArrayList<MethodModel>(_entryPoint.getCalledMethods().size() + 1);
-		merged.addAll(_entryPoint.getCalledMethods());
-		merged.add(_entryPoint.getMethodModel());
+		// Emit structs for modeled customized classes
+		Set<String> classNameList = _entryPoint.getCustomizedClassModels().getClassList();
+		for (String name : classNameList) {
+			List<CustomizedClassModel> modeledClasses = _entryPoint.	
+				getCustomizedClassModels().get(name);
+
+			// The first instance must be a sample (no field, method, and type parameter)
+			for (int i = 1; i < modeledClasses.size(); i += 1) {
+				newLine();
+				write(modeledClasses.get(i).getStructCode());
+				newLine();
+			}
+		}
 
 		// Write customized class method declarations
-		for (CustomizedClassModel model : _entryPoint.getCustomizedClassModels()) {
-			for (CustomizedMethodModel<?> method : model.getMethods()) {
-				if (method.getMethodType() != METHODTYPE.GETTER) {
-					newLine();
-					write(method.getDeclareCode());
-					newLine();
-					newLine();
+		for (String name : classNameList) {
+			List<CustomizedClassModel> modeledClasses = _entryPoint.	
+				getCustomizedClassModels().get(name);
+
+			// The first instance must be a sample (no field, method, and type parameter)
+			for (int i = 1; i < modeledClasses.size(); i += 1) {
+				for (CustomizedMethodModel<?> method : modeledClasses.get(i).getMethods()) {
+					if (method.getGetterField() == null) {
+						newLine();
+						write(method.getDeclareCode());
+						newLine();
+					}
 				}
 			}
 		}
+
+		final List<MethodModel> merged = new ArrayList<MethodModel>(_entryPoint.getCalledMethods().size() + 1);
+		merged.addAll(_entryPoint.getCalledMethods());
+		merged.add(_entryPoint.getMethodModel());
 
 		// Write method declaration
 		for (final MethodModel mm : merged) {
@@ -740,7 +724,7 @@ public abstract class KernelWriter extends BlockWriter {
 				if (cm != null)
 					fullReturnType = cm.getMangledClassName();
 				else {
-					String returnTypeHint = _entryPoint.getArgumentTypeHint("j2faOut");
+					String returnTypeHint = _entryPoint.getArgument("j2faOut").getFullType();
 					returnTypeHint = returnTypeHint.substring(returnTypeHint.indexOf("<") + 1, returnTypeHint.indexOf(">"));
 					fullReturnType = Utils.convertToCType(returnTypeHint);
 				}
@@ -828,10 +812,11 @@ public abstract class KernelWriter extends BlockWriter {
 						ClassModel cm = entryPoint.getModelFromObjectArrayFieldsClasses(
 						                  converted, new SignatureMatcher(sig));
 						if (cm == null) { // Looking for customized class models
-//							String [] typeParams = 
-//							cm = entryPoint.getCustomizedClassModels.get(converted, new CustomizedClassModelMatcher());
-							if (cm == null)
-								throw new RuntimeException("Cannot match class model: " + converted + " " + sig);
+							JParameter param = entryPoint.getArgument(lvi.getVariableName());
+							if (param == null)
+								throw new RuntimeException("Cannot match argument: " + converted + 
+									" " + lvi.getVariableName());
+							cm = param.getClassModel();
 						}
 						convertedType = cm.getMangledClassName() + " *";
 					} else

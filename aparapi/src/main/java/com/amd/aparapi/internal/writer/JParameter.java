@@ -182,10 +182,5 @@ public abstract class JParameter {
 	 * Generate the string for method arguments.
 	 */
 	public abstract String getParameterCode();
-
-	/*
-	 * Generate the string for the C struct declaration.
-	 */ 
-	public abstract String getStructCode();
 }
 

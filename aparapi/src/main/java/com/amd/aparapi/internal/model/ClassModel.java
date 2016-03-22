@@ -1956,7 +1956,7 @@ public abstract class ClassModel {
 		}
 
 		public String toString() {
-			return getClassModel().getClassWeAreModelling().getName() + "." + getName() + " " + getDescriptor();
+			return getClassModel().getClassName() + "." + getName() + " " + getDescriptor();
 		}
 
 		public ClassModel getOwnerClassModel() {
@@ -2133,7 +2133,7 @@ public abstract class ClassModel {
 	 * @return true if 'this' a superclass of another named class
 	 */
 	public boolean isSuperClass(String otherClassName) {
-		if (getClassWeAreModelling().getName().equals(otherClassName))
+		if (getClassName().equals(otherClassName))
 			return true;
 		else if (superClazz != null)
 			return superClazz.isSuperClass(otherClassName);
@@ -2150,7 +2150,7 @@ public abstract class ClassModel {
 	public boolean isSuperClass(Class<?> other) {
 		Class<?> s = other.getSuperclass();
 		while (s != null) {
-			if ((getClassWeAreModelling() == s) || (getClassWeAreModelling().getName().equals(s.getName())))
+			if ((getClassWeAreModelling() == s) || (getClassName().equals(s.getName())))
 				return true;
 			s = s.getSuperclass();
 		}
@@ -2170,7 +2170,7 @@ public abstract class ClassModel {
 	public void replaceSuperClazz(ClassModel c) {
 		if (superClazz != null) {
 			assert c.isSuperClass(getClassWeAreModelling()) == true : "not my super";
-			if (superClazz.getClassWeAreModelling().getName().equals(c.getClassWeAreModelling().getName()))
+			if (superClazz.getClassName().equals(c.getClassName()))
 				superClazz = c;
 			else
 				superClazz.replaceSuperClazz(c);
@@ -2848,7 +2848,7 @@ public abstract class ClassModel {
 		// Shortcut direct calls to supers to allow "foo() { super.foo() }" type stuff to work
 		if (_isSpecial && (superClazz != null) && superClazz.isSuperClass(entryClassNameInDotForm)) {
 			if (logger.isLoggable(Level.FINE)) {
-				logger.fine("going to look in super:" + superClazz.getClassWeAreModelling().getName() +
+				logger.fine("going to look in super:" + superClazz.getClassName() +
 				            " on behalf of "
 				            + entryClassNameInDotForm);
 			}
@@ -2856,7 +2856,7 @@ public abstract class ClassModel {
 		}
 
 		// If isn't a call to a super and isn't a call to this class, abort early
-		String thisClassName = getClassWeAreModelling().getName();
+		String thisClassName = getClassName();
 		String methodClassName =
 		  _methodEntry.getClassEntry().getNameUTF8Entry().getUTF8().replace(
 		    '/', '.');
@@ -2940,6 +2940,10 @@ public abstract class ClassModel {
 		return new Entrypoint(this, method, null, entrypointKey.getParams(), null);
 	}
 
+	public String getClassName() {
+		return clazz.getName();
+	}
+
 	public Class<?> getClassWeAreModelling() {
 		return clazz;
 	}
@@ -2968,7 +2972,7 @@ public abstract class ClassModel {
 				if (model instanceof CustomizedClassModel)
 					return other.matches((CustomizedClassModel)model);
 				else
-					return model.getClassWeAreModelling().getName().equals(className);
+					return model.getClassName().equals(className);
 			}
 		};
 	}
@@ -2984,7 +2988,7 @@ public abstract class ClassModel {
 		}
 		@Override
 		public boolean matches(ClassModel model) {
-			return model.getClassWeAreModelling().getName().equals(className);
+			return model.getClassName().equals(className);
 		}
 	}
 }

@@ -192,6 +192,11 @@ public class Entrypoint implements Cloneable {
 		allFieldsClasses.add(name, model);
 	}
 
+	private void addCustomizedClass(CustomizedClassModel model) {
+		customizedClassModels.addClass(model);
+		allFieldsClasses.add(model.getClassName(), model);
+	}
+
 	// Supporting classes of object array members like supers
 	private final StringToModel allFieldsClasses = new StringToModel();
 
@@ -353,17 +358,17 @@ public class Entrypoint implements Cloneable {
 			while (superModel != null) {
 				// See if super is already added
 				final ClassModel oldSuper = allFieldsClasses.get(
-				                              superModel.getClassWeAreModelling().getName(),
-				                              new NameMatcher(superModel.getClassWeAreModelling().getName()));
+				                              superModel.getClassName(),
+				                              new NameMatcher(superModel.getClassName()));
 				if (oldSuper != null) {
 					if (oldSuper != superModel) {
 						memberClassModel.replaceSuperClazz(oldSuper);
-						logger.finest("replaced super " + oldSuper.getClassWeAreModelling().getName() + " for " +
+						logger.finest("replaced super " + oldSuper.getClassName() + " for " +
 						              className);
 					}
 				} else {
-					allFieldsClasses.add(superModel.getClassWeAreModelling().getName(), superModel);
-					logger.finest("add new super " + superModel.getClassWeAreModelling().getName() + " for " +
+					allFieldsClasses.add(superModel.getClassName(), superModel);
+					logger.finest("add new super " + superModel.getClassName() + " for " +
 					              className);
 				}
 				superModel = superModel.getSuperClazz();
@@ -434,10 +439,10 @@ public class Entrypoint implements Cloneable {
 		// No exact match, look for a superclass
 		for (final ClassModel c : allFieldsClasses) {
 			if (logger.isLoggable(Level.FINEST))
-				logger.finest(" super: " + c.getClassWeAreModelling().getName() + " for " + className);
+				logger.finest(" super: " + c.getClassName() + " for " + className);
 			if (c.isSuperClass(memberClass)) {
 				if (logger.isLoggable(Level.FINE))
-					logger.fine("selected super: " + c.getClassWeAreModelling().getName() + " for " + className);
+					logger.fine("selected super: " + c.getClassName() + " for " + className);
 				superCandidate = c;
 				break;
 			}
@@ -494,7 +499,7 @@ public class Entrypoint implements Cloneable {
 					logger.fine("Adding assigned field " + field.getNameAndTypeEntry().getNameUTF8Entry().getUTF8() +
 					            " type: "
 					            + field.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8() + " to "
-					            + memberClassModel.getClassWeAreModelling().getName());
+					            + memberClassModel.getClassName());
 				}
 			}
 		}
@@ -528,12 +533,11 @@ public class Entrypoint implements Cloneable {
 
 		// Look for a intra-object call in a object member
 		if (m == null && !isMapped) {
-			String targetMethodOwner = methodEntry.getClassEntry().getNameUTF8Entry().getUTF8().replace('/',
-			                           '.');
+			String targetMethodOwner = methodEntry.getClassEntry().getNameUTF8Entry().getUTF8().replace('/', '.');
 			final Set<ClassModel> possibleMatches = new HashSet<ClassModel>();
 
 			for (ClassModel c : allFieldsClasses) {
-				if (c.getClassWeAreModelling().getName().equals(targetMethodOwner))
+				if (c.getClassName().equals(targetMethodOwner))
 					m = c.getMethod(methodEntry, (methodCall instanceof I_INVOKESPECIAL) ? true : false);
 				else if (c.classNameMatches(targetMethodOwner))
 					possibleMatches.add(c);
@@ -570,8 +574,7 @@ public class Entrypoint implements Cloneable {
 			m = otherClassModel.getMethod(methodEntry, false);
 		}
 
-		if (logger.isLoggable(Level.INFO))
-			logger.fine("Selected method for: " + methodEntry + " is " + m);
+		logger.fine("Selected method for: " + methodEntry + " is " + m);
 
 		return m;
 	}
@@ -641,7 +644,7 @@ public class Entrypoint implements Cloneable {
 				@SuppressWarnings("unchecked")
 				Class<CustomizedClassModel> customizedClass = (Class<CustomizedClassModel>) clazz;
 				Constructor<?> cstr = customizedClass.getConstructor();
-				customizedClassModels.addClass((CustomizedClassModel) cstr.newInstance());
+				addCustomizedClass((CustomizedClassModel) cstr.newInstance());
 			} catch (Exception e) {
 				throw new RuntimeException("Cannot load customized class model from user input class path " + 
 					name + ": " + e);
@@ -656,7 +659,7 @@ public class Entrypoint implements Cloneable {
 				@SuppressWarnings("unchecked")
 				Class<CustomizedClassModel> customizedClass = (Class<CustomizedClassModel>) clazz;
 				Constructor<?> cstr = customizedClass.getConstructor();
-				customizedClassModels.addClass((CustomizedClassModel) cstr.newInstance());
+				addCustomizedClass((CustomizedClassModel) cstr.newInstance());
 			} catch (Exception e) {
 				throw new RuntimeException("Cannot load customized class model from system " + 
 					name + ": " + e);
@@ -691,7 +694,9 @@ public class Entrypoint implements Cloneable {
 			param.init(this);
 			if (param.getClassModel() == null && logger.isLoggable(Level.FINE))
 				logger.fine("No customized class model for " + param.getTypeName());
-			if (!customizedClassModels.hasClass(param.getTypeName()))
+			if (customizedClassModels.hasClass(param.getTypeName()))
+				addCustomizedClass(param.getClassModel());
+			else
 				addClass(param.getTypeName(), param.getDescArray());
 		}
 
@@ -797,7 +802,7 @@ public class Entrypoint implements Cloneable {
 		// Collect all methods called directly from kernel's run method
 		for (final MethodCall methodCall : methodModel.getMethodCalls()) {
 			logger.finest("In-kernel method call: " + methodCall);
-			ClassModelMethod m = resolveCalledMethod(methodCall, classModel); // comaniac
+			ClassModelMethod m = resolveCalledMethod(methodCall, classModel);
 			if ((m != null) && !methodMap.keySet().contains(m) && !noCL(m)) {
 				final MethodModel target = new LoadedMethodModel(m, this);
 				methodMap.put(m, target);
@@ -824,7 +829,7 @@ public class Entrypoint implements Cloneable {
 							// declarations in the correct order.  We are trying to avoid creating forward references
 							target = methodMap.remove(m);
 							if (logger.isLoggable(Level.FINEST)) {
-								logger.fine("repositioning : " + m.getClassModel().getClassWeAreModelling().getName() + " " +
+								logger.fine("repositioning : " + m.getClassModel().getClassName() + " " +
 								            m.getName()
 								            + " " + m.getDescriptor());
 							}
@@ -955,7 +960,7 @@ public class Entrypoint implements Cloneable {
 							new ClassModelMatcher() {
 								@Override
 								public boolean matches(ClassModel model) {
-									return className.equals(model.getClassWeAreModelling().getName());
+									return className.equals(model.getClassName());
 								}
 							});
 							if (refModel == null) {
@@ -971,8 +976,7 @@ public class Entrypoint implements Cloneable {
 								}
 
 								addToObjectArrayFieldsClasses(className, arrayFieldModel);
-								if (logger.isLoggable(Level.FINE))
-									logger.fine("adding class to objectArrayFields: " + className);
+								logger.fine("adding class to objectArrayFields: " + className);
 							}
 						}
 						lexicalOrdering.add(className);
@@ -989,7 +993,7 @@ public class Entrypoint implements Cloneable {
 
 						if (!ignoreScalaRuntimeStuff.contains(className)) {
 							// Look for object data member access
-							if (!className.equals(getClassModel().getClassWeAreModelling().getName())
+							if (!className.equals(getClassModel().getClassName())
 							    && (getFieldFromClassHierarchy(getClassModel().getClassWeAreModelling(),
 							                                   accessedFieldName) == null)) {
 								updateObjectMemberFieldAccesses(className, field);
@@ -1005,7 +1009,7 @@ public class Entrypoint implements Cloneable {
 
 					final String className = (field.getClassEntry().getNameUTF8Entry().getUTF8()).replace('/', '.');
 					// Look for object data member access
-					if (!className.equals(getClassModel().getClassWeAreModelling().getName())
+					if (!className.equals(getClassModel().getClassName())
 					    && (getFieldFromClassHierarchy(getClassModel().getClassWeAreModelling(),
 					                                   assignedFieldName) == null))
 						updateObjectMemberFieldAccesses(className, field);
@@ -1091,7 +1095,7 @@ public class Entrypoint implements Cloneable {
 							final String methodName = methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
 							final String methodDesc = methodEntry.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
 							final String realType = methodDesc.substring(methodDesc.lastIndexOf(')') + 1);
-							if (!customizedClassModels.get(clazzName).hasMethod(methodName))
+							if (!customizedClassModels.getSample(clazzName).hasMethod(methodName))
 								throw new RuntimeException("Method " + methodName + " doesn't be modeled in class " + clazzName);
 		
 							typeHint = typeHint.replace(methodName, realType);
@@ -1139,8 +1143,8 @@ public class Entrypoint implements Cloneable {
 				ClassModel superModel = memberObjClass.getSuperClazz();
 				while (superModel != null) {
 					if (logger.isLoggable(Level.FINEST)) {
-						logger.finest("adding = " + superModel.getClassWeAreModelling().getName() + " fields into "
-						              + memberObjClass.getClassWeAreModelling().getName());
+						logger.finest("adding = " + superModel.getClassName() + " fields into "
+						              + memberObjClass.getClassName());
 					}
 					memberObjClass.getStructMembers().addAll(superModel.getStructMembers());
 					superModel = superModel.getSuperClazz();
@@ -1251,7 +1255,7 @@ public class Entrypoint implements Cloneable {
 
 		if (desc.startsWith("L")) {
 			for (final ClassModel cm : objectArrayFieldsClasses) {
-				String classDesc = "L" + cm.getClassWeAreModelling().getName() + ";";
+				String classDesc = "L" + cm.getClassName() + ";";
 				if (classDesc.equals(desc))
 					return cm.getTotalStructSize();
 			}
@@ -1293,10 +1297,10 @@ public class Entrypoint implements Cloneable {
 		return (referencedFieldNames);
 	}
 
-	public String getArgumentTypeHint(String name) {
+	public JParameter getArgument(String name) {
 		for (JParameter param : argumentList) {
 			if (param.getName().equals(name))
-				return param.getFullType();
+				return param;
 		}
 		return null;
 	}
@@ -1361,11 +1365,11 @@ public class Entrypoint implements Cloneable {
 												.getUTF8().replace("()", "");
 
 		if (!customizedClassModels.hasClass(signature) || 
-				!customizedClassModels.get(signature).hasMethod(fieldMethodName)) {
+				!customizedClassModels.getSample(signature).hasMethod(fieldMethodName)) {
 			throw new RuntimeException(signature + "." + fieldMethodName + " is not modeled");
 		}
 
-		if(customizedClassModels.get(signature).getCustomizedMethod(fieldMethodName)
+		if(customizedClassModels.getSample(signature).getCustomizedMethod(fieldMethodName)
 				.getMethodType() != METHODTYPE.GETTER) {
 			//System.err.println("Skip method " + methodName);
 			return "";
@@ -1401,7 +1405,7 @@ public class Entrypoint implements Cloneable {
 				if (curFieldType == null) {
 					// Add field type mapping to genericType for later used.
 					// Example: scala.Tuple2 -> scala.Tuple2<_1, _2>
-					curFieldType = customizedClassModels.get(genericType).getMethod2ParamMapping();
+					curFieldType = customizedClassModels.getSample(genericType).getMethod2ParamMapping();
 				}
 
 				// Expect: invokevirtual/interface -> cast -> invokevirtual.
@@ -1416,7 +1420,7 @@ public class Entrypoint implements Cloneable {
 					final String methodName = methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();;
 					final String methodDesc = methodEntry.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();;
 
-					if (!customizedClassModels.get(genericType).hasMethod(methodName))
+					if (!customizedClassModels.getSample(genericType).hasMethod(methodName))
 						throw new RuntimeException("Method " + methodName + " doesn't be modeled in class " + genericType);
 			
 					// Get field type by consulting the method call.
@@ -1469,20 +1473,21 @@ public class Entrypoint implements Cloneable {
 
 		if (logger.isLoggable(Level.FINE) && (target == null)) {
 			logger.fine("Did not find call target: " + _methodEntry + " in " +
-			            getClassModel().getClassWeAreModelling().getName() + " isMapped=" +
+			            getClassModel().getClassName() + " isMapped=" +
 			            isMapped);
 		}
 
 		final String entryClassNameInDotForm =
-		  _methodEntry.getClassEntry().getNameUTF8Entry().getUTF8().replace('/',
-		      '.');
+		  _methodEntry.getClassEntry().getNameUTF8Entry().getUTF8().replace('/', '.');
+		final String targetMethodName = _methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
 		final Set<ClassModel> matchingClassModels = new HashSet<ClassModel>();
 
+
+		// Look for member obj accessor calls
 		if (target == null) {
-			// Look for member obj accessor calls
 			for (final ClassModel memberObjClass : objectArrayFieldsClasses) {
 
-				String memberObjClassName = memberObjClass.getClassWeAreModelling().getName();
+				String memberObjClassName = memberObjClass.getClassName();
 				if (memberObjClassName.equals(entryClassNameInDotForm)) {
 					MethodModel method = lookForCustomizedMethod(_methodEntry,
 					                        memberObjClass);
@@ -1497,7 +1502,6 @@ public class Entrypoint implements Cloneable {
 				}
 			}
 		}
-
 		if (target == null) {
 			for (ClassModel possibleMatch : matchingClassModels) {
 				MethodModel method = lookForCustomizedMethod(_methodEntry,
@@ -1510,26 +1514,40 @@ public class Entrypoint implements Cloneable {
 			}
 		}
 
+		// Look for customized class models
+		if (target == null) {
+			logger.fine("Searching for customized classes: " + entryClassNameInDotForm);
+			if (!customizedClassModels.hasClass(entryClassNameInDotForm))
+				logger.fine("No customized class model for " + entryClassNameInDotForm);
+			else {
+				List<CustomizedClassModel> cms = customizedClassModels.get(entryClassNameInDotForm);
+
+				// FIXME: Here we assume for each kind of customized class, only one type parameter combination
+				CustomizedClassModel cm = cms.get(cms.size() - 1);
+				if (cm.hasMethod(targetMethodName)) {
+					logger.fine("selected from customized methods = " + targetMethodName);
+					return cm.getCustomizedMethod(targetMethodName);
+				}
+				else
+					logger.fine("No method " + targetMethodName + " for the customized class");
+			}
+		}
+
 		for (final MethodModel m : calledMethods) {
 			if (m.getMethod() == target) {
-				if (logger.isLoggable(Level.FINE))
-					logger.fine("selected from called methods = " + m.getName());
-
+				logger.fine("selected from called methods = " + m.getName());
 				return m;
 			}
 		}
 
 		// Search for static calls to other classes
 		for (MethodModel m : calledMethods) {
-			if (logger.isLoggable(Level.FINE))
-				logger.fine("Searching for call target: " + _methodEntry + " in " + m.getName());
-			if (m.getMethod().getName().equals(_methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8())
+			logger.fine("Searching for call target: " + _methodEntry + " in " + m.getName());
+			if (m.getMethod().getName().equals(targetMethodName)
 			    && m.getMethod().getDescriptor().equals(
 			      _methodEntry.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8())) {
-				if (logger.isLoggable(Level.FINE)) {
-					logger.fine("Found " + m.getMethod().getClassModel().getClassWeAreModelling().getName() + "."
-					            + m.getMethod().getName() + " " + m.getMethod().getDescriptor());
-				}
+				logger.fine("Found " + m.getMethod().getClassModel().getClassName() + "."
+				            + m.getMethod().getName() + " " + m.getMethod().getDescriptor());
 				return m;
 			}
 		}

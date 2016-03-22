@@ -49,6 +49,7 @@ import com.amd.aparapi.internal.model.ClassModel.ConstantPool.*;
 import com.amd.aparapi.internal.model.ClassModel.*;
 import com.amd.aparapi.internal.model.*;
 import com.amd.aparapi.internal.model.ClassModel.ConstantPool.NameAndTypeEntry;
+import com.amd.aparapi.internal.model.FullMethodSignature.TypeSignature;
 import com.amd.aparapi.internal.model.MethodModel.METHODTYPE;
 import com.amd.aparapi.Config;
 
@@ -111,6 +112,43 @@ public abstract class BlockWriter {
 		write("\n");
 		for (int i = 0; i < indent; i++)
 			write("  ");
+	}
+
+	// FIXME
+	public String [] findTypeHintForLocalVariable(MethodModel mm, LocalVariableInfo lvi) {
+		String [] params = null;
+		String curType = null;
+		String des = lvi.getVariableDescriptor();
+		TypeSignature sig = new TypeSignature(des);
+		int numParam = sig.getTypeParameters().size();
+
+		// Skip the local variable without type parameters
+		if (numParam == 0)
+			return null;
+		else if (numParam > 1) {
+			if (!entryPoint.getCustomizedClassModels().hasClass(sig.getBaseType())) {
+				throw new RuntimeException("Customized class model " + sig.getBaseType() + 
+					" is necessary for multiple type parameter classes.");
+			}
+			// Add method to type mapping. i.e. scala.Tuple2<_1, _2>
+			curType = entryPoint.getCustomizedClassModels().getSample(sig.getBaseType())
+				.getMethod2ParamMapping();
+			logger.fine("Map: " + curType);
+		}
+
+		for (Instruction inst = mm.getPCHead(); inst != null; inst = inst.getNextPC()) {
+			// We're only interested in local variables
+			if (!(inst instanceof AccessLocalVariable))
+				continue;
+
+			// We only focus on the specific local variable
+			int curIdx = ((AccessLocalVariable) inst).getLocalVariableTableIndex();
+			if (curIdx != lvi.getVariableIndex())
+				continue;
+
+			
+		}
+		return params;
 	}
 
 	public void writeConditionalBranch16(ConditionalBranch16 _branch16,

@@ -56,7 +56,7 @@ abstract class J2FAFunSuite extends FunSuite {
           val code = "gcc -std=c99 -c /tmp/j2fa_tmp.c -o /dev/null" ! plog
           if (code == 0)
             success += 1
-          else
+//          else
             "mv /tmp/j2fa_tmp.c /tmp/j2fa_" + className + "_" + mName + ".c" !
         }
 
