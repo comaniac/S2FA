@@ -1815,9 +1815,17 @@ public abstract class ClassModel {
 			typeHint = s;
 		}
 
+		public boolean hasTypeHint() {
+			if (typeHint == null)
+				return false;
+			return true;
+		}
+
 		public String getDescriptor() {
-			if (typeHint != null) return typeHint;
-			else return (getDescriptorUTF8Entry().getUTF8());
+			if (typeHint != null) 
+				return typeHint;
+			else
+				return getDescriptorUTF8Entry().getUTF8();
 		}
 
 		public int getDescriptorIndex() {

@@ -192,7 +192,7 @@ public class Entrypoint implements Cloneable {
 		allFieldsClasses.add(name, model);
 	}
 
-	private void addCustomizedClass(CustomizedClassModel model) {
+	public void addCustomizedClass(CustomizedClassModel model) {
 		customizedClassModels.addClass(model);
 		allFieldsClasses.add(model.getClassName(), model);
 	}
@@ -391,8 +391,7 @@ public class Entrypoint implements Cloneable {
 				final Instruction refAccess = arrayAccess.getArrayRef();
 
 				// It is a call from a member obj array element
-				if (logger.isLoggable(Level.FINE))
-					logger.fine("Looking for class in accessor call: " + methodsActualClassName);
+				logger.fine("Looking for class in accessor call: " + methodsActualClassName);
 
 				final String methodName =
 				  _methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
@@ -508,7 +507,7 @@ public class Entrypoint implements Cloneable {
 	/*
 	 * Find a suitable call target in the kernel class, supers, object members or static calls
 	 */
-	ClassModelMethod resolveCalledMethod(final MethodCall methodCall,
+	public ClassModelMethod resolveCalledMethod(final MethodCall methodCall,
 	                                     ClassModel classModel) throws AparapiException {
 		final MethodEntry methodEntry = methodCall.getConstantPoolMethodEntry();
 
@@ -913,16 +912,19 @@ public class Entrypoint implements Cloneable {
 					final String accessedFieldName = field.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
 					fieldAccesses.add(accessedFieldName);
 
-					final String signature;
+					String signature;
 					if (access instanceof ScalaGetObjectRefField) {
 						ScalaGetObjectRefField scalaGet = (ScalaGetObjectRefField)access;
 						I_CHECKCAST cast = scalaGet.getCast();
-						signature = cast.getConstantPoolClassEntry().getNameUTF8Entry().getUTF8().replace('.', '/');
+						signature = cast.getConstantPoolClassEntry().getNameUTF8Entry().getUTF8().replace('/', '.');
 						addToReferencedFieldNames(accessedFieldName, "L" + signature);
 					} else {
 						// Get signature (class name) of the field.
 						// Example: signature BlazeBroadcast for BlazeBroadcast[Tuple2[_,_]]
 						signature = field.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
+						if (signature.startsWith("L"))
+							signature = signature.substring(1, signature.length() - 1);
+						signature = signature.replace('/', '.');
 
 						// trnasformed class. Generic type has to be fetched here.
 						if (customizedClassModels.hasClass(signature)) {
@@ -935,8 +937,7 @@ public class Entrypoint implements Cloneable {
 						} else
 							addToReferencedFieldNames(accessedFieldName, null);
 					}
-					if (logger.isLoggable(Level.FINE))
-						logger.fine("AccessField field type= " + signature + " in " + methodModel.getName());
+					logger.fine("AccessField field type= " + signature + " in " + methodModel.getName());
 
 					// Add the customed class model for the referenced obj array FIXME: Not verify yet.
 					if (signature.startsWith("[L")) {
@@ -1123,8 +1124,10 @@ public class Entrypoint implements Cloneable {
 					referencedFields.add(field);
 					final ClassModelField ff = classModel.getField(referencedFieldName);
 					assert ff != null : "ff should not be null for " + clazz.getName() + "." + referencedFieldName;
-					if (typeHint != null) 
+					if (typeHint != null) {
 						ff.setTypeHint(typeHint);
+						logger.fine("Field " + referencedFieldName + " has type hint " + typeHint);
+					}
 					else
 						logger.fine("Field " + referencedFieldName + " has no type hint");
 					referencedClassModelFields.add(ff);
@@ -1392,10 +1395,9 @@ public class Entrypoint implements Cloneable {
 			else
 				typeHint = signature;
 			String genericType = typeHint;
-
 			if (genericType.startsWith("[")) {
 				genericType = genericType.substring(1);
-				arrayFieldArrayLengthUsed.add(fieldName);
+//				arrayFieldArrayLengthUsed.add(fieldName);
 				isArray = true;
 			}
 			if (customizedClassModels.hasClass(genericType)) {

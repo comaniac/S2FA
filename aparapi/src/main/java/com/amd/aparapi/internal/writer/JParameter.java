@@ -33,19 +33,21 @@ public abstract class JParameter {
 		this.referenceOrNot = false;
 		this.typeParameters = new LinkedList<JParameter>();
 
-		String eleSig = fullSig.replace("[", "");
-		String tmpType = eleSig;
-		if (fullSig.length() != eleSig.length())
+		String eleSig = fullSig;
+		if (eleSig.startsWith("[")) {
+			eleSig = eleSig.substring(1);
 			arrayOrNot = true;
+		}
 		else
 			arrayOrNot = false;
+		String tmpType = eleSig;
 
 		if (eleSig.indexOf('<') != -1) { // Has generic types
 			String topLevelType = eleSig.substring(0, eleSig.indexOf('<'));
 
 			// Set base class
 			tmpType = topLevelType;
-			logger.finest("JParameter: " + eleSig + " extracts base " + this.type);
+			logger.finest("JParameter: " + eleSig + " extracts base " + topLevelType);
 
 			// Extract generic types
 			String params = eleSig.substring(eleSig.indexOf('<') + 1, eleSig.lastIndexOf('>'));
@@ -74,7 +76,11 @@ public abstract class JParameter {
 		String[] arr = new String[typeParameters.size()];
 		int index = 0;
 		for (JParameter param : typeParameters) {
-			arr[index] = param.getTypeName();
+			if (param.isArray())
+				arr[index] = "[";
+			else
+				arr[index] = "";
+			arr[index] += param.getTypeName();
 			index++;
 		}
 		return arr;
@@ -100,16 +106,19 @@ public abstract class JParameter {
 	}
 
 	public String getCType() {
-		StringBuilder sb = new StringBuilder();
+		String s = "";
 		
-		sb.append(Utils.convertToCType(type));
+		s += Utils.convertToCType(type);
+		s = s.replace("*", "");
 
-		for (JParameter param : typeParameters) {
-			sb.append("_");
-			sb.append(param.getCType());
-		}
+		for (JParameter param : typeParameters)
+			s += "_" + param.getCType();
+		s = s.replace("*", "Ary");
 
-		return sb.toString();
+		if (isArray())
+			s += "*";
+
+		return s;
 	}
 
 	public boolean isArray() {
@@ -128,6 +137,8 @@ public abstract class JParameter {
 	public String toString() {
 		StringBuilder sb = new StringBuilder();
 
+		if (isArray())
+			sb.append("[");
 		sb.append(getTypeName());
 		boolean first = true;
 

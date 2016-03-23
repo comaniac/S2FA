@@ -530,7 +530,7 @@ public abstract class BlockWriter {
 					localType = localType.replace('.', '_');
 
 				if (descriptor.startsWith("[") || descriptor.startsWith("L"))
-					write(" __global ");
+					write("__global ");
 				write(localType);
 
 				if (descriptor.startsWith("L"))
@@ -613,9 +613,6 @@ public abstract class BlockWriter {
 					write(".");
 				} else {
 					String type = accessField.getConstantPoolFieldEntry().getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
-					// Customized object always pass by value and access by pointer
-					if (type.startsWith("L"))
-						write("&");
 				}
 			}
 			write(accessField.getConstantPoolFieldEntry().getNameAndTypeEntry().getNameUTF8Entry().getUTF8());

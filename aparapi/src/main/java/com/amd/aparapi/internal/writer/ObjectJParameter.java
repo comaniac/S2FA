@@ -27,9 +27,9 @@ public class ObjectJParameter extends JParameter {
 	@Override
 	public String getParameterCode() {
 		String param = "__global " + getCType() + " ";
-		if (isArray() || !isReference())
-			param += "*";
-		param += name;
+
+		// Objects must pass by address
+		param += "*" + name;
 		return param;
 	}
 

@@ -360,6 +360,11 @@ public abstract class KernelWriter extends BlockWriter {
 						write(info.getVariableName() + "->" + getterFieldName);
 						return false;
 					}
+				} else if (target instanceof AccessField) { // Reference object's element
+					String fieldName = ((AccessField) target).getConstantPoolFieldEntry()
+						.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+					write(fieldName + "->" + getterFieldName);
+					return false;
 				} else if (target instanceof VirtualMethodCall) { // Struct element
 					VirtualMethodCall nestedCall = (VirtualMethodCall)target;
 					writeMethod(nestedCall, nestedCall.getConstantPoolMethodEntry());
@@ -445,6 +450,10 @@ public abstract class KernelWriter extends BlockWriter {
 				// Constructor call
 				assert methodName.equals("<init>");
 				writeInstruction(i);
+			} else if (i instanceof AccessField) {
+				String fieldName = ((AccessField) i).getConstantPoolFieldEntry()
+					.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+				write(fieldName);
 			} else
 				throw new RuntimeException("unhandled call to " + _methodEntry + " from: " + i);
 		}
@@ -597,16 +606,21 @@ public abstract class KernelWriter extends BlockWriter {
 
 		// Add reference fields to argument list
 		for (final ClassModelField field : _entryPoint.getReferencedClassModelFields()) {
-			String signature = field.getDescriptor();
+			String signature = field.getDescriptorUTF8Entry().getUTF8();
+			if (signature.startsWith("L") && field.hasTypeHint())
+				signature += "<" + field.getDescriptor() + ">";
 			JParameter param = JParameter.createParameter(signature, field.getName(), JParameter.DIRECTION.IN);
 			logger.fine("Create reference JParameter: " + param.toString());
 			param.setAsReference();
 			param.init(entryPoint);
-			// FIXME: Customized reference class without class model.
+			if (_entryPoint.getCustomizedClassModels().hasClass(param.getTypeName()))
+				_entryPoint.addCustomizedClass(param.getClassModel());
 
 			boolean isPointer = signature.startsWith("[");
 
 			refArgsDef += param.getParameterCode() + ", ";
+			if (param instanceof ObjectJParameter && param.isArray())
+				refArgsCall += "&";
 			refArgsCall += param.getName() + ", ";
 
 			// Add int field into arguements for supporting java arraylength op
@@ -670,10 +684,11 @@ public abstract class KernelWriter extends BlockWriter {
 			List<CustomizedClassModel> modeledClasses = _entryPoint.	
 				getCustomizedClassModels().get(name);
 
-			// The first instance must be a sample (no field, method, and type parameter)
+			// Skip the first instance (sample)
 			for (int i = 1; i < modeledClasses.size(); i += 1) {
 				newLine();
 				write(modeledClasses.get(i).getStructCode());
+				newLine();
 				newLine();
 			}
 		}
@@ -683,7 +698,7 @@ public abstract class KernelWriter extends BlockWriter {
 			List<CustomizedClassModel> modeledClasses = _entryPoint.	
 				getCustomizedClassModels().get(name);
 
-			// The first instance must be a sample (no field, method, and type parameter)
+			// Skip the first instance (sample)
 			for (int i = 1; i < modeledClasses.size(); i += 1) {
 				for (CustomizedMethodModel<?> method : modeledClasses.get(i).getMethods()) {
 					if (method.getGetterField() == null) {
@@ -752,6 +767,7 @@ public abstract class KernelWriter extends BlockWriter {
 
 			write(mm.getName() + "(");
 
+			// Write "this" if necessary
 			if (!mm.getMethod().isStatic()) {
 				if ((mm.getMethod().getClassModel() == _entryPoint.getClassModel())
 				    || mm.getMethod().getClassModel().isSuperClass(
@@ -997,7 +1013,7 @@ public abstract class KernelWriter extends BlockWriter {
 					write(", " + p.getName() + BlockWriter.arrayItemLengthMangleSuffix);
 				}
 				else { // One-by-one access
-					if (!p.isPrimitive())
+					if (!p.isPrimitive()) // Objects are always passed by address
 						write("&");
 					write(p.getName() + "[" + aryIdxStr + "]");
 				}

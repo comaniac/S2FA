@@ -64,6 +64,7 @@ public abstract class CustomizedClassModel extends ClassModel {
 		String name = className.replace('.', '_');
 		for (String s : typeParams.list())
 			name += "_" + Utils.convertToCType(s);
+		name = name.replace("*", "Ary");
 		return name;
 	}
 

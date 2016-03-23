@@ -33,10 +33,11 @@ public class Utils {
 	}
 
 	public static String convertToCType(String type) {
+		boolean isArray = false;
 		String newType = "";
 
 		if (type.startsWith("[")) {
-			newType = " *";
+			isArray = true;
 			type = type.substring(1);
 		}
 
@@ -60,6 +61,9 @@ public class Utils {
 			newType = newType.replace(".", "_")
 				.replace("/", "_").replace(";", "");
 		}
+
+		if (isArray)
+			newType += "*";
 		return newType;
 	}
 
