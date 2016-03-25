@@ -17,6 +17,34 @@ public class Tuple2ClassModel extends CustomizedClassModel {
 
 		addField(new CustomizedFieldModel(params.get(0), "v1", 0));
 		addField(new CustomizedFieldModel(params.get(1), "v2", 1));
+
+		CustomizedMethodModel<?> get_initMethod = new CustomizedMethodModel<Tuple2ClassModel>(
+			this, "<init>", METHODTYPE.CONSTRUCTOR) {
+
+			@Override
+			public String getReturnType(Tuple2ClassModel clazzModel) {
+				return null;
+			}
+
+			@Override
+			public ArrayList<String> getArgs(Tuple2ClassModel clazzModel) {
+				ArrayList<String> args = new ArrayList<String>();
+				args.add(clazzModel.getTypeParam(0) + " n1");
+				args.add(clazzModel.getTypeParam(1) + " n2");
+
+				return args;
+			}
+
+			@Override
+			public String getBody(Tuple2ClassModel clazzModel) {
+				return (
+					getFieldModel("v1").genAccess() + " = n1;\n  " + 
+					getFieldModel("v2").genAccess() + " = n2;\n"
+				);
+			}
+
+		};
+		addMethod(get_initMethod);
 	
 		CustomizedMethodModel<?> get_1Method = new CustomizedMethodModel<Tuple2ClassModel>(
 			this, "_1", METHODTYPE.GETTER) {

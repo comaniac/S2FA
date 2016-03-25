@@ -39,7 +39,7 @@ public abstract class CustomizedMethodModel<T extends CustomizedClassModel>
 
 	@Override 
 	public String getOwnerClassMangledName() {
-		return null;
+		return clazzModel.getMangledClassName();
 	}
 
 	@Override
@@ -61,11 +61,15 @@ public abstract class CustomizedMethodModel<T extends CustomizedClassModel>
 	public String getDeclareCode() {
 		StringBuilder sb = new StringBuilder();
 		String returnType = Utils.convertToCType(getReturnType(clazzModel));
-		sb.append(returnType + " " + Utils.convertToCType(this.name));
+		sb.append(returnType + " " + clazzModel.getMangledClassName() + "_");
+		if (this.name.equals("<init>"))
+			sb.append("init");
+		else
+			sb.append(Utils.convertToCType(this.name));
 		sb.append("(" + clazzModel.getMangledClassName() + " *this");
 		if (getArgs(clazzModel) != null) {
 			for (String arg : getArgs(clazzModel))
-				sb.append(", " + arg);
+				sb.append(", " + Utils.convertToCType(arg));
 		}
 		sb.append(") {\n");
 		sb.append("  " + getBody(clazzModel) + "\n");

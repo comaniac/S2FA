@@ -267,7 +267,7 @@ public abstract class KernelWriter extends BlockWriter {
 		newLine();
 		write(typeName + " *" + varName + " = &_" + varName + ";");
 		newLine();
-		write(m.getName() + "(" + varName);
+		write(typeName + "_init(" + varName);
 
 		for (int i = 0; i < constructorEntry.getStackConsumeCount(); i++) {
 			write(", ");
@@ -404,8 +404,11 @@ public abstract class KernelWriter extends BlockWriter {
 			boolean isScalaMapped = scalaMapped.contains(_methodEntry.toString());
 			boolean isSelfMapped = SelfMapped.contains(_methodEntry.toString());
 
-			if (m != null)
+			if (m != null) {
+				if (m instanceof CustomizedMethodModel)
+					write(m.getOwnerClassMangledName() + "_");
 				write(m.getName());
+			}
 			else if (_methodEntry.toString().equals("java/lang/Object.<init>()V")) {
 				/*
 				 * Do nothing if we're in a constructor calling the
@@ -738,11 +741,8 @@ public abstract class KernelWriter extends BlockWriter {
 				                  convertedReturnType.trim(), new SignatureMatcher(sig));
 				if (cm != null)
 					fullReturnType = cm.getMangledClassName();
-				else {
-					String returnTypeHint = _entryPoint.getArgument("j2faOut").getFullType();
-					returnTypeHint = returnTypeHint.substring(returnTypeHint.indexOf("<") + 1, returnTypeHint.indexOf(">"));
-					fullReturnType = Utils.convertToCType(returnTypeHint);
-				}
+				else
+					fullReturnType = Utils.convertToCType(_entryPoint.getArgument("j2faOut").getCType());
 			} else
 				fullReturnType = convertedReturnType;
 
@@ -765,6 +765,8 @@ public abstract class KernelWriter extends BlockWriter {
 			} else
 				write(fullReturnType + " ");
 
+			if (mm instanceof CustomizedMethodModel)
+			  write(mm.getOwnerClassMangledName() + "_"); 
 			write(mm.getName() + "(");
 
 			// Write "this" if necessary

@@ -35,6 +35,17 @@ public class Utils {
 	public static String convertToCType(String type) {
 		boolean isArray = false;
 		String newType = "";
+		String varName = "";
+
+		// Constructor has no return type but we need "void" in C
+		if (type == null)
+			return "void";
+
+		// Support variable declaration. i.e. I a -> int a
+		if (type.contains(" ")) {
+			varName = type.substring(type.indexOf(" "), type.length());
+			type = type.substring(0, type.indexOf(" "));
+		}
 
 		if (type.startsWith("[")) {
 			isArray = true;
@@ -64,7 +75,8 @@ public class Utils {
 
 		if (isArray)
 			newType += "*";
-		return newType;
+
+		return newType + varName;
 	}
 
 	public static String convertToBytecodeType(String type) {

@@ -29,7 +29,7 @@ import org.apache.spark.blaze._
 import org.apache.j2fa.Annotation._
 
 class IOTest_TP()
-  extends Accelerator[Tuple2[Double, Double], Double] {
+  extends Accelerator[Tuple2[Double, Double], Tuple2[Float, Float]] {
 
   val id: String = "IOTest_TP"
 
@@ -40,8 +40,8 @@ class IOTest_TP()
   }
 
   @J2FA_Kernel
-  override def call(in: Tuple2[Double, Double]): Double = {
-    in._1 + in._2
+  override def call(in: Tuple2[Double, Double]): Tuple2[Float, Float] = {
+    (in._1.toFloat, in._2.toFloat)
   }
 }
 
@@ -54,8 +54,8 @@ object TestApp {
       val acc = new BlazeRuntime(sc)
       val rdd_acc = acc.wrap(rdd)
 
-      println("map Result: " + rdd_acc.map_acc(new IOTest_TP).reduce((a, b) => (a + b)))
-      println("CPU Result: " + rdd_acc.map({case (a, b) => (a + b)}).reduce((a, b) => (a + b)))
+      println("map Result: " + rdd_acc.map_acc(new IOTest_TP).reduce((a, b) => (a._1 + b._1, a._2 + b._2)))
+      println("CPU Result: " + rdd_acc.map({case (a, b) => (a.toFloat, b.toFloat)}).reduce((a, b) => (a._1 + b._1, a._2 + b._2)))
 
       acc.stop()
     }
