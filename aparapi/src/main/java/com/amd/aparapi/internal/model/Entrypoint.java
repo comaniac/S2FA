@@ -115,10 +115,6 @@ public class Entrypoint implements Cloneable {
 	// Derived classes
 	private final Map<String, List<String> > derivedClasses = new HashMap<String, List<String> >();
 
-	private boolean hasDerivedClassList(String clazz) {
-		return derivedClasses.containsKey(clazz);
-	}
-
 	private Set<String> getKernelCalledInterfaceClasses() {
 		return derivedClasses.keySet();
 	}
@@ -133,15 +129,15 @@ public class Entrypoint implements Cloneable {
 		return null;
 	}
 
+	private boolean hasDerivedClassList(String clazz) {
+		return derivedClasses.containsKey(clazz);
+	}
+
 	// Possible interface method implementation list
 	private final Map<String, List<MethodModel> > interfaceMethodImpl = new HashMap<String, List<MethodModel> >();
 
 	private boolean hasMethodImplList(String fullSig) {
 		return interfaceMethodImpl.containsKey(fullSig);
-	}
-
-	private Set<String> getKernelCalledInterfaceMethods() {
-		return interfaceMethodImpl.keySet();
 	}
 
 	private void addOrUpdateMethodImpl(String fullSig, MethodModel method) {
@@ -154,7 +150,11 @@ public class Entrypoint implements Cloneable {
 		interfaceMethodImpl.put(fullSig, implList);
 	}
 
-	private List<MethodModel> getMethodImpls(String fullSig) {
+	public Set<String> getKernelCalledInterfaceMethods() {
+		return interfaceMethodImpl.keySet();
+	}
+
+	public List<MethodModel> getMethodImpls(String fullSig) {
 		if (interfaceMethodImpl.containsKey(fullSig))
 			return interfaceMethodImpl.get(fullSig);
 		return null;
@@ -186,11 +186,16 @@ public class Entrypoint implements Cloneable {
 		ClassModel model = getOrUpdateAllClassAccesses(name,
 				new CustomizedClassModelMatcher(desc));
 
+		addClass(name, model);
+	}
+
+	private void addClass(String name, ClassModel model) throws AparapiException {
 		addToObjectArrayFieldsClasses(name, model);
 
 		lexicalOrdering.add(name);
 		allFieldsClasses.add(name, model);
 	}
+
 
 	public void addCustomizedClass(CustomizedClassModel model) {
 		customizedClassModels.addClass(model);
@@ -665,8 +670,8 @@ public class Entrypoint implements Cloneable {
 			}
 		}
 
-		if (logger.isLoggable(Level.FINE)) {
-			logger.fine("Loaded CustomizedClassModels:");
+		if (logger.isLoggable(Level.FINEST)) {
+			logger.finest("Loaded CustomizedClassModels:");
 			for (String s : customizedClassModels.getClassList())
 				System.err.println(s);
 		}
@@ -691,12 +696,12 @@ public class Entrypoint implements Cloneable {
 				continue;
 
 			param.init(this);
-			if (param.getClassModel() == null && logger.isLoggable(Level.FINE))
-				logger.fine("No customized class model for " + param.getTypeName());
 			if (customizedClassModels.hasClass(param.getTypeName()))
 				addCustomizedClass(param.getClassModel());
-			else
+			else {
+				logger.fine("Add a non-modeled class " + param.getTypeName());
 				addClass(param.getTypeName(), param.getDescArray());
+			}
 		}
 
 		// Collect all interface methods called from the kernel and their implementations
@@ -748,7 +753,7 @@ public class Entrypoint implements Cloneable {
 			}
 			else {
 				if (logger.isLoggable(Level.FINEST))
-					logger.fine(fullSig + " has no implementation");
+					logger.finest(fullSig + " has no implementation");
 			}
 		
 			// Create method models for overritten methods in derived classes
@@ -768,8 +773,8 @@ public class Entrypoint implements Cloneable {
 				addOrUpdateMethodImpl(fullSig, method);
 
 				// Add derived class to customized class list
-				logger.fine("Add field class " + derivedClazzName);
-				allFieldsClasses.add(derivedClazzName, derivedClassModel);
+				derivedClassModel.setAsDerivedClass();
+				addClass(derivedClazzName, derivedClassModel);
 
 				// Add interface implementations to methodMap
 				methodMap.put(methodImpl, method);
@@ -1151,62 +1156,6 @@ public class Entrypoint implements Cloneable {
 					}
 					memberObjClass.getStructMembers().addAll(superModel.getStructMembers());
 					superModel = superModel.getSuperClazz();
-				}
-			}
-
-			// Sort fields of each class biggest->smallest
-			final Comparator<FieldNameInfo> fieldSizeComparator = new Comparator<FieldNameInfo>() {
-				@Override public int compare(FieldNameInfo aa, FieldNameInfo bb) {
-					final String aType = aa.desc;
-					final String bType = bb.desc;
-
-					// Booleans get converted down to bytes
-					final int aSize = getSizeOf(aType);
-					final int bSize = getSizeOf(bType);
-
-					if (logger.isLoggable(Level.FINEST))
-						logger.finest("aType= " + aType + " aSize= " + aSize + " . . bType= " + bType + " bSize= " + bSize);
-
-					// Note this is sorting in reverse order so the biggest is first
-					if (aSize > bSize)
-						return -1;
-					else if (aSize == bSize)
-						return 0;
-					else
-						return 1;
-				}
-			};
-
-			for (String className : lexicalOrdering) {
-				for (final ClassModel c : objectArrayFieldsClasses) {
-					final ArrayList<FieldNameInfo> fields = c.getStructMembers();
-					if (fields.size() > 0) {
-						Collections.sort(fields, fieldSizeComparator);
-						// Now compute the total size for the struct
-						int alignTo = 0;
-						int totalSize = 0;
-
-						for (final FieldNameInfo f : fields) {
-							// Record field offset for use while copying
-							// Get field we will copy out of the kernel member object
-							final Field rfield = getFieldFromClassHierarchy(c.getClassWeAreModelling(), f.name);
-
-							long fieldOffset = UnsafeWrapper.objectFieldOffset(rfield);
-							final String fieldType = f.desc;
-
-							c.addStructMember(fieldOffset, TypeSpec.valueOf(fieldType), f.name);
-
-							final int fSize = getSizeOf(fieldType);
-							if (fSize > alignTo)
-								alignTo = fSize;
-							totalSize += fSize;
-						}
-
-						// compute total size for OpenCL buffer
-						int totalStructSize = 0;
-						totalStructSize = totalSize;
-						c.setTotalStructSize(totalStructSize);
-					}
 				}
 			}
 		}

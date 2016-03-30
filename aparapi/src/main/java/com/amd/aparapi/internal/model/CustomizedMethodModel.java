@@ -63,7 +63,7 @@ public abstract class CustomizedMethodModel<T extends CustomizedClassModel>
 		String returnType = Utils.convertToCType(getReturnType(clazzModel));
 		sb.append(returnType + " " + clazzModel.getMangledClassName() + "_");
 		if (this.name.equals("<init>"))
-			sb.append("init");
+			sb.append("_init_");
 		else
 			sb.append(Utils.convertToCType(this.name));
 		sb.append("(" + clazzModel.getMangledClassName() + " *this");

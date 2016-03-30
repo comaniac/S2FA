@@ -65,6 +65,14 @@ class IOSuite extends J2FAFunSuite {
     val className = "IOTest_Obj"
     assert(checkResult(runTest(srcFileURL, jarFileURL, className)))
   }
+
+  test("Map IO Test: (Merlin) Interface/Interface") {
+    val jarFileURL = getClass.getResource("/map_iotest_itf-0.0.0.jar")
+    val srcFileURL = getClass.getResource("/IOTest_ITF.scala")
+    val className = "IOTest_ITF"
+    assert(checkResult(runTest(srcFileURL, jarFileURL, className)))
+  }
+
 /*
   test("MapPartitions IO Test: (Merlin) Primitive/Primitive") {
     val jarFileURL = getClass.getResource("/mappartitions_iotest_pp-0.0.0.jar")

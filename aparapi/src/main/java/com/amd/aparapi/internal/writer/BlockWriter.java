@@ -767,9 +767,6 @@ public abstract class BlockWriter {
 			// TODO: Method dispatcher
 			final I_INVOKEINTERFACE interfaceMethodCall = (I_INVOKEINTERFACE) _instruction;
 			final InterfaceMethodEntry methodEntry = interfaceMethodCall.getConstantPoolInterfaceMethodEntry();
-			final String clazzName = methodEntry.getClassEntry().getNameUTF8Entry().getUTF8();
-			final String methodName = methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
-			final String fullName = clazzName + "." + methodName + "()";
 			
 			writeMethod(interfaceMethodCall, methodEntry);
 		} else if (_instruction.getByteCode().equals(ByteCode.CLONE)) {
@@ -937,19 +934,20 @@ public abstract class BlockWriter {
 	public boolean writeMethod(I_INVOKEINTERFACE _methodCall,
 														 InterfaceMethodEntry _methodEntry) throws CodeGenException {
 		final Instruction instanceInstruction = _methodCall.getInstanceReference();
-		if (!(instanceInstruction instanceof I_ALOAD_0)) {
-			writeInstruction(instanceInstruction);
-			write(".");
-		} else
-			write("this->");
+		final String clazzName = _methodEntry.getClassEntry().getNameUTF8Entry().getUTF8();
+		final String methodName = _methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
 
 		final int argc = _methodEntry.getStackConsumeCount();
-		write(_methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8());
+		write(clazzName + "__" + methodName);
 		write("(");
 
+		if (instanceInstruction instanceof I_ALOAD_0)
+			write("this");
+		else
+			writeInstruction(instanceInstruction);
+
 		for (int arg = 0; arg < argc; arg++) {
-			if (arg != 0)
-				write(", ");
+			write(", ");
 			writeInstruction(_methodCall.getArg(arg));
 		}
 		write(")");

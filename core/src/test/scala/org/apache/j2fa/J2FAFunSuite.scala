@@ -19,11 +19,11 @@ package org.apache.j2fa
 import scala.io._
 import scala.sys.process._
 
-import java.util._
-import java.util.logging.Logger
 import java.io._
 import java.net._
+import java.util.logging.Logger
 import java.util.LinkedList
+import java.util.jar.JarFile
 
 import org.scalatest.{FunSuite, Outcome, Ignore}
 
@@ -40,6 +40,25 @@ abstract class J2FAFunSuite extends FunSuite {
     val jars = Array(jarFileURL,
                       new URL("file://" + sys.env("BLAZE_HOME") + "/accrdd/target/blaze-1.0-SNAPSHOT.jar"))
     val loader = new URLClassLoader(jars)
+
+    // Load classes
+    jars.foreach({ path =>
+      val jarFile = new JarFile(path.toString.replace("file:", ""))
+      var entity = jarFile.entries
+      while (entity.hasMoreElements) {
+        val je = entity.nextElement
+        if (!je.isDirectory && je.getName.endsWith(".class")) {
+          val clazzName = je.getName.substring(0, je.getName.length - 6).replace('/', '.')
+          logger.finest("Load class " + clazzName)
+          try {
+            loader.loadClass(clazzName)
+          } catch {
+            case _ : Throwable =>
+              logger.fine("Cannot find class " + clazzName + " in provided packages")
+          }
+        }
+      }
+    })
     val clazz = loader.loadClass(className)
 
     val plog = ProcessLogger((e: String) => println("Error: " + e))

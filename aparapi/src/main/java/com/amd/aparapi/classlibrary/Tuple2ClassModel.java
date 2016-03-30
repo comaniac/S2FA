@@ -39,7 +39,7 @@ public class Tuple2ClassModel extends CustomizedClassModel {
 			public String getBody(Tuple2ClassModel clazzModel) {
 				return (
 					getFieldModel("v1").genAccess() + " = n1;\n  " + 
-					getFieldModel("v2").genAccess() + " = n2;\n"
+					getFieldModel("v2").genAccess() + " = n2;"
 				);
 			}
 

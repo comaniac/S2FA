@@ -2096,6 +2096,8 @@ public abstract class ClassModel {
 
 	private static Logger logger = Logger.getLogger(Config.getLoggerName());
 
+	private boolean hasInterface = false;
+
 	protected ClassModel superClazz = null;
 
 	//   private Memoizer<Set<String>> noClMethods = Memoizer.of(this::computeNoCLMethods);
@@ -2133,6 +2135,23 @@ public abstract class ClassModel {
 	 * @param _class The class we will extract the model from
 	 * @throws ClassParseException
 	 */
+
+	/**
+	 * Set this class has at least one interface.
+	 * 
+	 */
+	public void setAsDerivedClass() {
+		hasInterface = true;
+	}
+
+	/**
+	 * Determine if this is a derived class
+	 *
+	 * @return true if the class has at least one interface
+	 */
+	public boolean isDerivedClass() {
+		return hasInterface;
+	}
 
 	/**
 	 * Determine if this is the superclass of some other named class.

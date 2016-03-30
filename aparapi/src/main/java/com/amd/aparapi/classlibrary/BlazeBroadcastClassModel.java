@@ -31,7 +31,7 @@ public class BlazeBroadcastClassModel extends CustomizedClassModel {
 
 			@Override
 			public String getBody(BlazeBroadcastClassModel clazzModel) {
-				return ("return " + getFieldModel("value").genAccess() + ";\n");
+				return ("return " + getFieldModel("value").genAccess() + ";");
 			}
 		};
 //		addMethod(getValueMethod, getFieldModel("value"));
