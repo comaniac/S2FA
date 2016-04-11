@@ -81,6 +81,8 @@ public class CustomizedClassModels implements Iterable<CustomizedClassModel> {
 
 		public boolean matches(CustomizedClassModel model) {
 			TypeParameters thatParams = model.getTypeParams();
+			if (thatParams.size() == 0 && this.params == null)
+				return true;
 			if (thatParams.size() == this.params.length) {
 				int index = 0;
 				for (String d : thatParams) {

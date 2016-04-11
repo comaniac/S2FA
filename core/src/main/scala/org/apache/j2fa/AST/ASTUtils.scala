@@ -8,7 +8,20 @@ object ASTUtils {
 
   def getSourceTree(filePath: String) = {
     val tb = runtimeMirror(getClass.getClassLoader).mkToolBox()
-    val code = Source.fromFile(filePath).getLines.mkString("\n")
+    var code = Source.fromFile(filePath).getLines.mkString("\n")
+
+    /* Scala 2.11 bug SI-6657:
+      package declaration must be along with brackets.
+      Origin: package PACKAGE_NAME
+                // source code
+      Required: package PACKAGE_NAME {
+                  // source code
+                }
+    */
+    if (code.contains("package ")) {
+      val pos = code.indexOf("\n", code.indexOf("package"))
+      code = code.substring(0, pos) + "{" + code.substring(pos, code.length) + "}"
+    }
     tb.parse(code)
   }
 

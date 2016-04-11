@@ -6,8 +6,8 @@ if [[ $# != 4 ]]; then
 fi
 
 #JARS="${HOME}/.m2/repository/j2fa/j2fa_core/0.0.0/j2fa_core-0.0.0.jar"
-JARS="./core/target/j2fa_core-0.0.0.jar"
-JARS="${JARS}:${BLAZE_HOME}/accrdd/target/blaze-1.0-SNAPSHOT.jar"
+JARS="${J2FA_HOME}/core/target/j2fa_core-0.0.0.jar"
+JARS="${JARS}:${BLAZE_HOME}/accrdd/target/blaze-1.0.jar"
 
 scala -classpath ${JARS} org.apache.j2fa.J2FA $1 $2 $3 $4
 

@@ -203,7 +203,19 @@ public abstract class KernelWriter extends BlockWriter {
 			return (cvtLongArrayToLongStar);
 		else if (_typeDesc.equals("[S") || _typeDesc.equals("short[]"))
 			return (cvtShortArrayToShortStar);
+		else if (_typeDesc.equals("I") || _typeDesc.equals("int"))
+			return "int ";
+		else if (_typeDesc.equals("F") || _typeDesc.equals("float"))
+			return "float ";
+		else if (_typeDesc.equals("D") || _typeDesc.equals("double"))
+			return "double ";
+		else if (_typeDesc.equals("J") || _typeDesc.equals("long"))
+			return "long ";
+		else if (_typeDesc.equals("S") || _typeDesc.equals("short"))
+			return "short ";
+
 		// if we get this far, we haven't matched anything yet
+		logger.fine("Converting " + _typeDesc);
 		if (useClassModel)
 			return (ClassModel.convert(_typeDesc, "", true));
 		else
@@ -925,7 +937,12 @@ public abstract class KernelWriter extends BlockWriter {
 			String argCall = "";
 
 			// Write "this" if necessary
-			if (!sampleMM.getMethod().isStatic()) {
+			if (sampleMM instanceof CustomizedMethodModel<?>) {
+				write(__global + className + " *this");
+				argCall += "this";
+				alreadyHasFirstArg = true;
+			}
+			else if (!sampleMM.getMethod().isStatic()) {
 				if ((sampleMM.getMethod().getClassModel() == _entryPoint.getClassModel())
 				    || sampleMM.getMethod().getClassModel().isSuperClass(
 				      _entryPoint.getClassModel().getClassWeAreModelling())) {
@@ -939,63 +956,75 @@ public abstract class KernelWriter extends BlockWriter {
 			}
 
 			// Write arguments
-			final LocalVariableTableEntry<LocalVariableInfo> lvte = sampleMM.getLocalVariableTableEntry();
-			for (final LocalVariableInfo lvi : lvte) {
-				if ((lvi.getStart() == 0) && ((lvi.getVariableIndex() != 0) ||
-				                              sampleMM.getMethod().isStatic())) { // full scope but skip this
-					final String descriptor = lvi.getVariableDescriptor();
-
+			if (sampleMM instanceof CustomizedMethodModel) {
+				for (final String arg : ((CustomizedMethodModel<?>) sampleMM).getArgs(null)) {
 					if (alreadyHasFirstArg) {
 						write(", ");
 						argCall += ", ";
 					}
-
-					if (descriptor.startsWith("[") || descriptor.startsWith("L"))
-						write(" " + __global);
-
-					final String convertedType;
-					if (descriptor.startsWith("L")) {
-						final String converted = convertType(descriptor, true).trim();
-						final SignatureEntry sigEntry = sampleMM.getMethod().getAttributePool().getSignatureEntry();
-						final TypeSignature sig;
-
-						if (sigEntry != null) {
-							final int argumentOffset = (sampleMM.getMethod().isStatic() ?
-							                            lvi.getVariableIndex() : lvi.getVariableIndex() - 1);
-							final FullMethodSignature methodSig = new FullMethodSignature(
-							  sigEntry.getSignature());
-							sig = methodSig.getTypeParameters().get(argumentOffset);
-						} else
-							sig = new TypeSignature(descriptor);
-						ClassModel cm = entryPoint.getModelFromObjectArrayFieldsClasses(
-						                  converted, new SignatureMatcher(sig));
-						if (cm == null) { // Looking for customized class models
-							JParameter param = entryPoint.getArgument(lvi.getVariableName());
-							if (param == null)
-								throw new RuntimeException("Cannot match argument: " + converted + 
-									" " + lvi.getVariableName());
-							cm = param.getClassModel();
-						}
-						convertedType = cm.getMangledClassName() + " *";
-					} else
-						convertedType = convertType(descriptor, true);
-					write(convertedType);
-
-					write(lvi.getVariableName());
-					argCall += lvi.getVariableName();
-
-					// Add item length argument for input array.
-					if (descriptor.startsWith("[")) {
-						write(", int " + lvi.getVariableName() + BlockWriter.arrayItemLengthMangleSuffix);
-						argCall += ", " + lvi.getVariableName() + BlockWriter.arrayItemLengthMangleSuffix;
-					}
+					write(arg);
+					argCall += arg.substring(arg.indexOf(" ") + 1);
 					alreadyHasFirstArg = true;
+				}
+			}
+			else {
+				final LocalVariableTableEntry<LocalVariableInfo> lvte = sampleMM.getLocalVariableTableEntry();
+				for (final LocalVariableInfo lvi : lvte) {
+					if ((lvi.getStart() == 0) && ((lvi.getVariableIndex() != 0) ||
+					                              sampleMM.getMethod().isStatic())) { // full scope but skip this
+						final String descriptor = lvi.getVariableDescriptor();
+	
+						if (alreadyHasFirstArg) {
+							write(", ");
+							argCall += ", ";
+						}
+	
+						if (descriptor.startsWith("[") || descriptor.startsWith("L"))
+							write(" " + __global);
+	
+						final String convertedType;
+						if (descriptor.startsWith("L")) {
+							final String converted = convertType(descriptor, true).trim();
+							final SignatureEntry sigEntry = sampleMM.getMethod().getAttributePool().getSignatureEntry();
+							final TypeSignature sig;
+	
+							if (sigEntry != null) {
+								final int argumentOffset = (sampleMM.getMethod().isStatic() ?
+								                            lvi.getVariableIndex() : lvi.getVariableIndex() - 1);
+								final FullMethodSignature methodSig = new FullMethodSignature(
+								  sigEntry.getSignature());
+								sig = methodSig.getTypeParameters().get(argumentOffset);
+							} else
+								sig = new TypeSignature(descriptor);
+							ClassModel cm = entryPoint.getModelFromObjectArrayFieldsClasses(
+							                  converted, new SignatureMatcher(sig));
+							if (cm == null) { // Looking for customized class models
+								JParameter param = entryPoint.getArgument(lvi.getVariableName());
+								if (param == null)
+									throw new RuntimeException("Cannot match argument: " + converted + 
+										" " + lvi.getVariableName());
+								cm = param.getClassModel();
+							}
+							convertedType = cm.getMangledClassName() + " *";
+						} else
+							convertedType = convertType(descriptor, true);
+						write(convertedType);
+	
+						write(lvi.getVariableName());
+						argCall += lvi.getVariableName();
+	
+						// Add item length argument for input array.
+						if (descriptor.startsWith("[")) {
+							write(", int " + lvi.getVariableName() + BlockWriter.arrayItemLengthMangleSuffix);
+							argCall += ", " + lvi.getVariableName() + BlockWriter.arrayItemLengthMangleSuffix;
+						}
+						alreadyHasFirstArg = true;
+					}
 				}
 			}
 
 			// Issue #40: Add output array as an argument.
 			if (isPassByAddrOutput) {
-
 				// Find the local variable name used for the return value in Java.
 				// aload/invoke/cast	<- the 2nd instruction from the last
 				// areturn

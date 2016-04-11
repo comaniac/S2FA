@@ -190,10 +190,14 @@ public class Entrypoint implements Cloneable {
 	}
 
 	private void addClass(String name, ClassModel model) throws AparapiException {
-		addToObjectArrayFieldsClasses(name, model);
+		if (model instanceof CustomizedClassModel)
+			addCustomizedClass((CustomizedClassModel) model);
+		else {
+			addToObjectArrayFieldsClasses(name, model);
 
-		lexicalOrdering.add(name);
-		allFieldsClasses.add(name, model);
+			lexicalOrdering.add(name);
+			allFieldsClasses.add(name, model);
+		}
 	}
 
 
@@ -768,16 +772,31 @@ public class Entrypoint implements Cloneable {
 				}
 				ClassModel derivedClassModel = ClassModel.createClassModel(derivedClazz, this, 
 						new CustomizedClassModelMatcher(null));
-				ClassModelMethod methodImpl = derivedClassModel.getMethod(methodName, methodDesc);
-				MethodModel method = new LoadedMethodModel(methodImpl, this);
+
+				MethodModel method = null;
+				if (derivedClassModel instanceof CustomizedClassModel) {
+					method = ((CustomizedClassModel) derivedClassModel).getCustomizedMethod(methodName);
+				}
+				else {
+					ClassModelMethod methodImpl = derivedClassModel.getMethod(methodName, methodDesc);
+					if (methodImpl == null) // Skip the derived class without the overrided method
+						continue;
+					method = new LoadedMethodModel(methodImpl, this);
+
+					// Add interface implementations to methodMap
+					methodMap.put(methodImpl, method);
+				}
+
+				// Skip the derived class without the overrided method
+				if (method == null)
+					continue;
+
 				addOrUpdateMethodImpl(fullSig, method);
 
 				// Add derived class to customized class list
 				derivedClassModel.setAsDerivedClass();
 				addClass(derivedClazzName, derivedClassModel);
 
-				// Add interface implementations to methodMap
-				methodMap.put(methodImpl, method);
 				methodModel.getCalledMethods().add(method);
 			}
 		}

@@ -2853,6 +2853,8 @@ public abstract class ClassModel {
 				return (entry);
 			}
 		}
+		logger.fine("Cannot find " + getMangledClassName().replace('_', '.')
+			 + "." + _name + " " + _descriptor);
 		return null;
 	}
 

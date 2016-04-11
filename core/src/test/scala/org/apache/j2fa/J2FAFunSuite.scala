@@ -38,7 +38,7 @@ abstract class J2FAFunSuite extends FunSuite {
     val kernelMethods = ASTUtils.getKernelMethods(srcTree)
 
     val jars = Array(jarFileURL,
-                      new URL("file://" + sys.env("BLAZE_HOME") + "/accrdd/target/blaze-1.0-SNAPSHOT.jar"))
+                      new URL("file://" + sys.env("BLAZE_HOME") + "/accrdd/target/blaze-1.0.jar"))
     val loader = new URLClassLoader(jars)
 
     // Load classes

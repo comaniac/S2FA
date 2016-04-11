@@ -52,24 +52,33 @@ object J2FA {
     })
 
     val loader = new URLClassLoader(jars.toArray)
+    val loadLevel = 4 // FIXME
+    var lastPos = 0
+    for (i <- 0 until loadLevel) {
+      lastPos = args(2).indexOf(".", lastPos + 1)
+    }
+    val pkgPrefix =args(2).substring(0, lastPos).replace('.', '/')
+    logger.info("Loading classes from package " + pkgPrefix)
+
     jarPaths.foreach({ path =>
       val jarFile = new JarFile(path)
       var entity = jarFile.entries
       while (entity.hasMoreElements) {
         val je = entity.nextElement
-        if (!je.isDirectory && je.getName.endsWith(".class")) {
+        if (!je.isDirectory && je.getName.endsWith(".class") && je.getName.startsWith(pkgPrefix)) {
           val clazzName = je.getName.substring(0, je.getName.length - 6).replace('/', '.')
           logger.finest("Load class " + clazzName)
           try {
             loader.loadClass(clazzName)
           } catch {
             case _ : Throwable =>
-              logger.fine("Cannot find class " + clazzName + " in provided packages")
+              logger.finest("Cannot find class " + clazzName + " in provided packages")
           }
         }
       }
     })
 
+    logger.info("Loading target class: " + args(2))
     val clazz = loader.loadClass(args(2))
 
     // Compile each kernel method to accelerator kernel

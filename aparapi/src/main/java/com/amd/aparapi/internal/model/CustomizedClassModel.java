@@ -48,6 +48,8 @@ public abstract class CustomizedClassModel extends ClassModel {
 	public String getStructCode() {
 		StringBuilder sb = new StringBuilder();
 	  sb.append("typedef struct " + getMangledClassName() + "_s {\n");
+		if (isDerivedClass())
+			sb.append("  int j2fa_clazz_type;\n");
 	  for (CustomizedFieldModel f : getFieldModels())
 	  	sb.append("  " + f.getDeclareCode() + ";\n");
 	  sb.append("} " + getMangledClassName() + ";");
