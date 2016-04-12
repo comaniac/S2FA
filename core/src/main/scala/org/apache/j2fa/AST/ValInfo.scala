@@ -2,7 +2,7 @@ package org.apache.j2fa.AST
 
 import scala.reflect.runtime.universe._
 
-class ArgInfo(argName: String) {
+class ValInfo(valName: String) {
   var thisType: TypeInfo = null
 
   def this() = {
@@ -13,19 +13,22 @@ class ArgInfo(argName: String) {
     thisType = t
   }
 
-  def getName = argName
+  def getName = valName
 
   def getTypeName = thisType.getName
 
   def getShortTypeName = thisType.getShortName
 
-  def getFullType = thisType.getFullType
+  def getFullType = { 
+    if (thisType != null) 
+      thisType.getFullType
+    else
+      "NO TYPE HINT"
+  }
 
   override def toString() = {
-    var str = if (argName == null) "" else argName + ": "
-
-    str += thisType.toString
-    str
+    var str = if (valName == null) "" else valName + ": "
+    str + getFullType
   }
 }
 

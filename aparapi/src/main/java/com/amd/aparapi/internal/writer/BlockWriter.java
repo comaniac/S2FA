@@ -938,7 +938,7 @@ public abstract class BlockWriter {
 		final String methodName = _methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
 
 		final int argc = _methodEntry.getStackConsumeCount();
-		write(clazzName + "__" + methodName);
+		write(clazzName.replace("/", "__") + "__" + methodName);
 		write("(");
 
 		if (instanceInstruction instanceof I_ALOAD_0)

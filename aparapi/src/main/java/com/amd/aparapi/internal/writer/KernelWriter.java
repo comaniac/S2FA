@@ -359,7 +359,7 @@ public abstract class KernelWriter extends BlockWriter {
 
 			if (m != null) {
 				if (m instanceof CustomizedMethodModel)
-					write(m.getOwnerClassMangledName() + "_");
+					write(m.getOwnerClassMangledName() + "_"); 
 				write(m.getName());
 			}
 			else if (_methodEntry.toString().equals("java/lang/Object.<init>()V")) {
@@ -870,7 +870,7 @@ public abstract class KernelWriter extends BlockWriter {
 		Set<String> dispatchers = _entryPoint.getKernelCalledInterfaceMethods();
 
 		if (dispatchers.size() > 0) {
-			write("int j2fa_getClassType(/* FIXME */ *this) {");
+			write("int j2fa_getClassType(void *this) {");
 			in();
 			newLine();
 			write("return this->j2fa_clazz_type;");
@@ -1044,20 +1044,23 @@ public abstract class KernelWriter extends BlockWriter {
 				argCall += ", " + varName + ", " + varName + BlockWriter.arrayItemLengthMangleSuffix;
 			}
 
-			write(")");
+			write(") {");
 			in();
 			newLine();
 
 			// Write method dispatcher
 			int idx = 0;
-			write("switch (j2fa_getClassType(this)) {");
+			write("switch (j2fa_getClassType((void *) this)) {");
 			in();
 			newLine();
 			for (MethodModel derived : impls) {
 				write("case " + idx + ":");
 				in();
 				newLine();
-				write("return " + derived.getName() + "(" + argCall + ");");
+				write("return ");
+				if (derived instanceof CustomizedMethodModel)
+					write(derived.getOwnerClassMangledName() + "_");
+				write(derived.getName() + "(" + argCall + ");");
 				out();
 				newLine();
 				idx += 1;

@@ -23,6 +23,7 @@ import scala.sys.process._
 import java.io._
 import java.net._
 import java.util.logging.Logger
+import java.util.logging.Level
 import java.util.LinkedList
 import java.util.jar.JarFile
 
@@ -33,15 +34,24 @@ object J2FA {
   val logger = Logger.getLogger(Config.getLoggerName)
  
   def main(args : Array[String]) {
-    if (args.length < 4) {
-      System.err.println("Usage: J2FA <Source file> <jar paths> <Accelerator class name> <Output kernel file>")
+    if (args.length < 5) {
+      System.err.print("Usage: J2FA <Source file> <jar paths> ")
+      System.err.println("<Load level> <Accelerator class name> <Output kernel file>")
       System.exit(1)
     }
     logger.info("J2FA -- Java to FPGA Accelerator Framework")
 
     // Parse source code to identify kernel methods
     val srcTree = ASTUtils.getSourceTree(args(0))
-    val kernelMethods = ASTUtils.getKernelMethods(srcTree)
+    val kernels = ASTUtils.getKernelInfo(srcTree)
+
+    if (logger.isLoggable(Level.FINE)) {
+      logger.fine("Type environment:")
+      kernels.getVariables.foreach({
+        case (name, valInfo) =>
+          println(name + ": " + valInfo.getFullType)
+      })
+    }
 
     // Load classes
     val jarPaths = args(1).split(":")
@@ -52,12 +62,13 @@ object J2FA {
     })
 
     val loader = new URLClassLoader(jars.toArray)
-    val loadLevel = 4 // FIXME
+    val loadLevel = args(2).toInt
     var lastPos = 0
     for (i <- 0 until loadLevel) {
-      lastPos = args(2).indexOf(".", lastPos + 1)
+      if (lastPos != -1)
+        lastPos = args(3).indexOf(".", lastPos + 1)
     }
-    val pkgPrefix =args(2).substring(0, lastPos).replace('.', '/')
+    val pkgPrefix =args(3).substring(0, lastPos).replace('.', '/')
     logger.info("Loading classes from package " + pkgPrefix)
 
     jarPaths.foreach({ path =>
@@ -78,17 +89,17 @@ object J2FA {
       }
     })
 
-    logger.info("Loading target class: " + args(2))
-    val clazz = loader.loadClass(args(2))
+    logger.info("Loading target class: " + args(3))
+    val clazz = loader.loadClass(args(3))
 
     // Compile each kernel method to accelerator kernel
-    kernelMethods.foreach({
+    kernels.getMethods.foreach({
       case (mName, mInfo) =>
         logger.info("Compiling kernel " + mInfo.toString)
         val kernel = new Kernel(clazz, mInfo, loader)
         val kernelString = kernel.generate
         if (kernelString.isEmpty == false) {
-          val kernelFile = new PrintWriter(new File(args(3)))
+          val kernelFile = new PrintWriter(new File(args(4)))
           kernelFile.write(kernelString.get)
           kernelFile.close
         }

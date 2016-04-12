@@ -9,5 +9,5 @@ fi
 JARS="${J2FA_HOME}/core/target/j2fa_core-0.0.0.jar"
 JARS="${JARS}:${BLAZE_HOME}/accrdd/target/blaze-1.0.jar"
 
-scala -classpath ${JARS} org.apache.j2fa.J2FA $1 $2 $3 $4
+scala -classpath ${JARS} org.apache.j2fa.J2FA $1 $2 4 $3 $4
 

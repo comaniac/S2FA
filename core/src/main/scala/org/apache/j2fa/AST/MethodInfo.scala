@@ -3,11 +3,14 @@ package org.apache.j2fa.AST
 import scala.reflect.runtime.universe._
 import scala.collection.mutable.Map
 
-class MethodInfo(methodName: String, _config: Map[String, String]) {
+class MethodInfo(
+  clazzName: String,
+  methodName: String, 
+  _config: Map[String, String]) {
 
   val config = _config
-  var args: List[ArgInfo] = List[ArgInfo]()
-  var out: ArgInfo = null
+  var args: List[ValInfo] = List[ValInfo]()
+  var out: ValInfo = null
 
   // Config default values
   if (config.contains("kernel_type") == false)
@@ -15,17 +18,19 @@ class MethodInfo(methodName: String, _config: Map[String, String]) {
   if (config.contains("output_format") == false)
     config("output_format") = "Merlin"
 
-  def addArg(arg: ArgInfo) = {
+  def addArg(arg: ValInfo) = {
     args = args :+ arg
   }
 
   def hasOutput = if (out == null) false else true
 
-  def setOutput(arg: ArgInfo) = {
+  def setOutput(arg: ValInfo) = {
     out = arg
   }
 
   def getOutput = out
+
+  def getClassName = clazzName
 
   def getName = methodName
 
@@ -63,7 +68,7 @@ class MethodInfo(methodName: String, _config: Map[String, String]) {
     for ((k, v) <- config)
       str += k + "=" + v + " "
     str += ") "
-    str += methodName + "("
+    str += clazzName + "." + methodName + "("
     args.foreach(e => {
       if (first == false)
         str += ", "

@@ -25,9 +25,9 @@ object ASTUtils {
     tb.parse(code)
   }
 
-  def getKernelMethods(tree: Tree) = {
-    val extractor = new KernelMethodExt("J2FA_Kernel")
+  def getKernelInfo(tree: Tree) = {
+    val extractor = new KernelInfoExt("J2FA_Kernel")
     extractor.traverse(tree)
-    extractor.getMethods
+    extractor
   }
 }

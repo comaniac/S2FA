@@ -35,7 +35,7 @@ abstract class J2FAFunSuite extends FunSuite {
 
   final protected def runTest(srcFileURL: URL, jarFileURL: URL, className: String) = {
     val srcTree = ASTUtils.getSourceTree(srcFileURL.toString.replace("file:", ""))
-    val kernelMethods = ASTUtils.getKernelMethods(srcTree)
+    val kernels = ASTUtils.getKernelInfo(srcTree)
 
     val jars = Array(jarFileURL,
                       new URL("file://" + sys.env("BLAZE_HOME") + "/accrdd/target/blaze-1.0.jar"))
@@ -63,7 +63,7 @@ abstract class J2FAFunSuite extends FunSuite {
 
     val plog = ProcessLogger((e: String) => println("Error: " + e))
     var success = 0
-    kernelMethods.foreach({
+    kernels.getMethods.foreach({
       case (mName, mInfo) =>
         logger.info("Compiling kernel " + mInfo.toString)
         val kernel = new Kernel(clazz, mInfo, loader)
@@ -83,7 +83,7 @@ abstract class J2FAFunSuite extends FunSuite {
     })
     "rm /tmp/j2fa_tmp.c" !
 
-    if (success != kernelMethods.size)
+    if (success != kernels.getMethods.size)
       false
     else
       true
