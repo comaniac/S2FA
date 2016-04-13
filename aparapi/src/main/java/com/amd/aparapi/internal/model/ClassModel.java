@@ -2958,15 +2958,16 @@ public abstract class ClassModel {
 
 	public Entrypoint getEntrypoint(String _entrypointName, String _descriptor,
 	                                Object _k, Collection<JParameter> params, 
-																	URLClassLoader loader) throws AparapiException {
+																	URLClassLoader loader, Map<String, String> typeEnv
+	) throws AparapiException {
 		final MethodModel method = getMethodModel(_entrypointName, _descriptor);
-		return new Entrypoint(this, method, _k, params, loader);
+		return new Entrypoint(this, method, _k, params, loader, typeEnv);
 	}
 
 	Entrypoint computeBasicEntrypoint(EntrypointKey entrypointKey) throws AparapiException {
 		final MethodModel method = getMethodModel(entrypointKey.getEntrypointName(),
 		                           entrypointKey.getDescriptor());
-		return new Entrypoint(this, method, null, entrypointKey.getParams(), null);
+		return new Entrypoint(this, method, null, entrypointKey.getParams(), null, null);
 	}
 
 	public String getClassName() {
@@ -2978,11 +2979,11 @@ public abstract class ClassModel {
 	}
 
 	public Entrypoint getEntrypoint(String _entrypointName, Object _k) throws AparapiException {
-		return (getEntrypoint(_entrypointName, "()V", _k, null, null));
+		return (getEntrypoint(_entrypointName, "()V", _k, null, null, null));
 	}
 
 	public Entrypoint getEntrypoint() throws AparapiException {
-		return (getEntrypoint("run", "()V", null, null, null));
+		return (getEntrypoint("run", "()V", null, null, null, null));
 	}
 
 	public static void invalidateCaches() {

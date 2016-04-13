@@ -4,20 +4,19 @@ import scala.reflect.runtime.universe._
 import scala.collection.mutable.Map
 
 class KernelInfoExt(annot: String) extends Traverser {
-  val valMap = Map[String, ValInfo]()
+  val valMap = Map[String, String]()
   val methodMap = Map[String, MethodInfo]()
 
   override def traverse(tree: Tree) = tree match {
     // Traverse class definition
     case pat @ ClassDef(mod, name, _, impl) =>
       val cName = name.toString
-      println("AST: Traversing class " + cName)
       val body = impl.body
       var hasKernel = false
       body.foreach(t => t match {
-        case pat @ ClassDef(_, _, _, _) =>
+        case pat @ ClassDef(_, _, _, _) => // Nested classes
           traverse(t)
-        case pat @ DefDef(_, _, _, _, _, _) =>
+        case pat @ DefDef(_, _, _, _, _, _) => // Methods
           hasKernel = hasKernel | identifyKernel(cName, t)
         case _ =>
           // Do nothing
@@ -49,7 +48,6 @@ class KernelInfoExt(annot: String) extends Traverser {
       if (mConfig.isEmpty == false) {
         val newMethod = new MethodInfo(prefix, mName, mConfig.get)
         methodMap(prefix + "." + mName) = newMethod
-        println("Found a kernel in " + prefix)
         true
       }
       else
@@ -95,7 +93,7 @@ class KernelInfoExt(annot: String) extends Traverser {
       val vName = name.toString
       val newVal = new ValInfo(vName)
       traverseType(typeTree, null, newVal)
-      valMap(vName) = newVal
+      valMap(vName) = newVal.getFullType
       
     case _ =>
       // Do nothing
@@ -112,7 +110,7 @@ class KernelInfoExt(annot: String) extends Traverser {
           val vName = name.toString
           val newVal = new ValInfo(vName)
           traverseType(typeTree, _method, newVal)
-          valMap(_method.getClassName + "." + vName) = newVal
+          valMap(vName) = newVal.getFullType
         case _ =>
           // Do nothing
       })
@@ -134,7 +132,7 @@ class KernelInfoExt(annot: String) extends Traverser {
       traverseType(typeTree, _method, newVal)
       assert(_method != null)
       _method.addArg(newVal)
-      valMap(_method.getClassName + "." + name.toString) = newVal
+      valMap(name.toString) = newVal.getFullType
 
     case pat @ TypeTree() =>
       // Do nothing
@@ -158,16 +156,39 @@ class KernelInfoExt(annot: String) extends Traverser {
           val newArg = new ValInfo
           newArg.setType(newType)
           _method.setOutput(newArg)
+          valMap("j2fa_out") = newArg.getFullType
         }
         else // Method argument or class field
           _val.setType(newType)
       }
 
+    case pat @ Select(_, _) =>
+      val name = getFullNameFromSelectTree(_tree)
+      val newType = new TypeInfo(name)
+
+      if (_type == null) { // Traversing normal type
+        if (_val != null) // Method argument or class field
+          _val.setType(newType)
+        else { // Method output type
+          assert(_method != null)
+          val newArg = new ValInfo
+          newArg.setType(newType)
+          _method.setOutput(newArg)
+          valMap("j2fa_out") = newArg.getFullType
+        }
+      }
+      else if (_type.getName != null)
+        // Traversing generic type
+        _type.addGenericType(newType)
+      else
+        // Other cases
+        _type.setName(name)
+     
     case pat @ Ident(name) => 
       val newType = new TypeInfo(name.toString)
 
       if (_type == null) { // Traversing normal type
-        if (_val != null) // Method argumetn or class field
+        if (_val != null) // Method argument or class field
           _val.setType(newType)
         else { // Method output type
           assert(_method != null)
@@ -186,6 +207,14 @@ class KernelInfoExt(annot: String) extends Traverser {
     case _ => 
       println("Cannot match the AST of signature: ")
       println(showRaw(_tree))
+  }
+
+  def getFullNameFromSelectTree(tree: Tree): String = tree match {
+    case pat @ Select(qul, name) =>
+      getFullNameFromSelectTree(qul) + "/" + name.toString
+
+    case pat @ Ident(name) =>
+      name.toString
   }
 
    def traverseAnnot(tree: Tree): Option[Map[String, String]] = tree match {

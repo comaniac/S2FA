@@ -23,7 +23,7 @@ class ValInfo(valName: String) {
     if (thisType != null) 
       thisType.getFullType
     else
-      "NO TYPE HINT"
+      null
   }
 
   override def toString() = {

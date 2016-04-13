@@ -48,8 +48,8 @@ object J2FA {
     if (logger.isLoggable(Level.FINE)) {
       logger.fine("Type environment:")
       kernels.getVariables.foreach({
-        case (name, valInfo) =>
-          println(name + ": " + valInfo.getFullType)
+        case (name, vtype) =>
+          println(name + ": " + vtype)
       })
     }
 
@@ -65,10 +65,10 @@ object J2FA {
     val loadLevel = args(2).toInt
     var lastPos = 0
     for (i <- 0 until loadLevel) {
-      if (lastPos != -1)
+      if (args(3).indexOf(".", lastPos + 1) != -1)
         lastPos = args(3).indexOf(".", lastPos + 1)
     }
-    val pkgPrefix =args(3).substring(0, lastPos).replace('.', '/')
+    val pkgPrefix = args(3).substring(0, lastPos).replace('.', '/')
     logger.info("Loading classes from package " + pkgPrefix)
 
     jarPaths.foreach({ path =>
@@ -96,7 +96,7 @@ object J2FA {
     kernels.getMethods.foreach({
       case (mName, mInfo) =>
         logger.info("Compiling kernel " + mInfo.toString)
-        val kernel = new Kernel(clazz, mInfo, loader)
+        val kernel = new Kernel(kernels.getVariables, clazz, mInfo, loader)
         val kernelString = kernel.generate
         if (kernelString.isEmpty == false) {
           val kernelFile = new PrintWriter(new File(args(4)))

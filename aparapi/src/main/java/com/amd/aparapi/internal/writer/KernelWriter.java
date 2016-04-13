@@ -251,20 +251,18 @@ public abstract class KernelWriter extends BlockWriter {
 
 		MethodEntry constructorEntry = invokeSpecial.getConstantPoolMethodEntry();
 		final String constructorName =
-		  constructorEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
-		final String constructorSignature =
-		  constructorEntry.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
+		  constructorEntry.getClassEntry().getNameUTF8Entry().getUTF8();
+		Instruction parent = call.getParentExpr();
 
 		MethodModel m = entryPoint.getCallTarget(constructorEntry, true);
-		if (m == null) {
-			throw new RuntimeException("Unable to find constructor for name=" +
-			                           constructorEntry + " sig=" + constructorSignature);
-		}
+		if (m == null)
+			m = entryPoint.getCustomizedCallTarget(constructorName, "<init>", parent);
+		if (m == null)
+			throw new RuntimeException("Unable to find constructor for " + constructorName);
 
 		boolean isReturn = false;
 		String typeName = m.getOwnerClassMangledName();
 		String varName = "";
-		Instruction parent = call.getParentExpr();
 
 		if (parent instanceof LocalVariableTableIndexAccessor)
 			varName = ((LocalVariableTableIndexAccessor) parent).getLocalVariableInfo().getVariableName();
@@ -280,7 +278,7 @@ public abstract class KernelWriter extends BlockWriter {
 		write(typeName + " *" + varName + " = &_" + varName + ";");
 		newLine();
 		if (m instanceof CustomizedMethodModel)
-			write(typeName + "_init_(" + varName);
+			write(typeName + "__init_(" + varName);
 		else
 			write(m.getName() + "(" + varName);
 
@@ -342,6 +340,12 @@ public abstract class KernelWriter extends BlockWriter {
 			
 		final boolean isSpecial = _methodCall instanceof I_INVOKESPECIAL;
 		MethodModel m = entryPoint.getCallTarget(_methodEntry, isSpecial);
+
+		// Look for customized class models
+		if (m == null) {
+			Instruction i = ((VirtualMethodCall) _methodCall).getInstanceReference();
+			m = entryPoint.getCustomizedCallTarget(methodClass, methodName, i);
+		}
 
 		boolean noCL = _methodEntry.getOwnerClassModel().getNoCLMethods()
 		               .contains(_methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8());

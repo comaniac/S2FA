@@ -6,8 +6,6 @@ import org.apache.j2fa._
 
 class TypeInfo(var typeName: String) {
   var gTypes: List[TypeInfo] = List[TypeInfo]()
-//  if (typeName != null && typeName.equals("Vector"))
-//    typeName = "org/apache/spark/mllib/linalg/Vector"
 
   def this() = {
     this(null)
@@ -15,8 +13,6 @@ class TypeInfo(var typeName: String) {
 
   def setName(name: String) = {
     typeName = name
-//    if (typeName.equals("Vector"))
-//      typeName = "org/apache/spark/mllib/linalg/Vector"
   }
 
   def getName = typeName

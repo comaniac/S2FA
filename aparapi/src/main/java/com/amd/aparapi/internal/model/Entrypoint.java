@@ -77,6 +77,14 @@ public class Entrypoint implements Cloneable {
 
 	private final List<Field> referencedFields = new ArrayList<Field>();
 
+	private final Map<String, String> typeEnv;
+
+	public String getEnvTypeHint(String varName) {
+		if (typeEnv.containsKey(varName))
+			return typeEnv.get(varName);
+		return null;
+	}
+
 	private ClassModel classModel;
 
 	private final CustomizedClassModels customizedClassModels;
@@ -588,13 +596,15 @@ public class Entrypoint implements Cloneable {
 	}
 
 	public Entrypoint(ClassModel _classModel, MethodModel _methodModel,
-	                  Object _k, Collection<JParameter> params, URLClassLoader _loader)
+	                  Object _k, Collection<JParameter> params, 
+										URLClassLoader _loader, Map<String, String> _typeEnv)
 	throws AparapiException {
 		classModel = _classModel;
 		methodModel = _methodModel;
 		kernelInstance = _k;
 		argumentList = params;
 		appClassLoader = _loader;
+		typeEnv = _typeEnv;
 
 		config = new Config();
 
@@ -1452,7 +1462,6 @@ public class Entrypoint implements Cloneable {
 		final String targetMethodName = _methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
 		final Set<ClassModel> matchingClassModels = new HashSet<ClassModel>();
 
-
 		// Look for member obj accessor calls
 		if (target == null) {
 			for (final ClassModel memberObjClass : objectArrayFieldsClasses) {
@@ -1484,25 +1493,6 @@ public class Entrypoint implements Cloneable {
 			}
 		}
 
-		// Look for customized class models
-		if (target == null) {
-			logger.fine("Searching for customized classes: " + entryClassNameInDotForm);
-			if (!customizedClassModels.hasClass(entryClassNameInDotForm))
-				logger.fine("No customized class model for " + entryClassNameInDotForm);
-			else {
-				List<CustomizedClassModel> cms = customizedClassModels.get(entryClassNameInDotForm);
-
-				// FIXME: Here we assume for each kind of customized class, only one type parameter combination
-				CustomizedClassModel cm = cms.get(cms.size() - 1);
-				if (cm.hasMethod(targetMethodName)) {
-					logger.fine("selected from customized methods = " + targetMethodName);
-					return cm.getCustomizedMethod(targetMethodName);
-				}
-				else
-					logger.fine("No method " + targetMethodName + " for the customized class");
-			}
-		}
-
 		for (final MethodModel m : calledMethods) {
 			if (m.getMethod() == target) {
 				logger.fine("selected from called methods = " + m.getName());
@@ -1524,6 +1514,80 @@ public class Entrypoint implements Cloneable {
 
 		assert target == null : "Should not have missed a method in calledMethods";
 
+		return null;
+	}
+
+	public MethodModel getCustomizedCallTarget(String methodClass, String methodName, Instruction refInst) {
+		String entryClassNameInDotForm = methodClass.replace('/', '.');
+		logger.fine("Searching for customized classes: " + entryClassNameInDotForm);
+		if (!customizedClassModels.hasClass(entryClassNameInDotForm))
+			logger.fine("No customized class model for " + entryClassNameInDotForm);
+		else {
+			List<CustomizedClassModel> cms = customizedClassModels.get(entryClassNameInDotForm);
+
+			CustomizedClassModel cm = null;
+			if (cms.size() == 2) // No or has only one possible generic type
+				cm = cms.get(cms.size() - 1);
+			else {
+				// Looking at the first argument to figure out the generic type
+				String varName = null;
+
+				if (refInst instanceof CloneInstruction)
+					refInst = ((CloneInstruction) refInst).getReal();
+
+				if (refInst instanceof LocalVariableConstIndexLoad)
+					varName = ((LocalVariableConstIndexLoad) refInst).getLocalVariableInfo().getVariableName();
+				else if (refInst instanceof AccessArrayElement) {
+					final AccessArrayElement arrayAccess = (AccessArrayElement) refInst;
+					final Instruction refAccess = arrayAccess.getArrayRef();
+					varName = ((AccessField) refAccess).getConstantPoolFieldEntry().getNameAndTypeEntry()
+							.getNameUTF8Entry().getUTF8();
+				}
+				else if (refInst instanceof AccessField) {
+					varName = ((AccessField) refInst).getConstantPoolFieldEntry()
+						.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+				} 
+				else if (refInst instanceof Return)
+					varName = "j2fa_out";
+				else
+					throw new RuntimeException("cannot find the first argument for " + methodName + " from: " + refInst);
+
+				String typeHint = getEnvTypeHint(varName);
+				if (typeHint == null)
+					throw new RuntimeException("Variable " + varName + " must have explicity type hint");
+				else if (!typeHint.contains("<"))
+					throw new RuntimeException("Variable " + varName + " should have generic types");
+
+				String [] gTypes = typeHint.substring(typeHint.indexOf("<") + 1, typeHint.indexOf(">")).split(",");
+				for (int j = 0; j < gTypes.length; j += 1) {
+					gTypes[j] = gTypes[j].replace("/", ".");
+					if (gTypes[j].startsWith("L"))
+						gTypes[j] = gTypes[j].substring(1, gTypes[j].length() - 1);
+				}
+
+				// Match the type hint to the customized class model
+				for (CustomizedClassModel c : cms) {
+					boolean match = true;
+					for (int j = 0; j < gTypes.length; j += 1) {
+						if (!c.getTypeParam(j).equals(gTypes[j])) {
+							match = false;
+							break;
+						}
+					}
+					if (match == true) {
+						cm = c;
+						break;
+					}
+				}
+				if (cm == null)
+					throw new RuntimeException("Cannot find matched customized class model: " + varName);
+			}
+
+			if (cm.hasMethod(methodName)) {
+				logger.fine("selected from customized methods = " + methodName);
+				return cm.getCustomizedMethod(methodName);
+			}
+		}
 		return null;
 	}
 

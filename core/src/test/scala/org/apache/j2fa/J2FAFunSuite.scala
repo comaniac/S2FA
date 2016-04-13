@@ -34,59 +34,22 @@ abstract class J2FAFunSuite extends FunSuite {
   val logger = Logger.getLogger(Config.getLoggerName)
 
   final protected def runTest(srcFileURL: URL, jarFileURL: URL, className: String) = {
-    val srcTree = ASTUtils.getSourceTree(srcFileURL.toString.replace("file:", ""))
-    val kernels = ASTUtils.getKernelInfo(srcTree)
+    val srcFile = srcFileURL.toString.replace("file:", "")
+    val jarPath = jarFileURL.toString.replace("file:", "") + ":" + 
+          sys.env("BLAZE_HOME") + "/accrdd/target/blaze-1.0.jar"
+    val level = 4
+    val fileName = "/tmp/j2fa_" + className + ".c"
+    val args = Array(srcFile, jarPath, level.toString, className, fileName)
 
-    val jars = Array(jarFileURL,
-                      new URL("file://" + sys.env("BLAZE_HOME") + "/accrdd/target/blaze-1.0.jar"))
-    val loader = new URLClassLoader(jars)
-
-    // Load classes
-    jars.foreach({ path =>
-      val jarFile = new JarFile(path.toString.replace("file:", ""))
-      var entity = jarFile.entries
-      while (entity.hasMoreElements) {
-        val je = entity.nextElement
-        if (!je.isDirectory && je.getName.endsWith(".class")) {
-          val clazzName = je.getName.substring(0, je.getName.length - 6).replace('/', '.')
-          logger.finest("Load class " + clazzName)
-          try {
-            loader.loadClass(clazzName)
-          } catch {
-            case _ : Throwable =>
-              logger.fine("Cannot find class " + clazzName + " in provided packages")
-          }
-        }
-      }
-    })
-    val clazz = loader.loadClass(className)
+    J2FA.main(args)
 
     val plog = ProcessLogger((e: String) => println("Error: " + e))
-    var success = 0
-    kernels.getMethods.foreach({
-      case (mName, mInfo) =>
-        logger.info("Compiling kernel " + mInfo.toString)
-        val kernel = new Kernel(clazz, mInfo, loader)
-        val result = kernel.generate
-        if (result.isEmpty == false) {
-          val tmpFile = new PrintWriter(new File("/tmp/j2fa_tmp.c"))
-          tmpFile.write(result.get)
-          tmpFile.close
-          val code = "gcc -std=c99 -c /tmp/j2fa_tmp.c -o /dev/null" ! plog
-          if (code == 0)
-            success += 1
-//          else
-            "mv /tmp/j2fa_tmp.c /tmp/j2fa_" + className + "_" + mName + ".c" !
-        }
+    val code = "gcc -std=c99 -c " + fileName + " -o /dev/null" ! plog
 
-      case _ =>
-    })
-    "rm /tmp/j2fa_tmp.c" !
-
-    if (success != kernels.getMethods.size)
-      false
-    else
+    if (code == 0)
       true
+    else
+      false
   }
 
   final protected def checkResult(res: Boolean) = res
@@ -102,10 +65,8 @@ abstract class J2FAFunSuite extends FunSuite {
     val testName = test.text
     val suiteName = this.getClass.getName
     try {
-//      println(s"\n\n===== TEST OUTPUT FOR $suiteName: '$testName' =====\n")
       test()
     } finally {
-//      println(s"\n\n===== FINISHED $suiteName: '$testName' =====\n")
     }
   }
 }

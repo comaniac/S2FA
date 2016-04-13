@@ -24,12 +24,17 @@ import java.io._
 import java.net._
 import java.util.LinkedList
 
+import org.scalatest.BeforeAndAfterAll
 import org.scalatest.Ignore
 
 import org.apache.j2fa.AST._
 
 //@Ignore
-class IOSuite extends J2FAFunSuite {
+class IOSuite extends J2FAFunSuite with BeforeAndAfterAll {
+
+  override def beforeAll() {
+    "rm /tmp/j2fa_IOTest*".!
+  }
 
   test("Map IO Test: (Merlin) Primitive/Primitive") {
     val jarFileURL = getClass.getResource("/map_iotest_pp-0.0.0.jar")

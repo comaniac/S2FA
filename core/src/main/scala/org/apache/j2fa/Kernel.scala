@@ -21,6 +21,8 @@ import ModeledType._
 import scala.reflect.ClassTag
 import scala.io._
 import scala.sys.process._
+import scala.collection.mutable.Map
+import collection.JavaConverters._
 
 import java.util._
 import java.util.logging.Logger
@@ -42,7 +44,12 @@ import com.amd.aparapi.internal.util.{Utils => AparapiUtils}
 
 import org.apache.j2fa.AST._
 
-class Kernel(accClazz: Class[_], mInfo: MethodInfo, loader: URLClassLoader) {
+class Kernel(
+    typeEnv: Map[String, String], 
+    accClazz: Class[_], 
+    mInfo: MethodInfo, 
+    loader: URLClassLoader
+  ) {
   val logger = Logger.getLogger(Config.getLoggerName)
 
   def generate: Option[String] = {
@@ -92,7 +99,7 @@ class Kernel(accClazz: Class[_], mInfo: MethodInfo, loader: URLClassLoader) {
       })
 
       // Create Entrypoint and generate the kernel
-      val entryPoint = classModel.getEntrypoint(mName, mInfo.getSig, fun, params, loader)
+      val entryPoint = classModel.getEntrypoint(mName, mInfo.getSig, fun, params, loader, typeEnv.asJava)
       val writerAndKernel = KernelWriter.writeToString(entryPoint, params)
       var kernelString = writerAndKernel.kernel
       kernelString = KernelWriter.applyXilinxPatch(kernelString)
