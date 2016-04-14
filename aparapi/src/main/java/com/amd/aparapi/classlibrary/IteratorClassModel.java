@@ -15,9 +15,9 @@ public class IteratorClassModel extends CustomizedClassModel {
 	public IteratorClassModel(TypeParameters params) {
 		super("scala.collection.Iterator", params);
 
-		addField(new CustomizedFieldModel("int", "index", 0));
-		addField(new CustomizedFieldModel("int", "length", 1));
-		addField(new CustomizedFieldModel(params.get(0), "values", 2));
+		addField(new CustomizedFieldModel("index", "int", 0));
+		addField(new CustomizedFieldModel("length", "int", 1));
+		addField(new CustomizedFieldModel("values", params.get(0), 2));
 		
 		CustomizedMethodModel<?> getHasNextMethod = new CustomizedMethodModel<IteratorClassModel>(
 			this, "hasNext", METHODTYPE.CHECKER) {
@@ -28,7 +28,7 @@ public class IteratorClassModel extends CustomizedClassModel {
 			}
 
 			@Override
-			public ArrayList<String> getArgs(IteratorClassModel clazzModel) {
+			public Map<String, String> getArgs(IteratorClassModel clazzModel) {
 				return null;
 			}
 
@@ -48,7 +48,7 @@ public class IteratorClassModel extends CustomizedClassModel {
 			}
 
 			@Override
-			public ArrayList<String> getArgs(IteratorClassModel clazzModel) {
+			public Map<String, String> getArgs(IteratorClassModel clazzModel) {
 				return null;
 			}
 
@@ -57,7 +57,7 @@ public class IteratorClassModel extends CustomizedClassModel {
 				return (
 					clazzModel.getTypeParam(0) + " val = " + getFieldModel("values")
 						.genArrayElementAccess(getFieldModel("index").genAccess()) + ";\n" + 
-					getFieldModel("index").genAccess() + "++;\n" + 
+					getFieldModel("index").genAssign(getFieldModel("index").genAccess() + "+ 1") + ";\n" + 
 					"return val;"
 				);
 			}	

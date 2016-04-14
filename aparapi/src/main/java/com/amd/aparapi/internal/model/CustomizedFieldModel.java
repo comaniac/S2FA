@@ -14,7 +14,7 @@ public class CustomizedFieldModel {
 	private final int offset;
   private final boolean ary;
 
-  public CustomizedFieldModel(String type, String name, int offset) {
+  public CustomizedFieldModel(String name, String type, int offset) {
     this.name = name;
     if (type.contains("[]")) {
       this.type = Utils.convertToCType(type.replace("[]", "").trim());
@@ -81,7 +81,14 @@ public class CustomizedFieldModel {
 		return "this->" + this.name + "[" + idx + "]";
 	}
 
+	public String genAssign(String assignFrom) {
+		return "this->" + this.name + " = " + assignFrom;
+	}
+
   public String genAccess() {
-    return "this->" + this.name;
+		if (Utils.isPrimitive(shortType))
+	    return "this->" + this.name;
+		else
+	    return "&this->" + this.name;
   }
 }

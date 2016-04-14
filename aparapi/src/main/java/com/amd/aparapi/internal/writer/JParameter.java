@@ -72,6 +72,10 @@ public abstract class JParameter {
 		this.type = tmpType.replace("/", ".");
 	}
 
+	public List<JParameter> getTypeParameters() {
+		return typeParameters;
+	}
+
 	public String[] getDescArray() {
 		String[] arr = new String[typeParameters.size()];
 		int index = 0;

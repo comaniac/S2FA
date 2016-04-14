@@ -156,7 +156,7 @@ class KernelInfoExt(annot: String) extends Traverser {
           val newArg = new ValInfo
           newArg.setType(newType)
           _method.setOutput(newArg)
-          valMap("j2fa_out") = newArg.getFullType
+          valMap("j2faOut") = newArg.getFullType
         }
         else // Method argument or class field
           _val.setType(newType)
@@ -174,7 +174,7 @@ class KernelInfoExt(annot: String) extends Traverser {
           val newArg = new ValInfo
           newArg.setType(newType)
           _method.setOutput(newArg)
-          valMap("j2fa_out") = newArg.getFullType
+          valMap("j2faOut") = newArg.getFullType
         }
       }
       else if (_type.getName != null)

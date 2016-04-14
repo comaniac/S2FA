@@ -21,12 +21,20 @@ public class Utils {
 	}
 
 	public static boolean isPrimitive(String _type) {
-		String type = _type.replace("[", "").trim();
+		if (_type == null)
+			return true;
+
+		String type = _type.replace("[]", "").replace("[", "").trim();
 
 		if (type.startsWith("I") || type.startsWith("F") || 
 				type.startsWith("D") || type.startsWith("J") || 
 				type.startsWith("B") || type.startsWith("C") ||
 				type.startsWith("S") || type.startsWith("Z"))
+			return true;
+		else if (type.startsWith("int") || type.startsWith("float") ||
+						 type.startsWith("double") || type.startsWith("long") ||
+						 type.startsWith("byte") || type.startsWith("char") ||
+						 type.startsWith("short") || type.startsWith("boolean"))
 			return true;
 		else
 			return false;

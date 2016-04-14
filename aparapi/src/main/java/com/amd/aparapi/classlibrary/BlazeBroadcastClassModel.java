@@ -15,7 +15,7 @@ public class BlazeBroadcastClassModel extends CustomizedClassModel {
 	public BlazeBroadcastClassModel(TypeParameters params) {
 		super("org.apache.spark.blaze.BlazeBroadcast", params);
 
-		addField(new CustomizedFieldModel(params.get(0), "value", 0));
+		addField(new CustomizedFieldModel("value", params.get(0), 0));
 		
 		CustomizedMethodModel<?> getValueMethod = new CustomizedMethodModel<BlazeBroadcastClassModel>(
 			this, "value", METHODTYPE.GETTER) {
@@ -25,7 +25,7 @@ public class BlazeBroadcastClassModel extends CustomizedClassModel {
 			}
 
 			@Override
-			public ArrayList<String> getArgs(BlazeBroadcastClassModel clazzModel) {
+			public Map<String, String> getArgs(BlazeBroadcastClassModel clazzModel) {
 				return null;
 			}
 
@@ -34,7 +34,7 @@ public class BlazeBroadcastClassModel extends CustomizedClassModel {
 				return ("return " + getFieldModel("value").genAccess() + ";");
 			}
 		};
-//		addMethod(getValueMethod, getFieldModel("value"));
-		addMethod(getValueMethod);
+		addMethod(getValueMethod, getFieldModel("value"));
+//		addMethod(getValueMethod);
 	}
 }

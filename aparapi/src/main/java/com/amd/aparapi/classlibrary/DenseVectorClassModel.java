@@ -11,8 +11,8 @@ public class DenseVectorClassModel extends CustomizedClassModel {
 	public DenseVectorClassModel() {
 		super("org.apache.spark.mllib.linalg.DenseVector", null);
 
-		addField(new CustomizedFieldModel("int", "size", 0));
-		addField(new CustomizedFieldModel("double []", "values", 1));
+		addField(new CustomizedFieldModel("size", "int", 0));
+		addField(new CustomizedFieldModel("values", "double []", 1));
 		
 		CustomizedMethodModel<?> getSizeMethod = new CustomizedMethodModel<DenseVectorClassModel>(
 			this, "size", METHODTYPE.GETTER) {
@@ -23,7 +23,7 @@ public class DenseVectorClassModel extends CustomizedClassModel {
 			}
 
 			@Override
-			public ArrayList<String> getArgs(DenseVectorClassModel clazzModel) {
+			public Map<String, String> getArgs(DenseVectorClassModel clazzModel) {
 				return null;
 			}
 
@@ -42,9 +42,9 @@ public class DenseVectorClassModel extends CustomizedClassModel {
 			}
 
 			@Override
-			public ArrayList<String> getArgs(DenseVectorClassModel clazzModel) {
-				ArrayList<String> args = new ArrayList<String>();
-				args.add("int index");
+			public Map<String, String> getArgs(DenseVectorClassModel clazzModel) {
+				Map<String, String> args = new HashMap<String, String>();
+				args.put("index", "int");
 				return args;
 			}
 

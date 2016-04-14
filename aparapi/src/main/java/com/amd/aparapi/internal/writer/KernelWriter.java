@@ -655,6 +655,225 @@ public abstract class KernelWriter extends BlockWriter {
 			}
 		}
 
+		// Write dispatcher method declaration (if any)
+		Set<String> dispatchers = _entryPoint.getKernelCalledInterfaceMethods();
+
+		if (dispatchers.size() > 0) {
+			write("typedef struct interface_s {");
+			in();
+			newLine();
+			write("int j2fa_clazz_type;");
+			out();
+			newLine();
+			write("} interface;");
+			newLine(); newLine();
+
+			write("int j2fa_getClassType(void *this) {");
+			in();
+			newLine();
+			write("return ((interface *) this)->j2fa_clazz_type;");
+			out();
+			newLine();
+			write("}");
+			newLine(); newLine();
+		}
+		for (String dispatcher : dispatchers) {
+			List<MethodModel> impls = _entryPoint.getMethodImpls(dispatcher);
+			logger.fine("Writing dispatcher method " + dispatcher);
+
+			final MethodModel sampleMM = impls.get(0);
+			final String returnType = sampleMM.getReturnType();
+			this.currentReturnType = returnType;
+
+			String fullReturnType;
+			String convertedReturnType = convertType(returnType, true);
+
+			if (sampleMM.getGetterField() != null)
+				throw new RuntimeException("Method dispatcher cannot be a getter method");
+
+			// Write return type
+			if (returnType.startsWith("L")) {
+				SignatureEntry sigEntry =
+				  sampleMM.getMethod().getAttributePool().getSignatureEntry();
+				final TypeSignature sig;
+				if (sigEntry != null)
+					sig = new FullMethodSignature(sigEntry.getSignature()).getReturnType();
+				else
+					sig = new TypeSignature(returnType);
+
+				ClassModel cm = entryPoint.getModelFromObjectArrayFieldsClasses(
+				                  convertedReturnType.trim(), new SignatureMatcher(sig));
+				if (cm != null)
+					fullReturnType = cm.getMangledClassName();
+				else
+					fullReturnType = Utils.convertToCType(entryPoint.getArgument("j2faOut").getCType());
+			} else
+				fullReturnType = convertedReturnType;
+
+			if (!useMerlinKernel)
+				write("static ");
+
+			isPassByAddrOutput = false;
+			processingConstructor = false;
+
+			if (returnType.startsWith("[")) {
+				// Issue #40 Array type output support:
+				// Change the return type to void.
+				write("void ");
+				isPassByAddrOutput = true;
+			} else
+				write(fullReturnType + " ");
+
+			// Write method name
+			String methodName = dispatcher.substring(0, dispatcher.indexOf("("))
+					.replace(".", "__");
+			String className = dispatcher.substring(0, dispatcher.lastIndexOf("."))
+					.replace(".", "_");
+			write(methodName + "(");
+
+			boolean alreadyHasFirstArg = false;
+			String argCall = "";
+
+			// Write "this" if necessary
+			if (sampleMM instanceof CustomizedMethodModel<?>) {
+				write(__global + className + " *this");
+				argCall += "this";
+				alreadyHasFirstArg = true;
+			}
+			else if (!sampleMM.getMethod().isStatic()) {
+				if ((sampleMM.getMethod().getClassModel() == _entryPoint.getClassModel())
+				    || sampleMM.getMethod().getClassModel().isSuperClass(
+				      _entryPoint.getClassModel().getClassWeAreModelling())) {
+					throw new RuntimeException("Method dispatcher should not access reference fields");
+				}
+				else {
+					write(__global + className + " *this");
+					argCall += "this";
+				}
+				alreadyHasFirstArg = true;
+			}
+
+			// Write arguments
+			if (sampleMM instanceof CustomizedMethodModel) {
+				Map<String, String> args = ((CustomizedMethodModel<?>) sampleMM).getArgs(null);
+				for (final Map.Entry<String, String> arg : args.entrySet()) {
+					if (alreadyHasFirstArg) {
+						write(", ");
+						argCall += ", ";
+					}
+					write(arg.getValue() + " " + arg.getKey());
+					argCall += arg.getKey();
+					alreadyHasFirstArg = true;
+				}
+			}
+			else {
+				final LocalVariableTableEntry<LocalVariableInfo> lvte = sampleMM.getLocalVariableTableEntry();
+				for (final LocalVariableInfo lvi : lvte) {
+					if ((lvi.getStart() == 0) && ((lvi.getVariableIndex() != 0) ||
+					                              sampleMM.getMethod().isStatic())) { // full scope but skip this
+						final String descriptor = lvi.getVariableDescriptor();
+	
+						if (alreadyHasFirstArg) {
+							write(", ");
+							argCall += ", ";
+						}
+	
+						if (descriptor.startsWith("[") || descriptor.startsWith("L"))
+							write(" " + __global);
+	
+						final String convertedType;
+						if (descriptor.startsWith("L")) {
+							final String converted = convertType(descriptor, true).trim();
+							final SignatureEntry sigEntry = sampleMM.getMethod().getAttributePool().getSignatureEntry();
+							final TypeSignature sig;
+	
+							if (sigEntry != null) {
+								final int argumentOffset = (sampleMM.getMethod().isStatic() ?
+								                            lvi.getVariableIndex() : lvi.getVariableIndex() - 1);
+								final FullMethodSignature methodSig = new FullMethodSignature(
+								  sigEntry.getSignature());
+								sig = methodSig.getTypeParameters().get(argumentOffset);
+							} else
+								sig = new TypeSignature(descriptor);
+							ClassModel cm = entryPoint.getModelFromObjectArrayFieldsClasses(
+							                  converted, new SignatureMatcher(sig));
+							if (cm == null) { // Looking for customized class models
+								JParameter param = entryPoint.getArgument(lvi.getVariableName());
+								if (param == null)
+									throw new RuntimeException("Cannot match argument: " + converted + 
+										" " + lvi.getVariableName());
+								cm = param.getClassModel();
+							}
+							convertedType = cm.getMangledClassName() + " *";
+						} else
+							convertedType = convertType(descriptor, true);
+						write(convertedType);
+	
+						write(lvi.getVariableName());
+						argCall += lvi.getVariableName();
+	
+						// Add item length argument for input array.
+						if (descriptor.startsWith("[")) {
+							write(", int " + lvi.getVariableName() + BlockWriter.arrayItemLengthMangleSuffix);
+							argCall += ", " + lvi.getVariableName() + BlockWriter.arrayItemLengthMangleSuffix;
+						}
+						alreadyHasFirstArg = true;
+					}
+				}
+			}
+
+			// Issue #40: Add output array as an argument.
+			if (isPassByAddrOutput) {
+				// Find the local variable name used for the return value in Java.
+				// aload/invoke/cast	<- the 2nd instruction from the last
+				// areturn
+				Instruction retVar = sampleMM.getPCHead();
+				while (retVar.getNextPC() != null) // Find the last
+					retVar = retVar.getNextPC();
+
+				Instruction loadVar = retVar;
+				while (!(loadVar instanceof AccessLocalVariable))
+					loadVar = loadVar.getPrevPC();
+
+				final LocalVariableInfo localVariable = ((AccessLocalVariable) loadVar).getLocalVariableInfo();
+				String varName = localVariable.getVariableName();
+
+				write(", " + __global + fullReturnType + varName);
+				write(", int " + varName + BlockWriter.arrayItemLengthMangleSuffix);
+				argCall += ", " + varName + ", " + varName + BlockWriter.arrayItemLengthMangleSuffix;
+			}
+
+			write(") {");
+			in();
+			newLine();
+
+			// Write method dispatcher
+			int idx = 0;
+			write("switch (j2fa_getClassType((void *) this)) {");
+			in();
+			newLine();
+			for (MethodModel derived : impls) {
+				write("case " + idx + ":");
+				in();
+				newLine();
+				write("return ");
+				if (derived instanceof CustomizedMethodModel)
+					write(derived.getOwnerClassMangledName() + "_");
+				write(derived.getName() + "(" + argCall + ");");
+				out();
+				newLine();
+				idx += 1;
+			}
+			out();
+			newLine();
+			write("}");
+			out();
+			newLine();
+			write("}");
+			newLine();
+		}
+		newLine();
+
 		final List<MethodModel> merged = new ArrayList<MethodModel>(_entryPoint.getCalledMethods().size() + 1);
 		merged.addAll(_entryPoint.getCalledMethods());
 		merged.add(_entryPoint.getMethodModel());
@@ -867,215 +1086,6 @@ public abstract class KernelWriter extends BlockWriter {
 			write(")");
 			newLine();
 			writeMethodBody(mm);
-			newLine();
-		}
-
-		// Write dispatcher method declaration (if any)
-		Set<String> dispatchers = _entryPoint.getKernelCalledInterfaceMethods();
-
-		if (dispatchers.size() > 0) {
-			write("int j2fa_getClassType(void *this) {");
-			in();
-			newLine();
-			write("return this->j2fa_clazz_type;");
-			out();
-			newLine();
-			write("}");
-			newLine();
-		}
-		for (String dispatcher : dispatchers) {
-			List<MethodModel> impls = _entryPoint.getMethodImpls(dispatcher);
-			logger.fine("Writing dispatcher method " + dispatcher);
-
-			final MethodModel sampleMM = impls.get(0);
-			final String returnType = sampleMM.getReturnType();
-			this.currentReturnType = returnType;
-
-			String fullReturnType;
-			String convertedReturnType = convertType(returnType, true);
-
-			if (sampleMM.getGetterField() != null)
-				throw new RuntimeException("Method dispatcher cannot be a getter method");
-
-			// Write return type
-			if (returnType.startsWith("L")) {
-				SignatureEntry sigEntry =
-				  sampleMM.getMethod().getAttributePool().getSignatureEntry();
-				final TypeSignature sig;
-				if (sigEntry != null)
-					sig = new FullMethodSignature(sigEntry.getSignature()).getReturnType();
-				else
-					sig = new TypeSignature(returnType);
-
-				ClassModel cm = entryPoint.getModelFromObjectArrayFieldsClasses(
-				                  convertedReturnType.trim(), new SignatureMatcher(sig));
-				if (cm != null)
-					fullReturnType = cm.getMangledClassName();
-				else
-					fullReturnType = Utils.convertToCType(entryPoint.getArgument("j2faOut").getCType());
-			} else
-				fullReturnType = convertedReturnType;
-
-			if (!useMerlinKernel)
-				write("static ");
-
-			isPassByAddrOutput = false;
-			processingConstructor = false;
-
-			if (returnType.startsWith("[")) {
-				// Issue #40 Array type output support:
-				// Change the return type to void.
-				write("void ");
-				isPassByAddrOutput = true;
-			} else
-				write(fullReturnType + " ");
-
-			// Write method name
-			String methodName = dispatcher.substring(0, dispatcher.indexOf("("))
-					.replace(".", "__");
-			String className = dispatcher.substring(0, dispatcher.lastIndexOf("."))
-					.replace(".", "_");
-			write(methodName + "(");
-
-			boolean alreadyHasFirstArg = false;
-			String argCall = "";
-
-			// Write "this" if necessary
-			if (sampleMM instanceof CustomizedMethodModel<?>) {
-				write(__global + className + " *this");
-				argCall += "this";
-				alreadyHasFirstArg = true;
-			}
-			else if (!sampleMM.getMethod().isStatic()) {
-				if ((sampleMM.getMethod().getClassModel() == _entryPoint.getClassModel())
-				    || sampleMM.getMethod().getClassModel().isSuperClass(
-				      _entryPoint.getClassModel().getClassWeAreModelling())) {
-					throw new RuntimeException("Method dispatcher should not access reference fields");
-				}
-				else {
-					write(__global + className + " *this");
-					argCall += "this";
-				}
-				alreadyHasFirstArg = true;
-			}
-
-			// Write arguments
-			if (sampleMM instanceof CustomizedMethodModel) {
-				for (final String arg : ((CustomizedMethodModel<?>) sampleMM).getArgs(null)) {
-					if (alreadyHasFirstArg) {
-						write(", ");
-						argCall += ", ";
-					}
-					write(arg);
-					argCall += arg.substring(arg.indexOf(" ") + 1);
-					alreadyHasFirstArg = true;
-				}
-			}
-			else {
-				final LocalVariableTableEntry<LocalVariableInfo> lvte = sampleMM.getLocalVariableTableEntry();
-				for (final LocalVariableInfo lvi : lvte) {
-					if ((lvi.getStart() == 0) && ((lvi.getVariableIndex() != 0) ||
-					                              sampleMM.getMethod().isStatic())) { // full scope but skip this
-						final String descriptor = lvi.getVariableDescriptor();
-	
-						if (alreadyHasFirstArg) {
-							write(", ");
-							argCall += ", ";
-						}
-	
-						if (descriptor.startsWith("[") || descriptor.startsWith("L"))
-							write(" " + __global);
-	
-						final String convertedType;
-						if (descriptor.startsWith("L")) {
-							final String converted = convertType(descriptor, true).trim();
-							final SignatureEntry sigEntry = sampleMM.getMethod().getAttributePool().getSignatureEntry();
-							final TypeSignature sig;
-	
-							if (sigEntry != null) {
-								final int argumentOffset = (sampleMM.getMethod().isStatic() ?
-								                            lvi.getVariableIndex() : lvi.getVariableIndex() - 1);
-								final FullMethodSignature methodSig = new FullMethodSignature(
-								  sigEntry.getSignature());
-								sig = methodSig.getTypeParameters().get(argumentOffset);
-							} else
-								sig = new TypeSignature(descriptor);
-							ClassModel cm = entryPoint.getModelFromObjectArrayFieldsClasses(
-							                  converted, new SignatureMatcher(sig));
-							if (cm == null) { // Looking for customized class models
-								JParameter param = entryPoint.getArgument(lvi.getVariableName());
-								if (param == null)
-									throw new RuntimeException("Cannot match argument: " + converted + 
-										" " + lvi.getVariableName());
-								cm = param.getClassModel();
-							}
-							convertedType = cm.getMangledClassName() + " *";
-						} else
-							convertedType = convertType(descriptor, true);
-						write(convertedType);
-	
-						write(lvi.getVariableName());
-						argCall += lvi.getVariableName();
-	
-						// Add item length argument for input array.
-						if (descriptor.startsWith("[")) {
-							write(", int " + lvi.getVariableName() + BlockWriter.arrayItemLengthMangleSuffix);
-							argCall += ", " + lvi.getVariableName() + BlockWriter.arrayItemLengthMangleSuffix;
-						}
-						alreadyHasFirstArg = true;
-					}
-				}
-			}
-
-			// Issue #40: Add output array as an argument.
-			if (isPassByAddrOutput) {
-				// Find the local variable name used for the return value in Java.
-				// aload/invoke/cast	<- the 2nd instruction from the last
-				// areturn
-				Instruction retVar = sampleMM.getPCHead();
-				while (retVar.getNextPC() != null) // Find the last
-					retVar = retVar.getNextPC();
-
-				Instruction loadVar = retVar;
-				while (!(loadVar instanceof AccessLocalVariable))
-					loadVar = loadVar.getPrevPC();
-
-				final LocalVariableInfo localVariable = ((AccessLocalVariable) loadVar).getLocalVariableInfo();
-				String varName = localVariable.getVariableName();
-
-				write(", " + __global + fullReturnType + varName);
-				write(", int " + varName + BlockWriter.arrayItemLengthMangleSuffix);
-				argCall += ", " + varName + ", " + varName + BlockWriter.arrayItemLengthMangleSuffix;
-			}
-
-			write(") {");
-			in();
-			newLine();
-
-			// Write method dispatcher
-			int idx = 0;
-			write("switch (j2fa_getClassType((void *) this)) {");
-			in();
-			newLine();
-			for (MethodModel derived : impls) {
-				write("case " + idx + ":");
-				in();
-				newLine();
-				write("return ");
-				if (derived instanceof CustomizedMethodModel)
-					write(derived.getOwnerClassMangledName() + "_");
-				write(derived.getName() + "(" + argCall + ");");
-				out();
-				newLine();
-				idx += 1;
-			}
-			out();
-			newLine();
-			write("}");
-			out();
-			newLine();
-			write("}");
-			out();
 			newLine();
 		}
 

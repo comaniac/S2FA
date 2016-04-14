@@ -190,6 +190,24 @@ public class Entrypoint implements Cloneable {
 		return objectArrayFieldsClasses.iterator();
 	}
 
+	private void addParameterClass(JParameter param) throws AparapiException {
+		if (param.isPrimitive() == true)
+			return ;
+
+		param.init(this);
+		if (customizedClassModels.hasClass(param.getTypeName()))
+			addCustomizedClass(param.getClassModel());
+		else {
+			logger.fine("Add a non-modeled class " + param.getTypeName());
+			addClass(param.getTypeName(), param.getDescArray());
+		}
+
+		for (final JParameter p : param.getTypeParameters())
+			addParameterClass(p);
+
+		return ;
+	}
+
 	private void addClass(String name, String[] desc) throws AparapiException {
 		ClassModel model = getOrUpdateAllClassAccesses(name,
 				new CustomizedClassModelMatcher(desc));
@@ -705,18 +723,8 @@ public class Entrypoint implements Cloneable {
 		}
 
 		// Initialize and add customized classes if necessary
-		for (final JParameter param : params) {
-			if (param.isPrimitive() == true)
-				continue;
-
-			param.init(this);
-			if (customizedClassModels.hasClass(param.getTypeName()))
-				addCustomizedClass(param.getClassModel());
-			else {
-				logger.fine("Add a non-modeled class " + param.getTypeName());
-				addClass(param.getTypeName(), param.getDescArray());
-			}
-		}
+		for (final JParameter param : params)
+			addParameterClass(param);
 
 		// Collect all interface methods called from the kernel and their implementations
 		// TODO: Support multi-level inheritance. i.e. interface A -> B extends A -> [C] extends B
@@ -1548,7 +1556,7 @@ public class Entrypoint implements Cloneable {
 						.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
 				} 
 				else if (refInst instanceof Return)
-					varName = "j2fa_out";
+					varName = "j2faOut";
 				else
 					throw new RuntimeException("cannot find the first argument for " + methodName + " from: " + refInst);
 

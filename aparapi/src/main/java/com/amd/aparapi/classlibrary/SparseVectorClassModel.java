@@ -11,9 +11,9 @@ public class SparseVectorClassModel extends CustomizedClassModel {
 	public SparseVectorClassModel() {
 		super("org.apache.spark.mllib.linalg.SparseVector", null);
 
-		addField(new CustomizedFieldModel("int []", "indices", 0));
-		addField(new CustomizedFieldModel("double []", "values", 1));
-		addField(new CustomizedFieldModel("int", "size", 2));
+		addField(new CustomizedFieldModel("indices", "int []", 0));
+		addField(new CustomizedFieldModel("values", "double []", 1));
+		addField(new CustomizedFieldModel("size", "int", 2));
 		
 		CustomizedMethodModel<?> getSizeMethod = new CustomizedMethodModel<SparseVectorClassModel>(
 			this, "size", METHODTYPE.GETTER) {
@@ -24,7 +24,7 @@ public class SparseVectorClassModel extends CustomizedClassModel {
 			}
 
 			@Override
-			public ArrayList<String> getArgs(SparseVectorClassModel clazzModel) {
+			public Map<String, String> getArgs(SparseVectorClassModel clazzModel) {
 				return null;
 			}
 
@@ -44,7 +44,7 @@ public class SparseVectorClassModel extends CustomizedClassModel {
 			}
 
 			@Override
-			public ArrayList<String> getArgs(SparseVectorClassModel clazzModel) {
+			public Map<String, String> getArgs(SparseVectorClassModel clazzModel) {
 				return null;
 			}
 
@@ -64,7 +64,7 @@ public class SparseVectorClassModel extends CustomizedClassModel {
 			}
 
 			@Override
-			public ArrayList<String> getArgs(SparseVectorClassModel clazzModel) {
+			public Map<String, String> getArgs(SparseVectorClassModel clazzModel) {
 				return null;
 			}
 

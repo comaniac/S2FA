@@ -15,8 +15,8 @@ public class Tuple2ClassModel extends CustomizedClassModel {
 	public Tuple2ClassModel(TypeParameters params) {
 		super("scala.Tuple2", params);
 
-		addField(new CustomizedFieldModel(params.get(0), "v1", 0));
-		addField(new CustomizedFieldModel(params.get(1), "v2", 1));
+		addField(new CustomizedFieldModel("v1", params.get(0), 0));
+		addField(new CustomizedFieldModel("v2", params.get(1), 1));
 
 		CustomizedMethodModel<?> get_initMethod = new CustomizedMethodModel<Tuple2ClassModel>(
 			this, "<init>", METHODTYPE.CONSTRUCTOR) {
@@ -27,10 +27,10 @@ public class Tuple2ClassModel extends CustomizedClassModel {
 			}
 
 			@Override
-			public ArrayList<String> getArgs(Tuple2ClassModel clazzModel) {
-				ArrayList<String> args = new ArrayList<String>();
-				args.add(clazzModel.getTypeParam(0) + " n1");
-				args.add(clazzModel.getTypeParam(1) + " n2");
+			public Map<String, String> getArgs(Tuple2ClassModel clazzModel) {
+				Map<String, String> args = new HashMap<String, String>();
+				args.put("n1", clazzModel.getTypeParam(0));
+				args.put("n2", clazzModel.getTypeParam(1));
 
 				return args;
 			}
@@ -38,8 +38,8 @@ public class Tuple2ClassModel extends CustomizedClassModel {
 			@Override
 			public String getBody(Tuple2ClassModel clazzModel) {
 				return (
-					getFieldModel("v1").genAccess() + " = n1;\n  " + 
-					getFieldModel("v2").genAccess() + " = n2;"
+					getFieldModel("v1").genAssign("n1") + ";\n  " + 
+					getFieldModel("v2").genAssign("n2") + ";"
 				);
 			}
 
@@ -55,7 +55,7 @@ public class Tuple2ClassModel extends CustomizedClassModel {
 			}
 
 			@Override
-			public ArrayList<String> getArgs(Tuple2ClassModel clazzModel) {
+			public Map<String, String> getArgs(Tuple2ClassModel clazzModel) {
 				return null;
 			}
 
@@ -75,7 +75,7 @@ public class Tuple2ClassModel extends CustomizedClassModel {
 			}
 
 			@Override
-			public ArrayList<String> getArgs(Tuple2ClassModel clazzModel) {
+			public Map<String, String> getArgs(Tuple2ClassModel clazzModel) {
 				return null;
 			}
 
