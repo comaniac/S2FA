@@ -284,6 +284,20 @@ public abstract class KernelWriter extends BlockWriter {
 
 		for (int i = 0; i < constructorEntry.getStackConsumeCount(); i++) {
 			write(", ");
+			Instruction argInst = invokeSpecial.getArg(i);
+			
+			// The method that returns objects should be pointer 
+			String retType = "";
+			if (argInst instanceof MethodCall) {
+				retType = ((MethodCall) argInst).getConstantPoolMethodEntry()
+					.getReturnType().getType();
+			}
+			else if (argInst instanceof I_INVOKEINTERFACE) {
+				retType = ((I_INVOKEINTERFACE) argInst).getConstantPoolInterfaceMethodEntry()
+					.getReturnType().getType();
+			}
+			if (retType.equals("Ljava/lang/Object;"))
+				write("*");
 			writeInstruction(invokeSpecial.getArg(i));
 		}
 		write(")");
