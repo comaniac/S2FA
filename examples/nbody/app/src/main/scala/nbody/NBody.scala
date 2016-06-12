@@ -1,6 +1,7 @@
 import org.apache.spark.SparkContext._
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.blaze._
+import org.apache.j2fa.Annotation._
 
 import scala.math._
 
@@ -34,29 +35,40 @@ object NBody {
       else
         x -= maxDist * 1.5f
 
-      Array(x, y, z, 0.0f, 0.0f, 0.0f)
+      new Partical(x, y, z, 0.0f, 0.0f, 0.0f)
     }).toArray
+    val first_body = bodies(0)
+    println("Original first body: " + 
+      first_body.x + ", " + first_body.y + ", " + first_body.z + ", " + 
+      first_body.ax + ", " + first_body.ay + ", " + first_body.az)
 
 
     for (i <- 1 to iters) {
-      val flat_bodies = bodies.flatMap(e => e)
-      val b_bodies = acc.wrap(sc.broadcast(flat_bodies))
+      val b_bodies = acc.wrap(sc.broadcast(bodies))
       val bodyRDD = acc.wrap(sc.parallelize(bodies, npartition))
       bodies = bodyRDD.map_acc(new NBody(b_bodies)).collect
       val first_body = bodies(0)
 
       println("Iteration " + i + " done, first body: " + 
-        first_body(0) + ", " + first_body(1) + ", " + first_body(2) + ", " + 
-        first_body(3) + ", " + first_body(4) + ", " + first_body(5))
+        first_body.x + ", " + first_body.y + ", " + first_body.z + ", " + 
+        first_body.ax + ", " + first_body.ay + ", " + first_body.az)
 
     }
-
     acc.stop()
   }
 }
 
-class NBody(bodies: BlazeBroadcast[Array[Float]]) 
-  extends Accelerator[Array[Float], Array[Float]] {
+class Partical(
+  var x: Float, 
+  var y: Float, 
+  var z: Float, 
+  var ax: Float, 
+  var ay: Float, 
+  var az: Float) extends java.io.Serializable {
+}
+
+class NBody(bodies: BlazeBroadcast[Array[Partical]]) 
+  extends Accelerator[Partical, Partical] {
 
   val id: String = "NBody"
 
@@ -67,62 +79,43 @@ class NBody(bodies: BlazeBroadcast[Array[Float]])
     case _ => None
   }
 
-  override def call(in: Array[Float]): Array[Float] = {
+  @J2FA_Kernel
+  override def call(in: Partical): Partical = {
     val all_bodies = bodies.value
-    val body_num = ((bodies.value).length) / 6
+    val body_num = (bodies.value).length
     var i: Int = 0
 
-    val this_body = new Array[Float](6)
-    i = 0
-    while (i < 6) {
-      this_body(i) = in(i)
-      i += 1
-    }
-
-    val this_acc = new Array[Float](3)
-    i = 0
-    while (i < 3) {
-      this_acc(i) = 0.0f
-      i += 1
-    }
+    val out = new Partical(0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f)
 
     i = 0
     while (i < body_num) {
-      val cur_body = new Array[Float](3)
-      var j: Int = 0
-      while (j < 3) {
-        cur_body(j) = all_bodies(i * 6 + j)
-        j += 1
+      val dx = all_bodies(i).x - in.x
+      val dy = all_bodies(i).y - in.y
+      val dz = all_bodies(i).z - in.z
+      val distSqr = dx * dx + dy * dy + dz * dz
+      if (distSqr != 0) {
+        val distSixth = distSqr * distSqr * distSqr
+        val dist = 1.0f / sqrt(distSixth).toFloat
+        val s = 5f * dist
+        out.ax += s * dx
+        out.ay += s * dy
+        out.az += s * dz
       }
 
-      val dx = cur_body(0) - this_body(0)
-      val dy = cur_body(1) - this_body(1)
-      val dz = cur_body(2) - this_body(2)
-      val distSqr = dx * dx + dy * dy + dz * dz
-      val distSixth = distSqr * distSqr * distSqr
-      val dist = 1.0f / sqrt(distSixth).toFloat
-      val s = 5f * dist
-      this_acc(0) = this_acc(0) + (s * dx)
-      this_acc(1) = this_acc(0) + (s * dy)
-      this_acc(2) = this_acc(0) + (s * dz)
+      i += 1
+    }
+    out.ax *= 0.005f
+    out.ay *= 0.005f
+    out.az *= 0.005f
 
-      i += 1
-    }
-    this_acc(0) = this_acc(0) * 0.005f
-    this_acc(1) = this_acc(1) * 0.005f
-    this_acc(2) = this_acc(2) * 0.005f
+    out.x = in.x + (in.ax * 0.005f + out.ax * 0.5f * 0.005f)
+    out.y = in.y + (in.ay * 0.005f + out.ay * 0.5f * 0.005f)
+    out.z = in.z + (in.az * 0.005f + out.az * 0.5f * 0.005f)
 
-    val out = new Array[Float](6)
-    i = 0
-    while (i < 3) {
-      out(i) = this_body(i) + (this_body(i + 3) * 0.005f) + (this_acc(i) * 0.5f * 0.005f)
-      i += 1
-    }
-    i = 0
-    while (i < 3) {
-      out(i + 3) = this_body(i + 3) + this_acc(i)
-      i += 1
-    }
+    out.ax += in.ax
+    out.ay += in.ay
+    out.az += in.az
+
     out
   }
 }

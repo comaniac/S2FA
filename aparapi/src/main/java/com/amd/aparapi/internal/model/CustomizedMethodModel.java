@@ -60,11 +60,12 @@ public abstract class CustomizedMethodModel<T extends CustomizedClassModel>
 
 	public String getDeclareCode() {
 		StringBuilder sb = new StringBuilder();
-		String returnType = Utils.convertToCType(getReturnType(clazzModel));
-		if (!Utils.isPrimitive(getReturnType(clazzModel)))
-			sb.append(returnType + "* ");
+		String returnType = getReturnType(clazzModel);
+		String convertedReturnType = Utils.convertToCType(returnType);
+		if (!Utils.isPrimitive(returnType) && !convertedReturnType.contains("*"))
+			sb.append(convertedReturnType + "* ");
 		else
-			sb.append(returnType + " ");
+			sb.append(convertedReturnType + " ");
 		sb.append(clazzModel.getMangledClassName() + "_");
 		if (this.name.equals("<init>"))
 			sb.append("_init_");

@@ -18,16 +18,22 @@ public class CustomizedFieldModel {
     this.name = name;
     if (type.contains("[]")) {
       this.type = Utils.convertToCType(type.replace("[]", "").trim());
+			this.shortType = Utils.convertToBytecodeType(type.replace("[]", "").trim());
       this.ary = true;
     }
+		else if (type.startsWith("[")) {
+      this.type = Utils.convertToCType(type.replace("[", "").trim());
+			this.shortType = Utils.convertToBytecodeType(type.replace("[", "").trim());
+      this.ary = true;
+		}
     else {
       this.type = Utils.convertToCType(type);
+			this.shortType = Utils.convertToBytecodeType(type);
       this.ary = false;
     }
     this.offset = offset;
 
 		boolean matchTypeSpec = false;
-		shortType = Utils.convertToBytecodeType(type.replace("[]", "").trim());
 		for (TypeSpec t : TypeSpec.values()) {
 			if (t.getShortName().equals(shortType)) {
 				matchTypeSpec = true;
@@ -86,7 +92,7 @@ public class CustomizedFieldModel {
 	}
 
   public String genAccess() {
-		if (Utils.isPrimitive(shortType))
+		if (Utils.isPrimitive(shortType) || isArray())
 	    return "this->" + this.name;
 		else
 	    return "&this->" + this.name;

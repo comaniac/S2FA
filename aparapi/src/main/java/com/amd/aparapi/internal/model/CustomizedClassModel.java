@@ -5,6 +5,7 @@ import java.util.*;
 import com.amd.aparapi.internal.instruction.InstructionSet.TypeSpec;
 import com.amd.aparapi.internal.exception.AparapiException;
 import com.amd.aparapi.internal.util.Utils;
+import com.amd.aparapi.internal.writer.BlockWriter;
 
 public abstract class CustomizedClassModel extends ClassModel {
 	private final String className;
@@ -50,8 +51,11 @@ public abstract class CustomizedClassModel extends ClassModel {
 	  sb.append("typedef struct " + getMangledClassName() + "_s {\n");
 		if (isDerivedClass())
 			sb.append("  int j2fa_clazz_type;\n");
-	  for (CustomizedFieldModel f : getFieldModels())
+	  for (CustomizedFieldModel f : getFieldModels()) {
 	  	sb.append("  " + f.getDeclareCode() + ";\n");
+			if (f.isArray())
+				sb.append("  int " + f.getName() + BlockWriter.arrayLengthMangleSuffix + ";\n");
+		}
 	  sb.append("} " + getMangledClassName() + ";");
 	  return sb.toString();
 	}

@@ -524,16 +524,23 @@ public abstract class BlockWriter {
 
 			if (assignToLocalVariable.isDeclaration()) {
 				final String descriptor = localVariableInfo.getVariableDescriptor();
+				boolean isArray = false;
+				boolean isObject = false;
 
 				String localType = convertType(descriptor, true);
-				if (descriptor.startsWith("L"))
+				if (descriptor.startsWith("["))
+					isArray = true;
+				if (descriptor.startsWith("L") || (isArray && descriptor.charAt(1) == 'L'))
+					isObject = true;
+
+				if (isObject)
 					localType = localType.replace('.', '_');
 
-				if (descriptor.startsWith("[") || descriptor.startsWith("L"))
+				if (isArray || isObject)
 					write("__global ");
 				write(localType);
 
-				if (descriptor.startsWith("L"))
+				if (isObject && !isArray)
 					write("*");
 
 				write(varName + " = ");
@@ -624,18 +631,40 @@ public abstract class BlockWriter {
 			//if we're getting an object array, then we need to find what dimension
 			//we're looking at
 			int dim = 0;
+			boolean aryInObj = false;
 			Instruction load = _instruction.getFirstChild();
 
-			// Issue #33: Sometimes we may have invokevirtual or checkcast before getField.
-			while (load instanceof I_AALOAD || load instanceof I_INVOKEVIRTUAL || load instanceof I_CHECKCAST) {
+			// Issue #33: Sometimes we may have invokevirtual or checkcast after getField.
+			// Example: obj.getMyArray().length();
+			while (!(load instanceof AccessInstanceField)) {
+				if (load instanceof I_AALOAD)
+					dim++;
+				else if (load instanceof MethodCall)
+					aryInObj = true;
 				load = load.getFirstChild();
-				dim++;
 			}
 			NameAndTypeEntry nameAndTypeEntry = ((AccessInstanceField)
 			                                     load).getConstantPoolFieldEntry().getNameAndTypeEntry();
 			final String arrayName = nameAndTypeEntry.getNameUTF8Entry().getUTF8();
 			String dimSuffix = isMultiDimensionalArray(nameAndTypeEntry) ? Integer.toString(dim) : "";
-			write(arrayName + arrayLengthMangleSuffix + dimSuffix);
+
+			write(arrayName); // Variable name
+
+			if (!aryInObj) // Array field, get length directly
+				write(arrayLengthMangleSuffix + dimSuffix);
+			else { // Array within an object field, get length from the object
+				Instruction methodCall = _instruction.getFirstChild();
+
+				// Find method name
+				while (!(methodCall instanceof MethodCall))
+					methodCall = methodCall.getFirstChild();
+				String methodName = ((MethodCall) methodCall).getConstantPoolMethodEntry()
+					.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+
+				// Write array length: obj->methodName__javaArrayLength
+				write("->" + methodName + arrayLengthMangleSuffix + dimSuffix);
+			}
+				
 		} else if (_instruction instanceof AssignToField) {
 //					write("/* assign to field */");
 			final AssignToField assignedField = (AssignToField) _instruction;

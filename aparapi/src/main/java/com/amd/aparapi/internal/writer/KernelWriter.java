@@ -226,12 +226,19 @@ public abstract class KernelWriter extends BlockWriter {
 		if (isPassByAddrOutput)
 			writeInstruction(ret.getFirstChild());
 		else {
-
 			write("return");
 			if (processingConstructor)
 				return ;
 			else if (ret.getStackConsumeCount() > 0) {
 				write("(");
+
+				// If we want to return an object, it must be a pointer
+				// and created in the current function:
+				// Obj _obj;
+				// Obj *obj = &_obj;
+				// Obj_init(obj, ...);
+				if (ret instanceof I_ARETURN)
+					write("_");
 				writeInstruction(ret.getFirstChild());
 				write(")");
 			}
@@ -401,22 +408,33 @@ public abstract class KernelWriter extends BlockWriter {
 		// write arguments of real method call
 		write("(");
 
+		boolean isFirst = true;
 		if ((intrinsicMapping == null) && (_methodCall instanceof VirtualMethodCall) && (!isIntrinsic)) {
+			isFirst = false;
 			Instruction i = ((VirtualMethodCall) _methodCall).getInstanceReference();
 			if (i instanceof CloneInstruction)
 				i = ((CloneInstruction)i).getReal();
 
-			if (i instanceof I_ALOAD_0)
-				write("this");
-			else if (i instanceof LocalVariableConstIndexLoad)
+			if (i instanceof I_ALOAD_0) {
+				if (m != null && (m.getMethod().getClassModel() == entryPoint.getClassModel() || 
+						 m.getMethod().getClassModel().isSuperClass(entryPoint.getClassModel().getClassWeAreModelling())))
+					isFirst = true;
+				else
+					write("this");
+			} else if (i instanceof LocalVariableConstIndexLoad) {
 				writeInstruction(i);
-			else if (i instanceof AccessArrayElement) {
+			} else if (i instanceof AccessArrayElement) {
 				final AccessArrayElement arrayAccess = (AccessArrayElement)i;
 				final Instruction refAccess = arrayAccess.getArrayRef();
-				//assert refAccess instanceof I_GETFIELD : "ref should come from getfield";
-				final String fieldName = ((AccessField) refAccess).getConstantPoolFieldEntry().getNameAndTypeEntry()
+				String varName = null;
+
+				if (refAccess instanceof AccessField)
+					varName = ((AccessField) refAccess).getConstantPoolFieldEntry().getNameAndTypeEntry()
 				                         .getNameUTF8Entry().getUTF8();
-				write(" &(" + fieldName);
+				else if (refAccess instanceof AccessLocalVariable)
+					varName = ((AccessLocalVariable) refAccess).getLocalVariableInfo().getVariableName();
+
+				write(" &(" + varName);
 				write("[");
 				writeInstruction(arrayAccess.getArrayIndex());
 				write("])");
@@ -428,12 +446,16 @@ public abstract class KernelWriter extends BlockWriter {
 				String fieldName = ((AccessField) i).getConstantPoolFieldEntry()
 					.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
 				write(fieldName);
+			} else if (i instanceof AccessLocalVariable) {
+				String varName = ((AccessLocalVariable) i).getLocalVariableInfo().getVariableName();
+				write(varName);
 			} else
 				throw new RuntimeException("unhandled call to " + _methodEntry + " from: " + i);
 		}
 		for (int arg = 0; arg < argc; arg++) {
-			if (((intrinsicMapping == null) && (_methodCall instanceof VirtualMethodCall) && (!isIntrinsic)) ||
-			    (arg != 0))
+//			if (((intrinsicMapping == null) && (_methodCall instanceof VirtualMethodCall) && (!isIntrinsic)) ||
+//			    (arg != 0))
+			if (isFirst == false)
 				write(", ");
 
 			// comaniac Issue #2, we have to match method arguments with Xilinx supported intrinsic functions.
@@ -447,8 +469,23 @@ public abstract class KernelWriter extends BlockWriter {
 					write("(" + validType + ")");
 					writeInstruction(castInstruction.getUnary());
 				}
-			} else
-				writeInstruction(_methodCall.getArg(arg));
+			} else {
+				// The method that returns objects should be pointer 
+				String retType = "";
+				Instruction argInst = _methodCall.getArg(arg);
+				if (argInst instanceof MethodCall) {
+					retType = ((MethodCall) argInst).getConstantPoolMethodEntry()
+						.getReturnType().getType();
+				}
+				else if (argInst instanceof I_INVOKEINTERFACE) {
+					retType = ((I_INVOKEINTERFACE) argInst).getConstantPoolInterfaceMethodEntry()
+						.getReturnType().getType();
+				}
+				if (retType.equals("Ljava/lang/Object;"))
+					write("*");
+
+				writeInstruction(argInst);
+			}
 		}
 		write(")");
 		return false; // FIXME: Previous: alloc check
@@ -502,6 +539,8 @@ public abstract class KernelWriter extends BlockWriter {
 				String cType = Utils.convertToCType(convertType(field.desc, true));
 				assert cType != null : "could not find type for " + field.desc;
 				writeln(cType + " " + field.name + ";");
+				if (cType.contains("*")) // Array field
+					writeln("int " + field.name + BlockWriter.arrayLengthMangleSuffix + ";");
 			}
 		}
 		out();
@@ -660,11 +699,9 @@ public abstract class KernelWriter extends BlockWriter {
 			// Skip the first instance (sample)
 			for (int i = 1; i < modeledClasses.size(); i += 1) {
 				for (CustomizedMethodModel<?> method : modeledClasses.get(i).getMethods()) {
-//					if (method.getGetterField() == null) {
-						newLine();
-						write(method.getDeclareCode());
-						newLine();
-//					}
+					newLine();
+					write(method.getDeclareCode());
+					newLine();
 				}
 			}
 		}

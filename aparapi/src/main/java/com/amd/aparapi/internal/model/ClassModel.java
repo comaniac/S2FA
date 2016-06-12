@@ -2383,7 +2383,7 @@ public abstract class ClassModel {
 				case SIGC_ARRAY: {
 						final StringBuilder arrayDims = new StringBuilder();
 						while ((i < length) && (chars[i] == SIGC_ARRAY)) {
-							arrayDims.append("[]");
+							arrayDims.append("*");
 							i++;
 						}
 						stringStack.push(arrayDims.toString());
