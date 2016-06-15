@@ -20,6 +20,7 @@ import scala.math.random
 import org.apache.spark._
 
 import org.apache.spark.blaze._
+import org.apache.j2fa.Annotation._
 
 object VecAdd {
   def main(args: Array[String]) {
@@ -34,8 +35,8 @@ object VecAdd {
 
     val a_vec = acc.wrap(vec)
 
-    val res = a_vec.map_acc(new VecAdd).collect
-    println("First element: " + res(0))
+    val first = a_vec.map_acc(new VecAdd).first
+    println("First element: " + first)
 
     acc.stop()
   }
@@ -49,6 +50,7 @@ class VecAdd extends Accelerator[Tuple2[Int, Int], Int] {
 
   def getArg(idx: Int) = None
 
+  @J2FA_Kernel
   override def call(in: Tuple2[Int, Int]): Int = {
     in._1 + in._2
   }

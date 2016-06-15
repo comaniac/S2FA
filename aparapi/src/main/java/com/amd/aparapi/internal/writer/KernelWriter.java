@@ -233,7 +233,7 @@ public abstract class KernelWriter extends BlockWriter {
 				write("(");
 
 				// If we want to return an object, it must be a pointer
-				// and created in the current function:
+				// and created in the current functionn in Java/Scala:
 				// Obj _obj;
 				// Obj *obj = &_obj;
 				// Obj_init(obj, ...);
