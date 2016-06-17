@@ -1749,7 +1749,7 @@ mars_opt-j2fa_gen.o: j2fa_gen.cpp ../../rose/codegen.h \
  ../../parsers/src/file_parser.h ../../tldm/PolyModel.h mars_opt.h \
  ../../parsers/src/xml_parser.h ../../parsers/src/cmdline_parser.h \
  ../../parsers/src/cmdline_parser.h ../../tldm/tldm_annotate.h \
- ../../rose/program_analysis.h
+ ../../rose/program_analysis.h j2faClass.h
 
 ../../rose/codegen.h:
 
@@ -5330,3 +5330,5 @@ mars_opt.h:
 ../../tldm/tldm_annotate.h:
 
 ../../rose/program_analysis.h:
+
+j2faClass.h:
