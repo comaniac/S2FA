@@ -26,7 +26,7 @@ public class ObjectJParameter extends JParameter {
 
 	@Override
 	public String getParameterCode() {
-		String param = "__global " + getCType() + " ";
+		String param = getCType() + " ";
 
 		// Objects must pass by address
 		param += "*" + name;

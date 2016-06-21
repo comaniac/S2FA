@@ -765,19 +765,25 @@ public class Entrypoint implements Cloneable {
 			ClassModel baseClassModel = ClassModel.createClassModel(baseClazz, this, 
 					new CustomizedClassModelMatcher(null));
 			ClassModelMethod baseMethodImpl = baseClassModel.getMethod(methodName, methodDesc);
-			if (baseMethodImpl.getCodeEntry() != null) { // FIXME: What can't load method from interface??
-				try {
-					MethodModel method = new LoadedMethodModel(baseMethodImpl, this);
+
+			try {
+				MethodModel method = null;
+				if (baseMethodImpl.getCodeEntry() != null) {
+					method = new LoadedMethodModel(baseMethodImpl, this);
+					// FIXME: We want to generate method implementation for based class 
+					// as well, but for some reason we cannot load method implementation from 
+					// interface.
+					//methodMap.put(baseMethodImpl, method);
 					addOrUpdateMethodImpl(fullSig, method);
-				} catch (final Exception e) {
-					throw new AparapiException(e);
 				}
+				else {
+					if (logger.isLoggable(Level.FINEST))
+						logger.finest(fullSig + " has no implementation");
+				}
+			} catch (final Exception e) {
+				throw new AparapiException(e);
 			}
-			else {
-				if (logger.isLoggable(Level.FINEST))
-					logger.finest(fullSig + " has no implementation");
-			}
-		
+				
 			// Create method models for overritten methods in derived classes
 			for (final String derivedClazzName : clzList) {
 				Class<?> derivedClazz = null;

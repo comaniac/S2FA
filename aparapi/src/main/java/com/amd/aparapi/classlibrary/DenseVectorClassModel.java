@@ -32,7 +32,7 @@ public class DenseVectorClassModel extends CustomizedClassModel {
 				return "return " + getFieldModel("size").genAccess() + ";";
 			}
 		};
-		addMethod(getSizeMethod);
+		addMethod(getSizeMethod, getFieldModel("size"));
 
 		CustomizedMethodModel<?> getValueMethod = new CustomizedMethodModel<DenseVectorClassModel>(
 			this, "apply", METHODTYPE.GETTER) {

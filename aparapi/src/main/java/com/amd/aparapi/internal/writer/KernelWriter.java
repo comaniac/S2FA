@@ -120,57 +120,6 @@ public abstract class KernelWriter extends BlockWriter {
 		XilinxMethodMap.put("fabs", new String[] {"float"});
 	}
 
-	public final static Map<String, String> javaToCLIdentifierMap = new HashMap<String, String>();
-	{
-		javaToCLIdentifierMap.put("getGlobalId()I", "get_global_id(0)");
-		javaToCLIdentifierMap.put("getGlobalId(I)I",
-		                          "get_global_id"); // no parenthesis if we are conveying args
-		javaToCLIdentifierMap.put("getGlobalX()I", "get_global_id(0)");
-		javaToCLIdentifierMap.put("getGlobalY()I", "get_global_id(1)");
-		javaToCLIdentifierMap.put("getGlobalZ()I", "get_global_id(2)");
-
-		javaToCLIdentifierMap.put("getGlobalSize()I", "get_global_size(0)");
-		javaToCLIdentifierMap.put("getGlobalSize(I)I",
-		                          "get_global_size"); // no parenthesis if we are conveying args
-		javaToCLIdentifierMap.put("getGlobalWidth()I", "get_global_size(0)");
-		javaToCLIdentifierMap.put("getGlobalHeight()I", "get_global_size(1)");
-		javaToCLIdentifierMap.put("getGlobalDepth()I", "get_global_size(2)");
-
-		javaToCLIdentifierMap.put("getLocalId()I", "get_local_id(0)");
-		javaToCLIdentifierMap.put("getLocalId(I)I",
-		                          "get_local_id"); // no parenthesis if we are conveying args
-		javaToCLIdentifierMap.put("getLocalX()I", "get_local_id(0)");
-		javaToCLIdentifierMap.put("getLocalY()I", "get_local_id(1)");
-		javaToCLIdentifierMap.put("getLocalZ()I", "get_local_id(2)");
-
-		javaToCLIdentifierMap.put("getLocalSize()I", "get_local_size(0)");
-		javaToCLIdentifierMap.put("getLocalSize(I)I",
-		                          "get_local_size"); // no parenthesis if we are conveying args
-		javaToCLIdentifierMap.put("getLocalWidth()I", "get_local_size(0)");
-		javaToCLIdentifierMap.put("getLocalHeight()I", "get_local_size(1)");
-		javaToCLIdentifierMap.put("getLocalDepth()I", "get_local_size(2)");
-
-		javaToCLIdentifierMap.put("getNumGroups()I", "get_num_groups(0)");
-		javaToCLIdentifierMap.put("getNumGroups(I)I",
-		                          "get_num_groups"); // no parenthesis if we are conveying args
-		javaToCLIdentifierMap.put("getNumGroupsX()I", "get_num_groups(0)");
-		javaToCLIdentifierMap.put("getNumGroupsY()I", "get_num_groups(1)");
-		javaToCLIdentifierMap.put("getNumGroupsZ()I", "get_num_groups(2)");
-
-		javaToCLIdentifierMap.put("getGroupId()I", "get_group_id(0)");
-		javaToCLIdentifierMap.put("getGroupId(I)I",
-		                          "get_group_id"); // no parenthesis if we are conveying args
-		javaToCLIdentifierMap.put("getGroupX()I", "get_group_id(0)");
-		javaToCLIdentifierMap.put("getGroupY()I", "get_group_id(1)");
-		javaToCLIdentifierMap.put("getGroupZ()I", "get_group_id(2)");
-
-		javaToCLIdentifierMap.put("getPassId()I", "get_pass_id(this)");
-
-		javaToCLIdentifierMap.put("localBarrier()V", "barrier(CLK_LOCAL_MEM_FENCE)");
-
-		javaToCLIdentifierMap.put("globalBarrier()V", "barrier(CLK_GLOBAL_MEM_FENCE)");
-	}
-
 	/**
 	 * These three convert functions are here to perform
 	 * any type conversion that may be required between
@@ -231,14 +180,6 @@ public abstract class KernelWriter extends BlockWriter {
 				return ;
 			else if (ret.getStackConsumeCount() > 0) {
 				write("(");
-
-				// If we want to return an object, it must be a pointer
-				// and created in the current functionn in Java/Scala:
-				// Obj _obj;
-				// Obj *obj = &_obj;
-				// Obj_init(obj, ...);
-				if (ret instanceof I_ARETURN)
-					write("_");
 				writeInstruction(ret.getFirstChild());
 				write(")");
 			}
@@ -280,17 +221,14 @@ public abstract class KernelWriter extends BlockWriter {
 
 		deleteCurrentLine();
 
-		write(typeName + " _" + varName + ";");
-		newLine();
-		write(typeName + " *" + varName + " = &_" + varName + ";");
-		newLine();
-		if (m instanceof CustomizedMethodModel)
-			write(typeName + "__init_(" + varName);
-		else
-			write(m.getName() + "(" + varName);
+		write(typeName + " *" + varName + " = new " + typeName + "(");
 
+		boolean isFirst = true;
 		for (int i = 0; i < constructorEntry.getStackConsumeCount(); i++) {
-			write(", ");
+			if (!isFirst)
+				write(", ");
+			isFirst = false;
+
 			Instruction argInst = invokeSpecial.getArg(i);
 			
 			// The method that returns objects should be pointer 
@@ -313,14 +251,15 @@ public abstract class KernelWriter extends BlockWriter {
 		if (isReturn) {
 			write(";");
 			newLine();
-			write("return (_" + varName);
+			write("return (" + varName);
 			// writeReturn writes: ( writeMethod ), but we delete
 			// the left one to construct a new object.
 		}
 	}
 
-	@Override public boolean writeMethod(MethodCall _methodCall,
-	                                     MethodEntry _methodEntry) throws CodeGenException {
+	@Override 
+	public boolean writeMethod(MethodCall _methodCall, MethodEntry _methodEntry) 
+		throws CodeGenException {
 		final int argc = _methodEntry.getStackConsumeCount();
 		final String methodName =
 		  _methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
@@ -331,9 +270,12 @@ public abstract class KernelWriter extends BlockWriter {
 
 		// A constructor method called by invokespecial
 		// i.e. Obj obj = new Obj();
-		if (methodName.equals("<init>") && !_methodEntry.toString().equals("java/lang/Object.<init>()V")) {
-			writeConstructorCall(new ConstructorCall(((Instruction)_methodCall).getMethod(),
+		if (methodName.equals("<init>")) {
+			if (!_methodEntry.toString().equals("java/lang/Object.<init>()V")) { 
+				// Ignore invokespecial within the constructor
+				writeConstructorCall(new ConstructorCall(((Instruction)_methodCall).getMethod(),
 			                     (I_INVOKESPECIAL)_methodCall, null));
+			}
 			return false;
 		}
 
@@ -353,12 +295,6 @@ public abstract class KernelWriter extends BlockWriter {
 				throw new RuntimeException("Encountered unknown boxing method " + methodName);
 		}
 
-		final String barrierAndGetterMappings =
-		  javaToCLIdentifierMap.get(methodName + methodSignature);
-
-		if (barrierAndGetterMappings != null)
-			throw new RuntimeException("Method call that needs barriers cannot be compiled to FPGA.");
-			
 		final boolean isSpecial = _methodCall instanceof I_INVOKESPECIAL;
 		MethodModel m = entryPoint.getCallTarget(_methodEntry, isSpecial);
 
@@ -382,45 +318,24 @@ public abstract class KernelWriter extends BlockWriter {
 			boolean isScalaMapped = scalaMapped.contains(_methodEntry.toString());
 			boolean isSelfMapped = SelfMapped.contains(_methodEntry.toString());
 
-			if (m != null) {
-				if (m instanceof CustomizedMethodModel)
-					write(m.getOwnerClassMangledName() + "_"); 
-				write(m.getName());
-			}
-			else if (_methodEntry.toString().equals("java/lang/Object.<init>()V")) {
-				/*
-				 * Do nothing if we're in a constructor calling the
-				 * java.lang.Object super constructor
-				 */
-			} else {
-				// Must be a library call like rsqrt
-				if (!isMapped && !isScalaMapped && !isSelfMapped) {
-					isIntrinsic = false;
-					throw new RuntimeException(_methodEntry + " should be mapped method!");
-				}
-				else
-					isIntrinsic = true;
-				write(methodName);
-			}
-		} else
-			write(intrinsicMapping);
+			if (m == null && !_methodEntry.toString().equals("java/lang/Object.<init>()V") && 
+					(isMapped || isScalaMapped || isSelfMapped))
+				isIntrinsic = true;
+		}
 
-		// write arguments of real method call
-		write("(");
-
-		boolean isFirst = true;
 		if ((intrinsicMapping == null) && (_methodCall instanceof VirtualMethodCall) && (!isIntrinsic)) {
-			isFirst = false;
 			Instruction i = ((VirtualMethodCall) _methodCall).getInstanceReference();
 			if (i instanceof CloneInstruction)
 				i = ((CloneInstruction)i).getReal();
 
+			boolean directCall = false;
+
 			if (i instanceof I_ALOAD_0) {
-				if (m != null && (m.getMethod().getClassModel() == entryPoint.getClassModel() || 
-						 m.getMethod().getClassModel().isSuperClass(entryPoint.getClassModel().getClassWeAreModelling())))
-					isFirst = true;
-				else
+				if (m == null || (m.getMethod().getClassModel() != entryPoint.getClassModel() && 
+						 !m.getMethod().getClassModel().isSuperClass(entryPoint.getClassModel().getClassWeAreModelling())))
 					write("this");
+				else
+					directCall = true;
 			} else if (i instanceof LocalVariableConstIndexLoad) {
 				writeInstruction(i);
 			} else if (i instanceof AccessArrayElement) {
@@ -451,12 +366,48 @@ public abstract class KernelWriter extends BlockWriter {
 				write(varName);
 			} else
 				throw new RuntimeException("unhandled call to " + _methodEntry + " from: " + i);
+
+			if (!directCall)
+				write("->");
 		}
+
+		if (intrinsicMapping == null) {
+			assert entryPoint != null : "entryPoint should not be null";
+			boolean isMapped = Kernel.isMappedMethod(_methodEntry);
+			boolean isScalaMapped = scalaMapped.contains(_methodEntry.toString());
+			boolean isSelfMapped = SelfMapped.contains(_methodEntry.toString());
+
+			if (m != null) {
+				if (m.getGetterField() != null)
+					write("get");
+				write(m.getMethodName());
+			}
+			else if (_methodEntry.toString().equals("java/lang/Object.<init>()V")) {
+				/*
+				 * Do nothing if we're in a constructor calling the
+				 * java.lang.Object super constructor
+				 */
+			} else {
+				// Must be a library call like rsqrt
+				if (!isMapped && !isScalaMapped && !isSelfMapped) {
+					isIntrinsic = false;
+					throw new RuntimeException(_methodEntry + " should be mapped method!");
+				}
+				else
+					isIntrinsic = true;
+				write(methodName);
+			}
+		} else
+			write(intrinsicMapping);
+
+		// write arguments of real method call
+		write("(");
+
+		boolean isFirst = true;
 		for (int arg = 0; arg < argc; arg++) {
-//			if (((intrinsicMapping == null) && (_methodCall instanceof VirtualMethodCall) && (!isIntrinsic)) ||
-//			    (arg != 0))
-			if (isFirst == false)
+			if (!isFirst)
 				write(", ");
+			isFirst = false;
 
 			// comaniac Issue #2, we have to match method arguments with Xilinx supported intrinsic functions.
 			if (isIntrinsic &&
@@ -491,45 +442,166 @@ public abstract class KernelWriter extends BlockWriter {
 		return false; // FIXME: Previous: alloc check
 	}
 
-	private boolean isThis(Instruction instruction) {
-		return instruction instanceof I_ALOAD_0;
+	@Override
+	public boolean writeMethod(I_INVOKEINTERFACE _methodCall,
+														 InterfaceMethodEntry _methodEntry) throws CodeGenException {
+		final Instruction instanceInstruction = _methodCall.getInstanceReference();
+		final String clazzName = _methodEntry.getClassEntry().getNameUTF8Entry().getUTF8();
+		final String methodName = _methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+
+		final int argc = _methodEntry.getStackConsumeCount();
+		if (instanceInstruction instanceof I_ALOAD_0)
+			write("this");
+		else
+			writeInstruction(instanceInstruction);
+
+		write("->" + methodName + "(");
+
+		boolean isFirst = true;
+		for (int arg = 0; arg < argc; arg++) {
+			if (!isFirst)
+				write(", ");
+			isFirst = false;
+			writeInstruction(_methodCall.getArg(arg));
+		}
+		write(")");
+	
+		return false;
 	}
 
-	public void writePragma(String _name, boolean _enable) {
-		write("#pragma OPENCL EXTENSION " + _name + " : " + (_enable ? "en" : "dis") + "able");
+
+	private void writeMethodDecl(MethodModel mm, String refArgsDef) 
+		throws CodeGenException {
+		final String returnType = mm.getReturnType();
+		this.currentReturnType = returnType;
+
+		String fullReturnType;
+		String convertedReturnType = convertType(returnType, true);
+
+		if (mm.getGetterField() != null) {
+			write(convertedReturnType + " ");
+			write("get" + mm.getMethodName() + "()");
+			newLine();
+			writeMethodBody(mm);
+			newLine();
+			return ;
+		}
+
+		// Write return type
+		if (returnType.startsWith("L")) {
+			SignatureEntry sigEntry =
+			  mm.getMethod().getAttributePool().getSignatureEntry();
+			final TypeSignature sig;
+			if (sigEntry != null)
+				sig = new FullMethodSignature(sigEntry.getSignature()).getReturnType();
+			else
+				sig = new TypeSignature(returnType);
+
+			ClassModel cm = entryPoint.getModelFromObjectArrayFieldsClasses(
+			                  convertedReturnType.trim(), new SignatureMatcher(sig));
+			if (cm != null)
+				fullReturnType = cm.getMangledClassName();
+			else
+				fullReturnType = Utils.convertToCType(entryPoint.getArgument("j2faOut").getCType());
+
+			// Object must be passed by address
+			fullReturnType += "*";
+		} else
+			fullReturnType = convertedReturnType;
+
+		// Write method name
+		if (mm.getSimpleName().equals("<init>"))
+			write(mm.getOwnerClassMangledName() + "(");
+		else
+			write(fullReturnType + " " + mm.getMethodName() + "(");
+
+		boolean isFirst = true;
+
+		// Write reference arguments if necessary
+		if (!mm.getMethod().isStatic()) {
+			if ((mm.getMethod().getClassModel() == entryPoint.getClassModel())
+			    || mm.getMethod().getClassModel().isSuperClass(
+			      entryPoint.getClassModel().getClassWeAreModelling())) {
+				if (refArgsDef.length() > 0) {
+					write(refArgsDef);
+					isFirst = false;
+				}
+			}
+		}
+
+		// Write arguments
+		final LocalVariableTableEntry<LocalVariableInfo> lvte = mm.getLocalVariableTableEntry();
+		for (final LocalVariableInfo lvi : lvte) {
+			if ((lvi.getStart() == 0) && ((lvi.getVariableIndex() != 0) ||
+			                              mm.getMethod().isStatic())) { // full scope but skip this
+				final String descriptor = lvi.getVariableDescriptor();
+
+				if (!isFirst)
+					write(", ");
+				isFirst = false;
+
+				final String convertedType;
+				if (descriptor.startsWith("L")) {
+					final String converted = convertType(descriptor, true).trim();
+					final SignatureEntry sigEntry = mm.getMethod().getAttributePool().getSignatureEntry();
+					final TypeSignature sig;
+
+					if (sigEntry != null) {
+						final int argumentOffset = (mm.getMethod().isStatic() ?
+						                            lvi.getVariableIndex() : lvi.getVariableIndex() - 1);
+						final FullMethodSignature methodSig = new FullMethodSignature(
+						  sigEntry.getSignature());
+						sig = methodSig.getTypeParameters().get(argumentOffset);
+					} else
+						sig = new TypeSignature(descriptor);
+					ClassModel cm = entryPoint.getModelFromObjectArrayFieldsClasses(
+					                  converted, new SignatureMatcher(sig));
+					if (cm == null) { // Looking for customized class models
+						JParameter param = entryPoint.getArgument(lvi.getVariableName());
+						if (param == null)
+							throw new RuntimeException("Cannot match argument: " + converted + 
+								" " + lvi.getVariableName());
+						cm = param.getClassModel();
+					}
+					convertedType = cm.getMangledClassName() + " *";
+				} else
+					convertedType = convertType(descriptor, true);
+				write(convertedType);
+
+				write(lvi.getVariableName());
+
+				// Add item length argument for input array.
+				if (descriptor.startsWith("["))
+					write(", int " + lvi.getVariableName() + BlockWriter.arrayItemLengthMangleSuffix);
+			}
+		}
+
+		write(")");
 		newLine();
+		writeMethodBody(mm);
+		newLine();
+		return ;
 	}
 
-	public final static String __local = "__local ";
-
-	public final static String __global = "__global ";
-
-	public final static String __constant = "__constant ";
-
-	public final static String __private = "__private ";
-
-	public final static String LOCAL_ANNOTATION_NAME = "L" +
-	    com.amd.aparapi.Kernel.Local.class.getName().replace('.', '/') + ";";
-
-	public final static String CONSTANT_ANNOTATION_NAME = "L" +
-	    com.amd.aparapi.Kernel.Constant.class.getName().replace('.', '/')
-	    + ";";
-
-	private void emitExternalObjectDef(ClassModel cm) {
+	private void emitExternalObjectDef(ClassModel cm, List<MethodModel> merged, String refArgsDef) 
+		throws CodeGenException {
 		final ArrayList<FieldNameInfo> fieldSet = cm.getStructMembers();
 
 		final String mangledClassName = cm.getMangledClassName();
 		newLine();
-		write("typedef struct ");
-		if (!useMerlinKernel)
-			write("__attribute__ ((packed)) ");
-		write(mangledClassName + "_s {");
+		write("class " + mangledClassName);
+		if (cm.isDerivedClass())
+			write(": " + cm.getSuperClazz().getMangledClassName());
+		write(" {");
 		in();
+		newLine();
+		write("public:");
 		newLine();
 
 		if (cm.isDerivedClass())
 			writeln("int j2fa_clazz_type;");
 
+		// Write fields
 		if (fieldSet.size() > 0) {
 			final Iterator<FieldNameInfo> it = fieldSet.iterator();
 			while (it.hasNext()) {
@@ -543,9 +615,129 @@ public abstract class KernelWriter extends BlockWriter {
 					writeln("int " + field.name + BlockWriter.arrayLengthMangleSuffix + ";");
 			}
 		}
+
+		// Write customized derived methods (if any)
+		Set<String> dispatchers = entryPoint.getKernelCalledInterfaceMethods();
+		for (String dispatcher : dispatchers) {
+			List<MethodModel> impls = entryPoint.getMethodImpls(dispatcher);
+			logger.fine("Writing interface method " + dispatcher);
+
+			final MethodModel sampleMM = impls.get(0);
+			final String returnType = sampleMM.getReturnType();
+			this.currentReturnType = returnType;
+
+			String fullReturnType;
+			String convertedReturnType = convertType(returnType, true);
+
+			if (sampleMM.getGetterField() != null)
+				throw new RuntimeException("Method dispatcher cannot be a getter method");
+
+			// Write return type
+			if (returnType.startsWith("L")) {
+				SignatureEntry sigEntry =
+				  sampleMM.getMethod().getAttributePool().getSignatureEntry();
+				final TypeSignature sig;
+				if (sigEntry != null)
+					sig = new FullMethodSignature(sigEntry.getSignature()).getReturnType();
+				else
+					sig = new TypeSignature(returnType);
+
+				ClassModel retClazzModel = entryPoint.getModelFromObjectArrayFieldsClasses(
+				                  convertedReturnType.trim(), new SignatureMatcher(sig));
+				if (retClazzModel != null)
+					fullReturnType = retClazzModel.getMangledClassName();
+				else
+					fullReturnType = Utils.convertToCType(entryPoint.getArgument("j2faOut").getCType());
+			} else
+				fullReturnType = convertedReturnType;
+
+			write(fullReturnType + " ");
+
+			// Write method name
+			String methodName = dispatcher
+				.substring(dispatcher.lastIndexOf(".") + 1, dispatcher.indexOf("("));
+			write(methodName + "(");
+
+			boolean isFirst = true;
+
+			// Write arguments
+			if (sampleMM instanceof CustomizedMethodModel) {
+				Map<String, String> args = ((CustomizedMethodModel<?>) sampleMM).getArgs(null);
+				for (final Map.Entry<String, String> arg : args.entrySet()) {
+					if (!isFirst)
+						write(", ");
+					isFirst = false;
+
+					write(arg.getValue() + " " + arg.getKey());
+				}
+			}
+			else {
+				final LocalVariableTableEntry<LocalVariableInfo> lvte = sampleMM.getLocalVariableTableEntry();
+				for (final LocalVariableInfo lvi : lvte) {
+					if ((lvi.getStart() == 0) && ((lvi.getVariableIndex() != 0) ||
+					                              sampleMM.getMethod().isStatic())) { // full scope but skip this
+						final String descriptor = lvi.getVariableDescriptor();
+	
+						if (!isFirst)
+							write(", ");
+						isFirst = false;
+	
+						final String convertedType;
+						if (descriptor.startsWith("L")) {
+							final String converted = convertType(descriptor, true).trim();
+							final SignatureEntry sigEntry = sampleMM.getMethod().getAttributePool().getSignatureEntry();
+							final TypeSignature sig;
+	
+							if (sigEntry != null) {
+								final int argumentOffset = (sampleMM.getMethod().isStatic() ?
+								                            lvi.getVariableIndex() : lvi.getVariableIndex() - 1);
+								final FullMethodSignature methodSig = new FullMethodSignature(
+								  sigEntry.getSignature());
+								sig = methodSig.getTypeParameters().get(argumentOffset);
+							} else
+								sig = new TypeSignature(descriptor);
+							ClassModel retClazzModel = entryPoint.getModelFromObjectArrayFieldsClasses(
+							                  converted, new SignatureMatcher(sig));
+							if (retClazzModel == null) { // Looking for customized class models
+								JParameter param = entryPoint.getArgument(lvi.getVariableName());
+								if (param == null)
+									throw new RuntimeException("Cannot match argument: " + converted + 
+										" " + lvi.getVariableName());
+								retClazzModel = param.getClassModel();
+							}
+							convertedType = retClazzModel.getMangledClassName() + " *";
+						} else
+							convertedType = convertType(descriptor, true);
+						write(convertedType);
+	
+						write(lvi.getVariableName());
+	
+						// Add item length argument for input array.
+						if (descriptor.startsWith("["))
+							write(", int " + lvi.getVariableName() + BlockWriter.arrayItemLengthMangleSuffix);
+					}
+				}
+			}
+			write(") { ; }");
+			newLine();
+		}
+
+		// Write methods
+		for (final MethodModel mm : merged) {
+			if (mm.isPrivateMemoryGetter())
+				continue;
+
+			if (mm.getOwnerClassMangledName().equals(mangledClassName)) {
+				logger.fine("Writing member method " + mm.getName());
+				newLine();
+				writeMethodDecl(mm, refArgsDef);
+				newLine();
+			}
+		}
+
 		out();
 		newLine();
-		write("} " + mangledClassName + ";");
+		write("};");
 		newLine();
 	}
 
@@ -647,20 +839,11 @@ public abstract class KernelWriter extends BlockWriter {
 		write("#define MAX_PARTITION_SIZE 32767");
 		newLine();
 
-		if (useMerlinKernel) {
-			write("#define __global ");
-			newLine();
-			write("#define __local ");
-			newLine();
-			write("#define __kernel ");
-			newLine();
-		}
-
-		if (!useMerlinKernel && _entryPoint.requiresDoublePragma()) {
-			writePragma("cl_khr_fp64", true);
-			newLine();
-		}
 		newLine();
+
+		final List<MethodModel> merged = new ArrayList<MethodModel>(_entryPoint.getCalledMethods().size() + 1);
+		merged.addAll(_entryPoint.getCalledMethods());
+		merged.add(_entryPoint.getMethodModel());
 
 		// Emit structs for oop transformation accessors
 		List<String> lexicalOrdering = _entryPoint.getLexicalOrderingOfObjectClasses();
@@ -671,12 +854,12 @@ public abstract class KernelWriter extends BlockWriter {
 				final String mangled = cm.getMangledClassName();
 				if (emitted.contains(mangled)) continue;
 
-				emitExternalObjectDef(cm);
+				emitExternalObjectDef(cm, merged, refArgsDef);
 				emitted.add(mangled);
 			}
 		}
 
-		// Emit structs for modeled customized classes
+		// Emit class declaration for modeled customized classes
 		Set<String> classNameList = _entryPoint.getCustomizedClassModels().getClassList();
 		for (String name : classNameList) {
 			List<CustomizedClassModel> modeledClasses = _entryPoint.	
@@ -690,7 +873,7 @@ public abstract class KernelWriter extends BlockWriter {
 				newLine();
 			}
 		}
-
+/*
 		// Write customized class method declarations
 		for (String name : classNameList) {
 			List<CustomizedClassModel> modeledClasses = _entryPoint.	
@@ -924,225 +1107,20 @@ public abstract class KernelWriter extends BlockWriter {
 			newLine();
 		}
 		newLine();
-
-		final List<MethodModel> merged = new ArrayList<MethodModel>(_entryPoint.getCalledMethods().size() + 1);
-		merged.addAll(_entryPoint.getCalledMethods());
-		merged.add(_entryPoint.getMethodModel());
+*/
 
 		// Write method declaration
 		for (final MethodModel mm : merged) {
 			if (mm.isPrivateMemoryGetter())
 				continue;
-			logger.fine("Writing method " + mm.getName());
-
-			final String returnType = mm.getReturnType();
-			this.currentReturnType = returnType;
-
-			String fullReturnType;
-			String convertedReturnType = convertType(returnType, true);
-
-			if (mm.getGetterField() != null) {
-				write(convertedReturnType + " ");
-				write(mm.getName() + "(" + __global);
-				write(mm.getOwnerClassMangledName() + " *this)");
-				newLine();
-				writeMethodBody(mm);
-				newLine();
+			if (lexicalOrdering.contains(mm.getOwnerClassName()))
 				continue;
-			}
-
-			// Write return type
-			if (returnType.startsWith("L")) {
-				SignatureEntry sigEntry =
-				  mm.getMethod().getAttributePool().getSignatureEntry();
-				final TypeSignature sig;
-				if (sigEntry != null)
-					sig = new FullMethodSignature(sigEntry.getSignature()).getReturnType();
-				else
-					sig = new TypeSignature(returnType);
-
-				ClassModel cm = entryPoint.getModelFromObjectArrayFieldsClasses(
-				                  convertedReturnType.trim(), new SignatureMatcher(sig));
-				if (cm != null)
-					fullReturnType = cm.getMangledClassName();
-				else
-					fullReturnType = Utils.convertToCType(_entryPoint.getArgument("j2faOut").getCType());
-			} else
-				fullReturnType = convertedReturnType;
-
-			if (!useMerlinKernel)
-				write("static ");
-
-			isPassByAddrOutput = false;
-			processingConstructor = false;
-
-			if (mm.getSimpleName().equals("<init>")) {
-				// Transform constructors to initialize the object
-				write(__global + "void ");
-				processingConstructor = true;
-			} else if (returnType.startsWith("[")) {
-				// Issue #40 Array type output support:
-				// Change the return type to void.
-				write("void ");
-				isPassByAddrOutput = true;
-			} else
-				write(fullReturnType + " ");
-
-			// Write method name
-			String methodName = "";
-			if (mm instanceof CustomizedMethodModel)
-			  methodName = mm.getOwnerClassMangledName();
-			methodName += mm.getName();
-			write(methodName + "(");
-
-			boolean alreadyHasFirstArg = false;
-
-			// Write "this" if necessary
-			if (!mm.getMethod().isStatic()) {
-				if ((mm.getMethod().getClassModel() == _entryPoint.getClassModel())
-				    || mm.getMethod().getClassModel().isSuperClass(
-				      _entryPoint.getClassModel().getClassWeAreModelling())) {
-					if (refArgsDef.length() > 0) {
-						write(refArgsDef);
-						alreadyHasFirstArg = true;
-					}
-				}
-				else {
-					// Call to an object member or superclass of member
-					// Write "this" argument. ex: Tuple2_I_D__1(Tuple2_I_D *this)
-					Iterator<ClassModel> classIter = _entryPoint.getObjectArrayFieldsClassesIterator();
-					while (classIter.hasNext()) {
-						final ClassModel c = classIter.next();
-						if (mm.getMethod().getClassModel() == c) {
-							write(__global + mm.getMethod().getClassModel().getClassWeAreModelling().getName().replace('.',
-							      '_')
-							      + " *this");
-							alreadyHasFirstArg = true;
-							break;
-						} else if (mm.getMethod().getClassModel().isSuperClass(c.getClassWeAreModelling())) {
-							write(__global + c.getClassWeAreModelling().getName().replace('.', '_') + " *this");
-							alreadyHasFirstArg = true;
-							break;
-						}
-					}
-				}
-			}
-
-			// Write arguments
-			final LocalVariableTableEntry<LocalVariableInfo> lvte = mm.getLocalVariableTableEntry();
-			for (final LocalVariableInfo lvi : lvte) {
-				if ((lvi.getStart() == 0) && ((lvi.getVariableIndex() != 0) ||
-				                              mm.getMethod().isStatic())) { // full scope but skip this
-					final String descriptor = lvi.getVariableDescriptor();
-
-					if (alreadyHasFirstArg)
-						write(", ");
-
-					if (descriptor.startsWith("[") || descriptor.startsWith("L"))
-						write(" " + __global);
-
-					final String convertedType;
-					if (descriptor.startsWith("L")) {
-						final String converted = convertType(descriptor, true).trim();
-						final SignatureEntry sigEntry = mm.getMethod().getAttributePool().getSignatureEntry();
-						final TypeSignature sig;
-
-						if (sigEntry != null) {
-							final int argumentOffset = (mm.getMethod().isStatic() ?
-							                            lvi.getVariableIndex() : lvi.getVariableIndex() - 1);
-							final FullMethodSignature methodSig = new FullMethodSignature(
-							  sigEntry.getSignature());
-							sig = methodSig.getTypeParameters().get(argumentOffset);
-						} else
-							sig = new TypeSignature(descriptor);
-						ClassModel cm = entryPoint.getModelFromObjectArrayFieldsClasses(
-						                  converted, new SignatureMatcher(sig));
-						if (cm == null) { // Looking for customized class models
-							JParameter param = entryPoint.getArgument(lvi.getVariableName());
-							if (param == null)
-								throw new RuntimeException("Cannot match argument: " + converted + 
-									" " + lvi.getVariableName());
-							cm = param.getClassModel();
-						}
-						convertedType = cm.getMangledClassName() + " *";
-					} else
-						convertedType = convertType(descriptor, true);
-					write(convertedType);
-
-					write(lvi.getVariableName());
-
-					// Add array length argument for mapPartitions.
-					if (isMapPartitions)
-						write(", int " + lvi.getVariableName() + BlockWriter.arrayLengthMangleSuffix);
-
-					// Add item length argument for input array.
-					if (descriptor.startsWith("["))
-						write(", int " + lvi.getVariableName() + BlockWriter.arrayItemLengthMangleSuffix);
-					alreadyHasFirstArg = true;
-				}
-			}
-
-			// Issue #40: Add output array as an argument.
-			if (isPassByAddrOutput) {
-
-				// Find the local variable name used for the return value in Java.
-				// aload/invoke/cast	<- the 2nd instruction from the last
-				// areturn
-				Instruction retVar = mm.getPCHead();
-				while (retVar.getNextPC() != null) // Find the last
-					retVar = retVar.getNextPC();
-
-				Instruction loadVar = retVar;
-				while (!(loadVar instanceof AccessLocalVariable))
-					loadVar = loadVar.getPrevPC();
-
-				final LocalVariableInfo localVariable = ((AccessLocalVariable) loadVar).getLocalVariableInfo();
-				String varName = localVariable.getVariableName();
-
-				// Skip return value when writing method body
-				// since we want to assign the value to the output argument directly
-				while (loadVar != retVar) {
-					loadVar.setByteCode(ByteCode.NONE);
-					loadVar = loadVar.getNextPC();
-				}
-				
-				// Return void
-				retVar.setByteCode(ByteCode.RETURN);
-
-				// Skip local variable declaration when writing method body
-				// since we want to send this through argument
-				Instruction newInst = mm.getPCHead();
-				while (newInst.getNextPC() != null) {
-					if (newInst instanceof I_NEWARRAY || newInst instanceof I_NEW) {
-						// Get variable name from astore (parent instruction)
-						Instruction parent = newInst.getParentExpr();
-						if (parent instanceof LocalVariableTableIndexAccessor) {
-							LocalVariableTableIndexAccessor var = (LocalVariableTableIndexAccessor) parent;
-							if (var.getLocalVariableInfo().getVariableName().equals(varName)) {
-								newInst.setByteCode(ByteCode.NONE);
-								parent.setByteCode(ByteCode.NONE);
-								break; 
-							}
-						}
-					}
-					newInst = newInst.getNextPC();
-				}
-				if (newInst == null)
-					System.err.println("WARNING: Cannot find local variable declaration for the pointer output.");
-
-				write(", " + __global + fullReturnType + varName);
-				write(", int " + varName + BlockWriter.arrayItemLengthMangleSuffix);
-			}
-
-			write(")");
-			newLine();
-			writeMethodBody(mm);
-			newLine();
+			logger.fine("Writing method " + mm.getName());
+			writeMethodDecl(mm, refArgsDef);
 		}
 
 		// Start writing main function
 		JParameter outParam = null;
-		write("__kernel ");
 		newLine();
 		write("void run(");
 		in();
@@ -1177,9 +1155,6 @@ public abstract class KernelWriter extends BlockWriter {
 			}
 		}
 
-		if (isMapPartitions && !useFPGAStyle)
-			throw new RuntimeException("MapParitions can only be adopted by FPGA kernel.");
-
 		// Write reference data
 		if (refArgsDef.length() > 0) {
 			write(", ");
@@ -1191,12 +1166,6 @@ public abstract class KernelWriter extends BlockWriter {
 		out();
 		newLine();
 		assert(outParam != null);
-
-		// FPGA uses 1 work group while GPU uses multiple.
-		if (!useFPGAStyle) {
-			writeln("int nthreads = get_global_size(0);");
-			writeln("int idx = get_global_id(0);");
-		}
 
 		String aryIdxStr = "idx";
 		if (useFPGAStyle)
@@ -1221,10 +1190,10 @@ public abstract class KernelWriter extends BlockWriter {
 		// Call the kernel function.
 		first = true;
 
-		// Issue #40: We don't use return value for pointer type
-		if (!outParam.isArray() && !isMapPartitions) 
-			write(outParam.getName() + "[" + aryIdxStr + "] = ");
-		write(_entryPoint.getMethodModel().getName() + "(");
+		write(outParam.getName() + "[" + aryIdxStr + "] = ");
+		if (outParam.isArray() || (outParam instanceof ObjectJParameter))
+			write("*");
+		write(_entryPoint.getMethodModel().getMethodName() + "(");
 		write(refArgsCall);
 		if (refArgsCall.length() > 0)
 			first = false;
@@ -1234,12 +1203,8 @@ public abstract class KernelWriter extends BlockWriter {
 				if (!first)	
 					write(", ");
 				if (p.isArray()) { // Deserialized access
-					if (!isMapPartitions) {
-						write("&" + p.getName() + "[" + aryIdxStr + " * " + p.getName() + 
-								BlockWriter.arrayItemLengthMangleSuffix + "]");
-					}
-					else // MapPartitions
-						write(p.getName() + ", N");
+					write("&" + p.getName() + "[" + aryIdxStr + " * " + p.getName() + 
+							BlockWriter.arrayItemLengthMangleSuffix + "]");
 					write(", " + p.getName() + BlockWriter.arrayItemLengthMangleSuffix);
 				}
 				else { // One-by-one access
@@ -1251,27 +1216,16 @@ public abstract class KernelWriter extends BlockWriter {
 			}
 		}
 
-		if (isPassByAddrOutput) { // Issue #40: Add another argument for output array.
-			if (!isMapPartitions)
-				write(", &" + outParam.getName() + "[" + aryIdxStr + " *" + outParam.getName() + 
-					BlockWriter.arrayItemLengthMangleSuffix + "]");
-			else
-				write(", " + outParam.getName());
-			write(", " + outParam.getName() + BlockWriter.arrayItemLengthMangleSuffix);
-		}
-
 		write(");");
 		newLine();
 
-		if (!isMapPartitions) {
+		out();
+		newLine();
+		write("}");
+		if (useFPGAStyle) {
 			out();
 			newLine();
 			write("}");
-			if (useFPGAStyle) {
-				out();
-				newLine();
-				write("}");
-			}
 		}
 
 		out();

@@ -38,13 +38,13 @@ abstract class J2FAFunSuite extends FunSuite {
     val jarPath = jarFileURL.toString.replace("file:", "") + ":" + 
           sys.env("BLAZE_HOME") + "/accrdd/target/blaze-1.0.jar"
     val level = 4
-    val fileName = "/tmp/j2fa_" + className + ".c"
+    val fileName = "/tmp/j2fa_" + className + ".cpp"
     val args = Array(srcFile, jarPath, level.toString, className, fileName)
 
     J2FA.main(args)
 
     val plog = ProcessLogger((e: String) => println("Error: " + e))
-    val code = "gcc -std=c99 -c " + fileName + " -o /dev/null" ! plog
+    val code = "g++ -c " + fileName + " -o /dev/null" ! plog
 
     if (code == 0)
       true

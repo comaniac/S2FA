@@ -37,6 +37,11 @@ public abstract class CustomizedMethodModel<T extends CustomizedClassModel>
 		return name;
 	}
 
+	@Override
+	public String getMethodName() {
+		return name;
+	}
+
 	@Override 
 	public String getOwnerClassMangledName() {
 		return clazzModel.getMangledClassName();
@@ -60,21 +65,28 @@ public abstract class CustomizedMethodModel<T extends CustomizedClassModel>
 
 	public String getDeclareCode() {
 		StringBuilder sb = new StringBuilder();
-		String returnType = getReturnType(clazzModel);
-		String convertedReturnType = Utils.convertToCType(returnType);
-		if (!Utils.isPrimitive(returnType) && !convertedReturnType.contains("*"))
-			sb.append(convertedReturnType + "* ");
-		else
-			sb.append(convertedReturnType + " ");
-		sb.append(clazzModel.getMangledClassName() + "_");
 		if (this.name.equals("<init>"))
-			sb.append("_init_");
-		else
+			sb.append(clazzModel.getMangledClassName() + " ");
+		else {
+			String returnType = getReturnType(clazzModel);
+			String convertedReturnType = Utils.convertToCType(returnType);
+			if (!Utils.isPrimitive(returnType))
+				sb.append(convertedReturnType + "* ");
+			else
+				sb.append(convertedReturnType + " ");
+			if (getGetterField() != null)
+				sb.append("get");
 			sb.append(Utils.convertToCType(this.name));
-		sb.append("(" + clazzModel.getMangledClassName() + " *this");
+		}
+		sb.append("(");
 		if (this.args != null) {
-			for (Map.Entry<String, String> arg : this.args.entrySet())
-				sb.append(", " + Utils.convertToCType(arg.getValue()) + " " + arg.getKey());
+			boolean isFirst = true;
+			for (Map.Entry<String, String> arg : this.args.entrySet()) {
+				if (!isFirst)
+					sb.append(", ");
+				isFirst = false;
+				sb.append(Utils.convertToCType(arg.getValue()) + " " + arg.getKey());
+			}
 		}
 		sb.append(") {\n");
 		sb.append("  " + getBody(clazzModel) + "\n");

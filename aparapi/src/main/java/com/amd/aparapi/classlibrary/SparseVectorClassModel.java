@@ -33,7 +33,7 @@ public class SparseVectorClassModel extends CustomizedClassModel {
 				return "return " + getFieldModel("size").genAccess() + ";";
 			}
 		};
-		addMethod(getSizeMethod);
+		addMethod(getSizeMethod, getFieldModel("size"));
 
 		CustomizedMethodModel<?> getIndicesMethod = new CustomizedMethodModel<SparseVectorClassModel>(
 			this, "indices", METHODTYPE.GETTER) {

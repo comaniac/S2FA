@@ -17,9 +17,9 @@ public class PrimitiveJParameter extends JParameter {
 	public String getParameterCode() {
 		// FIXME: Use 2-D array as long as Merlin compiler has supported it.
 		if (isArray()) 
-			return "__global " + getCType() + " " + name;
+			return getCType() + " " + name;
 		else if (!isReference()) // Map/MapPartition arguments must be array
-			return "__global " + getCType() + " *" + name;
+			return getCType() + " *" + name;
 		else
 			return getCType() + " " + name;
 	}

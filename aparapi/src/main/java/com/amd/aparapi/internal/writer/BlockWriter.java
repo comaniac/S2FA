@@ -536,8 +536,6 @@ public abstract class BlockWriter {
 				if (isObject)
 					localType = localType.replace('.', '_');
 
-				if (isArray || isObject)
-					write("__global ");
 				write(localType);
 
 				if (isObject && !isArray)

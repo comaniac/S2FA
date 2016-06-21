@@ -46,9 +46,13 @@ public abstract class CustomizedClassModel extends ClassModel {
 		return false;
 	}
 
+	// TODO: Change name to "getClassDeclareCode"
 	public String getStructCode() {
 		StringBuilder sb = new StringBuilder();
-	  sb.append("typedef struct " + getMangledClassName() + "_s {\n");
+	  sb.append("class " + getMangledClassName() + " {\n");
+		sb.append("  public:\n");
+
+		// Write fields
 		if (isDerivedClass())
 			sb.append("  int j2fa_clazz_type;\n");
 	  for (CustomizedFieldModel f : getFieldModels()) {
@@ -56,7 +60,17 @@ public abstract class CustomizedClassModel extends ClassModel {
 			if (f.isArray())
 				sb.append("  int " + f.getName() + BlockWriter.arrayLengthMangleSuffix + ";\n");
 		}
-	  sb.append("} " + getMangledClassName() + ";");
+		sb.append("\n");
+
+		// Write methods
+		for (CustomizedMethodModel<?> method : getMethods()) {
+			String methodDecl = method.getDeclareCode();
+			methodDecl = "  " + methodDecl.replace("\n", "\n  ");
+			sb.append(methodDecl);
+			sb.append("\n");
+		}
+
+	  sb.append("};");
 	  return sb.toString();
 	}
 

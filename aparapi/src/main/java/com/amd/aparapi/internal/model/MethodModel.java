@@ -1848,6 +1848,14 @@ public abstract class MethodModel {
 		        + "__" + method.getName().replace('<', '_').replace('>', '_'));
 	}
 
+	public String getMethodName() {
+		return method.getName().replace('<', '_').replace('>', '_');
+	}
+
+	public String getOwnerClassName() {
+		return method.getClassModel().getClassName();
+	}
+
 	public String getReturnType() {
 		String desc = getDescriptor();
 		return desc.substring(desc.lastIndexOf(')') + 1);
