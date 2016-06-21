@@ -651,7 +651,7 @@ public abstract class KernelWriter extends BlockWriter {
 			} else
 				fullReturnType = convertedReturnType;
 
-			write(fullReturnType + " ");
+			write("virtual " + fullReturnType + " ");
 
 			// Write method name
 			String methodName = dispatcher

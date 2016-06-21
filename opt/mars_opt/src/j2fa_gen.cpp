@@ -48,6 +48,24 @@ bool IsPrimitiveType(void *_type) {
 	return false;	
 }
 
+void *CopyInitializedName(CSageCodeGen &codegen, void *ori_init_name) {
+	SgInitializedName *sg_init_name = isSgInitializedName((SgNode *) ori_init_name);
+	if (sg_init_name == NULL)
+		sg_init_name = isSgInitializedName(
+			(SgNode *) codegen.GetVariableInitializedName(ori_init_name));
+	assert(sg_init_name);
+
+	SgInitializer *sg_initer = isSgInitializer(
+		(SgNode *) codegen.GetInitializer(sg_init_name));
+
+	string var_name = codegen.GetVariableName(sg_init_name);
+	SgType *sg_type = sg_init_name->get_type();
+
+  SgInitializedName *sg_new_init =
+		SageBuilder::buildInitializedName(var_name, sg_type, sg_initer);
+  return sg_new_init;
+}
+
 void *GetTypebyDecl(void *decl) {
 	SgNode *sg_var = (SgNode *) decl;
   SgInitializedName *sg_init = isSgInitializedName(sg_var);
@@ -306,7 +324,9 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 	for (int i = 0; i < vecClasses.size(); i++) {
 		SgNode *sgDecl = (SgNode *) vecClasses[i];
 		SgClassDefinition *sgClass = isSgClassDefinition(sgDecl);
-		string className = sgClass->get_qualified_name().getString().substr(2);
+		string className = sgClass->get_qualified_name().getString();
+		j2faClass *jClass = map2jClass[className];
+		className = className.substr(2);
 
 		SgDeclarationStatementPtrList &mList = sgClass->get_members();
 		for (SgDeclarationStatementPtrList::iterator mite = mList.begin(); 
@@ -315,20 +335,25 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 			if (!fun)
 				continue;
 
-			vector<void *> paramList;
+			vector<void *> vecParams;
+			set<SgInitializedName *> setOriParams;
 
 			// The first argument must be "this"
-			// TODO: If the kernel has only float points, use "int" instead			
-			paramList.push_back(codegen.CreateVariable("long *", "this"));
+			// TODO: If the kernel has only float points, use "unsigned int" instead
+			void *thisObj = codegen.CreateVariable("long *", "this");
+			vecParams.push_back(thisObj);
 			SgInitializedNamePtrList &tempList = fun->get_parameterList()->get_args();
 			for (int j = 0; j < tempList.size(); j++) {
+				void *newParam = CopyInitializedName(codegen, tempList[j]);
+
 				// Class type -> serialized array
 				if (!IsPrimitiveType(codegen.UnparseToString(tempList[j]->get_type()))) {
 					SgType *longType = SageBuilder::buildLongType();
 					SgType *longAryType = SageBuilder::buildPointerType(longType);
-					tempList[j]->set_type(longAryType);
+					isSgInitializedName((SgNode *) newParam)->set_type(longAryType);
 				}
-				paramList.push_back(tempList[j]);
+				vecParams.push_back(newParam);
+				setOriParams.insert(tempList[j]);
 			}
 
 			// Return class object -> serialized array pointer
@@ -346,24 +371,69 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 			void *newFunc = codegen.CreateFuncDecl(
 				returnType, 
 				className + "_" + funName, 
-				paramList, 
+				vecParams, 
 				codegen.GetGlobal(fun), 
 				true);
 
 			codegen.InsertStmt(newFunc, pos);
 
-			// TEST body
+			cerr << "Generated function " << funName << endl;
 			void *oriBody = codegen.GetFuncBody(fun);
-			void *body = codegen.CreateBasicBlock();
-			for (int j = 0; j < codegen.GetChildStmtNum(oriBody); j++) {
-			  void *stmt = codegen.GetChildStmt(oriBody, j);
-  			codegen.AppendChild(body, codegen.CopyStmt(stmt));
+			void *newBody = codegen.GetFuncBody(newFunc);
+			void *body = codegen.CopyStmt(oriBody);
+			vector<void*> vecRefs;
+			codegen.GetNodesByType(body, "preorder", "SgVarRefExp", &vecRefs);
+			for (int j = 0; j < vecRefs.size(); j++) {
+				SgInitializedName *initName = isSgInitializedName(
+					(SgNode *) codegen.GetVariableInitializedName(vecRefs[j]));
+
+				if (setOriParams.find(initName) == setOriParams.end()) {
+					void *access = codegen.GetParent(vecRefs[j]);
+
+					// Ref class field (must be "this->var"), transform to index access
+					if (isSgArrowExp((SgNode *) access)) {
+						int idx = jClass->GetVariableIndex(codegen.UnparseToString(vecRefs[j]));
+						vector<void *> idxs;
+
+						// Array field needs to add an offset
+						if (isSgPntrArrRefExp((SgNode *) codegen.GetParent(access))) {
+							SgExpression *offsetExp = isSgPntrArrRefExp(
+								(SgNode *) codegen.GetParent(access))->get_rhs_operand();
+							idxs.push_back(codegen.CreateExp(V_SgAddOp, 
+								codegen.CreateConst(&idx, V_SgIntVal),
+								codegen.CopyExp(offsetExp)));	
+							access = codegen.GetParent(access);
+						}
+						else
+							idxs.push_back(codegen.CreateConst(&idx, V_SgIntVal));
+						void *thisRef = codegen.CreateVariableRef(thisObj);
+						void *newRef = codegen.CreateArrayRef(thisRef, idxs);
+						codegen.ReplaceExp(access, newRef);
+						cerr << "  Link field " << codegen.UnparseToString(vecRefs[j]);
+						cerr << " to " << codegen.UnparseToString(newRef) << endl;
+					}
+					else // Ignore local variable
+						cerr << "  Skip local " << codegen.UnparseToString(vecRefs[j]) << endl;
+				}
+				else {
+					cerr << "  Link arg " << codegen.UnparseToString(vecRefs[j]) << endl;
+					SgInitializedName *oriInit = *(setOriParams.find(initName));
+					void *newInit = NULL;
+					for (int k = 0; k < vecParams.size(); k++) {
+						string argName = codegen.GetVariableName(vecParams[k]);
+						if (argName == codegen.GetVariableName(oriInit)) {
+							newInit = vecParams[k];
+							break;
+						}
+					}
+					void *newRef = codegen.CreateVariableRef(newInit);
+					codegen.ReplaceExp(vecRefs[j], newRef);
+				}
 			}
 			
-//			SgFunctionDefinition *newFuncDef = new SgFunctionDefinition(
-//				isSgFunctionDeclaration((SgNode *) newFunc), isSgBasicBlock((SgNode *) body));
-//			isSgFunctionDeclaration((SgNode *) newFunc)->set_definition(newFuncDef);
-
+			// Insert transformed statements to new function body
+			for (int j = 0; j < codegen.GetChildStmtNum(body); j++)
+				codegen.AppendChild(newBody, codegen.GetChildStmt(body, j));
 		}
 	}
 
@@ -381,7 +451,9 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 		if (!call)
 			continue;
 
-		cerr << "Working: " << codegen.UnparseToString(call) << endl;
+		#ifdef DEBUG_FUNC_TRACE_UP
+		cerr << "[j2fa_gen] Transform function call: " << codegen.UnparseToString(call) << endl;
+		#endif
 
 		// Reference object
 		void *refObj = exp->get_lhs_operand();
@@ -392,38 +464,39 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 		if (isSgPointerType(clsType))
 			clsType = isSgPointerType(clsType)->get_base_type();
 		if (!isSgClassType(clsType)) {
-			cerr << "Unknown type: " << codegen.UnparseToString(clsType) << ": ";
+			cerr << "[j2fa_gen] Unknown type: " << codegen.UnparseToString(clsType) << ": ";
 			cerr << clsType->class_name() << endl;
 			return 0;
 		}
 		funName = isSgClassType(clsType)->get_name().getString() + "_" + funName;
+		#ifdef DEBUG_FUNC_TRACE_UP
 		cerr << "  New name: " << funName << endl;
+		#endif
 
 		// Parameters (newRefObj, original params)
-		vector<void *> paramList;
+		vector<void *> vecParams;
 		void *newRefObj = codegen.CopyExp(refObj);
-		paramList.push_back(newRefObj);
+		vecParams.push_back(newRefObj);
 		SgExpressionPtrList &aList = call->get_args()->get_expressions();
 		for (int j = 0; j < aList.size(); j++)
-			paramList.push_back(aList[j]);
+			vecParams.push_back(codegen.CopyExp(aList[j]));
 		
 		// Return type
 		void *retType = funRef->get_type();
 		if (isSgMemberFunctionType((SgNode *) retType))
 			retType = isSgMemberFunctionType((SgNode *) retType)->get_return_type();
 		else {
-			cerr << "Unknown type: " << codegen.UnparseToString(retType) << ": ";
+			cerr << "[j2fa_gen] Unknown type: " << codegen.UnparseToString(retType) << ": ";
 			cerr << isSgType((SgNode *) retType)->class_name() << endl;
 			return 0;
 		}
+		#ifdef DEBUG_FUNC_TRACE_UP
 		cerr << "  Return: " << codegen.UnparseToString(retType) << endl;
-
-		void *newCall = codegen.CreateFuncCall(funName, retType, paramList, codegen.GetScope(call));
 		cerr << "  New call: " << codegen.UnparseToString(newCall) << endl;
+		#endif
+
+		void *newCall = codegen.CreateFuncCall(funName, retType, vecParams, codegen.GetScope(call));
 		
-		// FIXME: Why it causes the following error at line 418 if the function has arguments:
-		// mars_opt: Cxx_GrammarTreeTraversalSuccessorContainer.C:46: 
-		//   virtual size_t SgNode::get_numberOfTraversalSuccessors(): Assertion `false' failed.
 		codegen.ReplaceExp(call, newCall);
 	}
 
@@ -452,14 +525,14 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 			SgNewExp *newExp = isSgNewExp((SgNode *) initExp);
 			SgExpressionPtrList &newArgs = newExp->get_constructor_args()
 				->get_args()->get_expressions();
-			vector<void *> paramList;
-			paramList.push_back(codegen.CreateVariableRef(newVar));
+			vector<void *> vecParams;
+			vecParams.push_back(codegen.CreateVariableRef(newVar));
 			for (int j = 0; j < newArgs.size(); j++)
-				paramList.push_back(newArgs[j]);
+				vecParams.push_back(newArgs[j]);
 			string funName = isSgClassType(isSgPointerType(
 				newExp->get_type())->get_base_type())->get_name().getString() + "_init";
 			void *constCall = codegen.CreateFuncCall(
-				funName, codegen.GetTypeByString("void"), paramList, codegen.GetScope(vecVars[i]));
+				funName, codegen.GetTypeByString("void"), vecParams, codegen.GetScope(vecVars[i]));
 			void *initStmt = codegen.CreateStmt(V_SgExprStatement, constCall);
 			codegen.InsertAfterStmt(initStmt, vecVars[i]);
 		}
