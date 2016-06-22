@@ -798,9 +798,8 @@ public class Entrypoint implements Cloneable {
 						new CustomizedClassModelMatcher(null));
 
 				MethodModel method = null;
-				if (derivedClassModel instanceof CustomizedClassModel) {
+				if (derivedClassModel instanceof CustomizedClassModel)
 					method = ((CustomizedClassModel) derivedClassModel).getCustomizedMethod(methodName);
-				}
 				else {
 					ClassModelMethod methodImpl = derivedClassModel.getMethod(methodName, methodDesc);
 					if (methodImpl == null) // Skip the derived class without the overrided method
@@ -818,7 +817,7 @@ public class Entrypoint implements Cloneable {
 				addOrUpdateMethodImpl(fullSig, method);
 
 				// Add derived class to customized class list
-				derivedClassModel.setAsDerivedClass();
+				derivedClassModel.setSuperClazz(baseClassModel);
 				addClass(derivedClazzName, derivedClassModel);
 
 				methodModel.getCalledMethods().add(method);

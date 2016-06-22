@@ -66,6 +66,35 @@ void *CopyInitializedName(CSageCodeGen &codegen, void *ori_init_name) {
   return sg_new_init;
 }
 
+// Note: We ignore the function body duplication here.
+// The copied function declaration will have an empty SgBasicBlock as a body.
+void *CopyFuncDecl(CSageCodeGen &codegen, void *ori_decl) {
+	SgFunctionDeclaration *fun = isSgFunctionDeclaration((SgNode *) ori_decl);
+	vector<void *> vecParams;
+
+	SgInitializedNamePtrList &tempList = fun->get_parameterList()->get_args();
+	for (int j = 0; j < tempList.size(); j++) {
+		void *newParam = CopyInitializedName(codegen, tempList[j]);
+		vecParams.push_back(newParam);
+	}
+
+	string funName = codegen.GetFuncName(ori_decl);
+	string returnType = codegen.UnparseToString(codegen.GetFuncReturnType(fun));
+	void *newFunc = codegen.CreateFuncDecl(
+		returnType, funName, vecParams, codegen.GetGlobal(fun), true);
+	return newFunc;
+}
+
+void GetBaseClasses(void *sg_class, vector<void *> sg_base) {
+	SgNode *sgDecl = (SgNode *) sg_class;
+	SgClassDefinition *sgClass = isSgClassDefinition(sgDecl);
+	SgBaseClassPtrList &vecBases = sgClass->get_inheritances();
+	for (int i = 0; i < vecBases.size(); i++) {
+		SgClassDefinition *baseClass = vecBases[i]->get_base_class()->get_definition();
+		sg_base.push_back(baseClass);
+	}
+}
+
 void *GetTypebyDecl(void *decl) {
 	SgNode *sg_var = (SgNode *) decl;
   SgInitializedName *sg_init = isSgInitializedName(sg_var);
@@ -235,13 +264,30 @@ int InferArraySize(CSageCodeGen & codegen, void * pTopFunc, void * sgClass, void
 int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int debug_gen,
                 int keep_code = 0)
 {
-	// Step 1: Parse class definitions
+	// Step 1.1: Parse class definitions and create J2FA class models
 	vector <void*> vecClasses;
 	codegen.GetNodesByType(pTopFunc, "preorder", "SgClassDefinition", &vecClasses);
 	for (int i = 0; i < vecClasses.size(); i++) {
 		SgNode *sgDecl = (SgNode *) vecClasses[i];
 		SgClassDefinition *sgClass = isSgClassDefinition(sgDecl);
-		map2jClass[sgClass->get_qualified_name()] = new j2faClass(sgClass);
+		map2jClass[sgClass->get_qualified_name()] = new j2faClass(sgClass, i);
+	}
+
+	// Step 1.2: Build class inheritance relationships
+	for (int i = 0; i < vecClasses.size(); i++) {
+		SgNode *sgDecl = (SgNode *) vecClasses[i];
+		SgClassDefinition *sgClass = isSgClassDefinition(sgDecl);
+		j2faClass *jClass = map2jClass[sgClass->get_qualified_name()];
+
+		SgBaseClassPtrList &vecBases = sgClass->get_inheritances();
+		for (int j = 0; j < vecBases.size(); j++) {
+			SgClassDeclaration *baseClass = vecBases[j]->get_base_class();
+			string baseClassName = baseClass->get_qualified_name().getString();
+			j2faClass *jBaseClass = map2jClass[baseClassName];
+			jBaseClass->AddDerivedClass(jClass);
+			cerr << "Class " << baseClassName << " has a derived class ";
+			cerr << jClass->GetName() << endl;
+		}
 	}
 
 	// Step 2: Serialize class member variables
@@ -292,7 +338,7 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 	}
 
 	#ifdef DEBUG_FUNC_TRACE_UP
-		cerr << "[j2fa_gen] Class member indexing for serialization" << endl;
+	cerr << "[j2fa_gen] Class member indexing for serialization" << endl;
 	#endif
 
 	for (int i = 0; i < vecClasses.size(); i++) {
@@ -327,6 +373,7 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 		string className = sgClass->get_qualified_name().getString();
 		j2faClass *jClass = map2jClass[className];
 		className = className.substr(2);
+		bool isBaseClass = jClass->HasDerivedClass();
 
 		SgDeclarationStatementPtrList &mList = sgClass->get_members();
 		for (SgDeclarationStatementPtrList::iterator mite = mList.begin(); 
@@ -334,6 +381,21 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 			SgMemberFunctionDeclaration *fun = isSgMemberFunctionDeclaration(*mite);
 			if (!fun)
 				continue;
+			string funName = codegen.GetFuncName(fun);
+
+			// Collect derived class implementations
+			map <int, string> mapDerivedImpl;
+			if (isBaseClass) {
+				vector <j2faClass *> derived = jClass->GetDerivedClasses();
+				for (int j = 0; j < derived.size(); j++) {
+					if (derived[j]->HasFunc(funName))
+						continue;
+					mapDerivedImpl[derived[j]->GetID()] = 
+						derived[j]->GetName() + "_" + funName;
+					cerr << "Function " << funName << " has an implementation";
+					cerr << " from class " << derived[j]->GetName() << endl;
+				}
+			}
 
 			vector<void *> vecParams;
 			set<SgInitializedName *> setOriParams;
@@ -363,21 +425,26 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 				returnType = "long *";
 
 			// Rename constructor to "init"
-			string funName = codegen.GetFuncName(fun);
 			if (className == funName)
 				funName = "init";
+
+			funName = className + "_" + funName;
+			if (mapDerivedImpl.size())
+				funName = "base_" + funName;
 
 			// Create and insert a standalone funciton
 			void *newFunc = codegen.CreateFuncDecl(
 				returnType, 
-				className + "_" + funName, 
+				funName, 
 				vecParams, 
 				codegen.GetGlobal(fun), 
 				true);
 
 			codegen.InsertStmt(newFunc, pos);
 
-			cerr << "Generated function " << funName << endl;
+			#ifdef DEBUG_FUNC_TRACE_UP
+			cerr << "[j2fa_gen] Generate function " << funName << endl;
+			#endif
 			void *oriBody = codegen.GetFuncBody(fun);
 			void *newBody = codegen.GetFuncBody(newFunc);
 			void *body = codegen.CopyStmt(oriBody);
@@ -409,14 +476,20 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 						void *thisRef = codegen.CreateVariableRef(thisObj);
 						void *newRef = codegen.CreateArrayRef(thisRef, idxs);
 						codegen.ReplaceExp(access, newRef);
+						#ifdef DEBUG_FUNC_TRACE_UP
 						cerr << "  Link field " << codegen.UnparseToString(vecRefs[j]);
 						cerr << " to " << codegen.UnparseToString(newRef) << endl;
+						#endif
 					}
+					#ifdef DEBUG_FUNC_TRACE_UP
 					else // Ignore local variable
 						cerr << "  Skip local " << codegen.UnparseToString(vecRefs[j]) << endl;
+					#endif
 				}
 				else {
+					#ifdef DEBUG_FUNC_TRACE_UP
 					cerr << "  Link arg " << codegen.UnparseToString(vecRefs[j]) << endl;
+					#endif
 					SgInitializedName *oriInit = *(setOriParams.find(initName));
 					void *newInit = NULL;
 					for (int k = 0; k < vecParams.size(); k++) {
@@ -434,6 +507,66 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 			// Insert transformed statements to new function body
 			for (int j = 0; j < codegen.GetChildStmtNum(body); j++)
 				codegen.AppendChild(newBody, codegen.GetChildStmt(body, j));
+
+			// Generate dispatcher function if necessary
+			if (!mapDerivedImpl.size())
+				continue;
+			
+			void *disFunc = CopyFuncDecl(codegen, newFunc);
+			codegen.SetFuncName(disFunc, funName.substr(5));
+			codegen.InsertStmt(disFunc, pos);
+			void *funBody = codegen.GetFuncBody(disFunc);
+
+			// Create selector for looking at class id (this[0])
+			int idIdx = 0;
+			vector <void *> idxs;
+			idxs.push_back(codegen.CreateConst(&idIdx, V_SgIntVal));
+			SgExpression *selector = isSgExpression((SgNode *) codegen.CreateArrayRef(
+				codegen.CreateVariableRef(codegen.GetFuncParam(disFunc, 0)), idxs));
+
+			// Create switch body
+			SgBasicBlock *switchBody = isSgBasicBlock((SgNode *) codegen.CreateBasicBlock());
+			map<int, string>::iterator dite = mapDerivedImpl.begin();
+			for (; dite != mapDerivedImpl.end(); dite++) {
+				vector <void *> vecArgs;
+				for (int j = 0; j < codegen.GetFuncParamNum(disFunc); j++)
+					vecArgs.push_back(codegen.CreateVariableRef(codegen.GetFuncParam(disFunc, j)));
+
+				SgBasicBlock *caseBody = isSgBasicBlock((SgNode *) codegen.CreateBasicBlock());
+
+				void *subFuncCall = codegen.CreateFuncCall(
+					dite->second.substr(2), codegen.GetTypeByString(returnType), vecArgs, codegen.GetScope(funBody));
+
+				void *retStmt = codegen.CreateStmt(V_SgReturnStmt, subFuncCall);
+				codegen.AppendChild(caseBody, retStmt);
+
+				SgCaseOptionStmt *caseStmt = SageBuilder::buildCaseOptionStmt(
+					SageBuilder::buildIntVal(dite->first), caseBody);
+				codegen.AppendChild(switchBody, caseStmt);
+			}
+
+			// Add itself as default
+			vector <void *> vecArgs;
+			for (int j = 0; j < codegen.GetFuncParamNum(disFunc); j++)
+				vecArgs.push_back(codegen.CreateVariableRef(codegen.GetFuncParam(disFunc, j)));
+
+			SgBasicBlock *caseBody = isSgBasicBlock((SgNode *) codegen.CreateBasicBlock());
+
+			void *subFuncCall = codegen.CreateFuncCall(
+				funName, codegen.GetTypeByString(returnType), vecArgs, codegen.GetScope(funBody));
+
+			void *retStmt = codegen.CreateStmt(V_SgReturnStmt, subFuncCall);
+			codegen.AppendChild(caseBody, retStmt);
+
+			SgDefaultOptionStmt *caseStmt = SageBuilder::buildDefaultOptionStmt(caseBody);
+			codegen.AppendChild(switchBody, caseStmt);
+		
+			// Build switch statement
+			SgSwitchStatement* switchStmt = SageBuilder::buildSwitchStatement(selector, switchBody);
+			selector->set_parent(switchStmt);
+			switchBody->set_parent(switchStmt);
+			
+			codegen.AppendChild(funBody, switchStmt);
 		}
 	}
 
@@ -515,8 +648,9 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 		void *newVar = codegen.CreateVariableDecl(
 			"long *", varName, NULL, codegen.GetScope(vecVars[i]));
 
-		// Change constructor call to normal function call
+		// Process variable initialization
 		if (initExp) {
+			// Change constructor call to normal function call
 			if (!isSgNewExp((SgNode *) initExp)) {
 				cerr << "Unexpected initial exp: ";
 				cerr << codegen.UnparseToString(initExp) << endl;
@@ -539,7 +673,7 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 		codegen.ReplaceStmt(vecVars[i], newVar);
 	}
 
-	// Step 2.5: Change class type arguments to the serialized type for functions
+	// Step 6: Change class type arguments to the serialized type for functions
 	vecFuncs.clear();
 	codegen.GetNodesByType(pTopFunc, "preorder",  "SgFunctionDeclaration", &vecFuncs);
 	for (int i = 0; i < vecFuncs.size(); i++) {
@@ -558,8 +692,7 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 		}
 	}
 
-
-	// Remove class declarations FIXME: Why it doesn't work?
+	// Step 7: Remove class declarations FIXME: Why it doesn't work?
 	for (int i = 0; i < vecClasses.size(); i++)
 		codegen.RemoveStmt(vecClasses[i]);
 

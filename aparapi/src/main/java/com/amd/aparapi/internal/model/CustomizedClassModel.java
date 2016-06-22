@@ -49,8 +49,10 @@ public abstract class CustomizedClassModel extends ClassModel {
 	// TODO: Change name to "getClassDeclareCode"
 	public String getStructCode() {
 		StringBuilder sb = new StringBuilder();
-	  sb.append("class " + getMangledClassName() + " {\n");
-		sb.append("  public:\n");
+	  sb.append("class " + getMangledClassName());
+		if (isDerivedClass())
+			sb.append(" : " + getSuperClazz().getMangledClassName());
+		sb.append(" {\n  public:\n");
 
 		// Write fields
 		if (isDerivedClass())

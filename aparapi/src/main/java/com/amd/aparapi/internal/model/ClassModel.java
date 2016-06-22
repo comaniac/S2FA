@@ -2204,6 +2204,12 @@ public abstract class ClassModel {
 		}
 	}
 
+	public void setSuperClazz(ClassModel c) {
+		assert superClazz == null;
+		superClazz = c;
+		hasInterface = true;
+	}
+
 	/**
 	 * Convert a given JNI character type (say 'I') to its type name ('int').
 	 *
