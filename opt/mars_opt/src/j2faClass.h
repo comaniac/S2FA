@@ -82,6 +82,12 @@ class j2faClass
 			return -1;
 		}
 
+		int GetVariableSize(string name) {
+			if (mapVar2Size[name])
+				return mapVar2Size[name];
+			return 0;
+		}
+
 		void CalcIndex() {
 			int idx = 1;
 			map<string, int>::iterator vite = mapVar2Size.begin();
@@ -94,8 +100,14 @@ class j2faClass
 		}
 
 		void DumpVariables() {
+			cerr << "    Index:" << endl;
 			map<string, int>::iterator vite = mapVar2Idx.begin();
 			for (; vite != mapVar2Idx.end(); vite++)
-				cerr << vite->second << ":" << vite->first << endl;
+				cerr << "      " << vite->second << ":" << vite->first << endl;
+
+			cerr << "    Size:" << endl;
+			vite = mapVar2Size.begin();
+			for (; vite != mapVar2Size.end(); vite++)
+				cerr << "      " << vite->first << ":" << vite->second << endl;
 		}
 };

@@ -139,16 +139,21 @@ void GetBaseClasses(void *sg_class, vector<void *> sg_base) {
 	}
 }
 
-// Note: Add class type name support
-string GetVariableTypeName(CSageCodeGen &codegen, void *sg_var_) {
-	string typeName = codegen.GetVariableTypeName(sg_var_);
+string PruneClassTypeName(string typeName_) {
+	string typeName = typeName_;
+
 	if (!strncmp(typeName.c_str(), "class", 5)) {
 		typeName = typeName.substr(8, typeName.length());
 		if (typeName.find("{") != std::string::npos)
 			typeName = typeName.substr(0, typeName.find("{"));
 	}
-
 	return typeName;
+}
+
+// Note: Add class type name support
+string GetVariableTypeName(CSageCodeGen &codegen, void *sg_var_) {
+	string typeName = codegen.GetVariableTypeName(sg_var_);
+	return PruneClassTypeName(typeName);
 }
 
 void *GetTypebyDecl(void *decl) {
@@ -321,6 +326,7 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
                 int keep_code = 0)
 {
 	string serializedType = "int";
+	int serializedTypeSize = 4;
 
 	// Step 1.1: Parse class definitions and create J2FA class models
 	vector <void*> vecClasses;
@@ -338,6 +344,7 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 		string typeName = codegen.GetVariableTypeName(vecVars[i]);
 		if (typeName == "double" || typeName == "long") {
 			serializedType = "long";
+			serializedTypeSize = 8;
 			break;
 		}
 	}
@@ -517,6 +524,7 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 
 			codegen.InsertStmt(newFunc, posBeforeMainFunc);
 
+			// Copy and tranform function body
 			void *oriBody = codegen.GetFuncBody(fun);
 			void *newBody = codegen.GetFuncBody(newFunc);
 			void *body = codegen.CopyStmt(oriBody);
@@ -551,6 +559,7 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 						}
 						else
 							idxs.push_back(codegen.CreateConst(&idx, V_SgIntVal));
+
 						void *thisRef = codegen.CreateVariableRef(thisObj);
 						void *newRef = codegen.CreateArrayRef(thisRef, idxs);
 
@@ -558,10 +567,11 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 						if (isUse) {
 							bool isPointer = true;
 
-							// Object access
+							// Object access: &obj (obj type: class) -> obj (obj type: serialized type *)
 							if (isSgAddressOfOp((SgNode *) codegen.GetParent(access)))
 								access = codegen.GetParent(access);
 
+							// Fetch type name to be cast
 							string typeName = codegen.UnparseToString(codegen.GetTypeByExp(access));
 							if (!IsPrimitiveType(typeName))
 								typeName = serializedType + " *";
@@ -576,6 +586,9 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 							newRef = codegen.CreateExp(V_SgCastExp,	newRef, codegen.GetTypeByString(typeName));
 							if (!isPointer)
 								newRef = codegen.CreateExp(V_SgPointerDerefExp, newRef);
+
+							// Replace variable use with casting
+							codegen.ReplaceExp(access, newRef);
 						}
 						else { // Def
 							cerr << "Def " << codegen.UnparseToString(newRef) << endl;
@@ -584,6 +597,7 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 								rhsExp = codegen.GetParent(rhsExp);
 							assert(rhsExp);
 
+							// Fetch the value to write
 							if (isSgAssignOp((SgNode *) rhsExp))
 								rhsExp = isSgAssignOp((SgNode *) rhsExp)->get_rhs_operand();
 							else { // Member "function call"
@@ -596,22 +610,34 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 								rhsExp = args[0];
 							}
 							cerr << "RHS: " << codegen.UnparseToString(rhsExp) << endl;
-							
-							void *newRhsExp = codegen.CopyExp(rhsExp);
-							
 							string typeName = codegen.UnparseToString(codegen.GetTypeByExp(rhsExp));
-							if (IsPrimitiveType(typeName))
+
+							void *newRhsExp = codegen.CopyExp(rhsExp);
+							if (IsPrimitiveType(typeName)) {
+								// Write a scalar value directly
 								newRhsExp = codegen.CreateExp(V_SgAddressOfOp, newRhsExp);
-
-							newRhsExp = codegen.CreateExp(V_SgCastExp,	newRhsExp, codegen.GetTypeByString(serializedType + " *"));
-
-							if (IsPrimitiveType(typeName))
+								newRhsExp = codegen.CreateExp(V_SgCastExp,	newRhsExp, codegen.GetTypeByString(serializedType + " *"));
 								newRhsExp = codegen.CreateExp(V_SgPointerDerefExp, newRhsExp);
+								codegen.ReplaceExp(rhsExp, newRhsExp);
+								codegen.ReplaceExp(access, newRef);
+							}
+							else {
+								// Use memcpy to write an array
+								int varSize = jClass->GetVariableSize(codegen.UnparseToString(vecRefs[j]));
+								newRef = codegen.CreateExp(V_SgAddressOfOp, newRef);
 
-							codegen.ReplaceExp(rhsExp, newRhsExp);
+								vector<void *> vecParams;
+								vecParams.push_back(newRef); // Target
+								vecParams.push_back(newRhsExp); // Source
+								vecParams.push_back(codegen.CreateConst(varSize * serializedTypeSize)); // Size
+								void *memcpyCall = codegen.CreateFuncCall("memcpy", codegen.GetTypeByString("void"), 
+									vecParams, codegen.GetScope(newFunc));
+								void *newStmt = codegen.CreateStmt(V_SgExprStatement, memcpyCall);
+								void *stmt = codegen.TraceUpByTypeCompatible(access, V_SgStatement);
+								codegen.ReplaceStmt(stmt, newStmt);
+							}
 						}
 
-						codegen.ReplaceExp(access, newRef);
 						#ifdef DEBUG_FUNC_TRACE_UP
 						cerr << "  Link field " << codegen.UnparseToString(vecRefs[j]);
 						cerr << " to " << codegen.UnparseToString(newRef) << endl;
@@ -764,13 +790,11 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 			cerr << isSgType((SgNode *) retType)->class_name() << endl;
 			return 0;
 		}
+		void *newCall = codegen.CreateFuncCall(funName, retType, vecParams, codegen.GetScope(call));
 		#ifdef DEBUG_FUNC_TRACE_UP
 		cerr << "  Return: " << codegen.UnparseToString(retType) << endl;
 		cerr << "  New call: " << codegen.UnparseToString(newCall) << endl;
 		#endif
-
-		void *newCall = codegen.CreateFuncCall(funName, retType, vecParams, codegen.GetScope(call));
-		
 		codegen.ReplaceExp(call, newCall);
 	}
 
