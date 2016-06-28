@@ -545,8 +545,6 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 						bool isUse = false;
 						if (IsVarRefForUse(codegen, vecRefs[j]))
 							isUse = true;
-						cerr << "Ref: " << codegen.UnparseToString(access) << " has parent ";
-						cerr << ((SgNode *) codegen.GetParent(access))->class_name() << endl;
 
 						// Array field needs to add an offset
 						if (isSgPntrArrRefExp((SgNode *) codegen.GetParent(access))) {
@@ -591,7 +589,6 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 							codegen.ReplaceExp(access, newRef);
 						}
 						else { // Def
-							cerr << "Def " << codegen.UnparseToString(newRef) << endl;
 							void *rhsExp = access;
 							while (rhsExp && !isSgAssignOp((SgNode *) rhsExp) && !isSgFunctionCallExp((SgNode *) rhsExp))
 								rhsExp = codegen.GetParent(rhsExp);
@@ -609,7 +606,6 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 								
 								rhsExp = args[0];
 							}
-							cerr << "RHS: " << codegen.UnparseToString(rhsExp) << endl;
 							string typeName = codegen.UnparseToString(codegen.GetTypeByExp(rhsExp));
 
 							void *newRhsExp = codegen.CopyExp(rhsExp);
@@ -976,16 +972,24 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 				if (codegen.GetFuncNameByCall(vecFuncCalls[j]) != funName)
 					continue;
 				void *stmt = codegen.TraceUpByTypeCompatible(vecFuncCalls[j], V_SgStatement);
-				if (!isSgExprStatement((SgNode *) stmt)) // FIXME: Why?
-					continue;
-				SgExpression *exp = isSgExprStatement((SgNode *) stmt)->get_expression();
-				if (!isSgFunctionCallExp(exp)) // FIXME: Why?
-					continue;
-				SgDotExp *dotExp = isSgDotExp(exp->get_traversalSuccessorByIndex(0));
-				if (!dotExp)
+
+				void *lhsExp = NULL;
+				if (!isSgExprStatement((SgNode *) stmt))
 					continue;
 
-				void *newArg = codegen.CopyExp(dotExp->get_lhs_operand());
+				SgExpression *exp = isSgExprStatement((SgNode *) stmt)->get_expression();
+				if (isSgAssignOp(exp))
+					lhsExp = isSgAssignOp(exp)->get_lhs_operand();
+				else if (isSgFunctionCallExp(exp)) { // FIXME: Why?
+					SgDotExp *dotExp = isSgDotExp(exp->get_traversalSuccessorByIndex(0));
+					if (!dotExp)
+						continue;
+					lhsExp = dotExp->get_lhs_operand();
+				}
+				cerr << "Transforming function call for returning objects: ";
+				cerr << codegen.UnparseToString(lhsExp) << endl;
+
+				void *newArg = codegen.CopyExp(lhsExp);
 				newArg = codegen.CreateExp(V_SgAddressOfOp, newArg);
 				
 				vector<void *> vecParams;
@@ -998,14 +1002,15 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 					funName, codegen.GetTypeByString("void"), vecParams, codegen.GetScope(vecFuncCalls[j]));
 				void *newStmt = codegen.CreateStmt(V_SgExprStatement, newCall);	
 				codegen.ReplaceStmt(stmt, newStmt);
-				cerr << codegen.UnparseToString(newStmt) << endl;
 			}
 		}
 	}
 
-	// Step 7: Remove class declarations FIXME: Why it doesn't work?
-	for (int i = 0; i < vecClasses.size(); i++)
-		codegen.RemoveStmt(vecClasses[i]);
+	// Step 7: Remove class declarations
+	vector<void *> vecClassDecls;
+	codegen.GetNodesByType(pTopFunc, "preorder", "SgClassDeclaration", &vecClassDecls);
+	for (int i = 0; i < vecClassDecls.size(); i++)
+		codegen.RemoveStmt(vecClassDecls[i]);
 
 	cout << "J2FA transformation done" << endl;
 	return 1;
