@@ -531,8 +531,11 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 						continue;
 					mapDerivedImpl[derived[j]->GetID()] = 
 						derived[j]->GetName() + "_" + funName;
+
+					#ifdef DEBUG_FUNC_TRACE_UP
 					cerr << "Function " << funName << " has an implementation";
 					cerr << " from class " << derived[j]->GetName() << endl;
+					#endif
 				}
 			}
 
@@ -686,7 +689,7 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 								// Write pointer type data
 								int varSize = jClass->GetVariableSize(codegen.UnparseToString(vecRefs[j]));
 								void *stmt = codegen.TraceUpByTypeCompatible(access, V_SgStatement);
-
+/*
 								if (!IsPrimitiveType(typeName)) {
 									// Write an object, use memcpy directly
 									typeName = serializedType;
@@ -702,10 +705,15 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 									codegen.ReplaceStmt(stmt, newStmt);
 								}
 								else {
+*/
+								if (!IsPrimitiveType(typeName))
+									typeName = serializedType + " *";
+
 									// Write an array, use for-loop
 									void *iterVarDecl = codegen.CreateVariableDecl(
 										codegen.GetTypeByString("int"), "j2fa_i" + std::to_string(tmpCounter), 
 										NULL, codegen.GetScope(newFunc));
+									tmpCounter++;
 									codegen.InsertStmt(iterVarDecl, stmt);
 									void *iterInit = codegen.GetVariableInitializedName(iterVarDecl);
 									void *body = codegen.CreateBasicBlock();
@@ -736,7 +744,7 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 										V_SgForStatement, iterInit, codegen.CreateConst(0), codegen.CreateConst(varSize), body);
 
 									codegen.ReplaceStmt(stmt, copyLoop);
-								}
+//								}
 							}
 						}
 
@@ -1024,6 +1032,7 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 				isSgInitializedName((SgNode *) newParam)->set_type(
 				  isSgType((SgNode *)codegen.GetTypeByString(serializedType + " *")));
 			}
+			setOriParams.insert(tempList[j]);
 			vecParams.push_back(newParam);
 		}
 
@@ -1048,11 +1057,14 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 
 		codegen.ReplaceStmt(fun, newFun);
 
+		// Process function body
 		void *oriBody = codegen.GetFuncBody(fun);
 		void *newBody = codegen.GetFuncBody(newFun);
 		void *body = codegen.CopyStmt(oriBody);
 		vector<void*> vecRefs;
 		codegen.GetNodesByType(body, "preorder", "SgVarRefExp", &vecRefs);
+		cerr << "Processing " << codegen.GetFuncName(newFun) << ": ";
+		cerr << vecRefs.size() << endl;
 		for (int j = 0; j < vecRefs.size(); j++) {
 			SgInitializedName *initName = isSgInitializedName(
 				(SgNode *) codegen.GetVariableInitializedName(vecRefs[j]));
@@ -1069,6 +1081,21 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 					}
 				}
 				void *newRef = codegen.CreateVariableRef(newInit);
+				string typeName = codegen.GetVariableTypeName(initName);
+
+				// Transform object array accessing
+				if (!IsPrimitiveType(typeName) && isSgPntrArrRefExp((SgNode *) codegen.GetParent(vecRefs[j]))) {
+					typeName = PruneClassTypeName(typeName);
+					j2faClass *jClass = map2jClass["::" + typeName];
+
+					vecRefs[j] = codegen.GetParent(vecRefs[j]);
+					void *idxExp = codegen.CopyExp(codegen.GetExpRightOperand(vecRefs[j]));
+					idxExp = codegen.CreateExp(
+						V_SgMultiplyOp, idxExp, codegen.CreateConst(jClass->GetSize()));
+					newRef = codegen.CreateExp(
+						V_SgPntrArrRefExp, newRef, idxExp);
+				}
+
 				codegen.ReplaceExp(vecRefs[j], newRef);
 			}
 		}
@@ -1117,14 +1144,17 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 				SgExpression *exp = isSgExprStatement((SgNode *) stmt)->get_expression();
 				if (isSgAssignOp(exp))
 					lhsExp = isSgAssignOp(exp)->get_lhs_operand();
-				else if (isSgFunctionCallExp(exp)) { // FIXME: Why?
+				else if (isSgFunctionCallExp(exp)) {
 					SgDotExp *dotExp = isSgDotExp(exp->get_traversalSuccessorByIndex(0));
 					if (!dotExp)
 						continue;
 					lhsExp = dotExp->get_lhs_operand();
 				}
+
+				#ifdef DEBUG_FUNC_TRACE_UP
 				cerr << "Transforming function call for returning objects: ";
 				cerr << codegen.UnparseToString(lhsExp) << endl;
+				#endif
 
 				void *newArg = codegen.CopyExp(lhsExp);
 				newArg = codegen.CreateExp(V_SgAddressOfOp, newArg);

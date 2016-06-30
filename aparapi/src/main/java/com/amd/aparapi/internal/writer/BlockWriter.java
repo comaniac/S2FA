@@ -250,8 +250,15 @@ public abstract class BlockWriter {
 								tempInst).getLocalVariableInfo();
 						if (localVariableInfo.getVariableIndex() == loopVariableInfo.getVariableIndex()) {
 							// Check if the statement RHS has other variables.
-							if (!ExpressionList.hasOtherVariables(localVariableInfo, tempInst))
-								writeInstruction(tempInst);
+							if (!ExpressionList.hasOtherVariables(localVariableInfo, tempInst)) {
+
+								// Write the start expression without variable declaration
+								final String varName = loopVariableInfo.getVariableName();
+								write(varName + " = ");
+							  for (Instruction operand = tempInst.getFirstChild(); operand != null;
+					      		operand = operand.getNextExpr())
+							  	writeInstruction(operand);
+							}
 							else {
 								if (logger.isLoggable(Level.FINEST))
 								  System.out.println("Find other local variables are referred by loop variable initialization");	
