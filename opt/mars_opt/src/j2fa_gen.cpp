@@ -27,6 +27,16 @@ static int count_memcpy = 0;
 using namespace std;
 
 map <string, j2faClass*> map2jClass;
+int tmpCounter = 0;
+
+
+void dumpASTFromNode(CSageCodeGen &codegen, void *node_) {
+	void *node = node_;
+	while (node) {
+		cerr << "  " << ((SgNode *) node)->class_name() << endl;
+		node = codegen.GetParent(node);
+	}
+}
 
 bool IsPrimitiveType(string type) {
 	if (type.find("*") != std::string::npos)
@@ -40,6 +50,14 @@ bool IsPrimitiveType(string type) {
 			type == "long") {
 		return true;
 	}
+	return false;
+}
+
+bool IsArray(string type) {
+	if (type.find("*") != std::string::npos)
+		return true;
+	else if (type.find("[") != std::string::npos)
+		return true;
 	return false;
 }
 
@@ -76,7 +94,6 @@ void *CreateInitializedName(CSageCodeGen &codegen, string var_name, void *sg_typ
 		SageBuilder::buildInitializedName(var_name, sg_type, sg_initer);
   return sg_new_init;
 }
-
 
 // Note: We ignore the function body duplication here.
 // The copied function declaration will have an empty SgBasicBlock as a body.
@@ -129,6 +146,42 @@ bool IsVarRefForUse(CSageCodeGen &codegen, void *ref) {
 	assert(0);
 }
 
+void *InsertCastedVarDecl(CSageCodeGen &codegen, string ori_type, string new_type, void *ref_exp, void *scope) {
+	// Create a temp variable to store the value
+	string tmpVarName = "j2faSTmp" + std::to_string(tmpCounter);
+
+	assert(isSgExpression((SgNode *) ref_exp));
+	assert(isSgScopeStatement((SgNode *) scope));
+
+	void *stmt = codegen.TraceUpByTypeCompatible(ref_exp, V_SgStatement);
+	void *tmpVarDecl = codegen.CreateVariableDecl(ori_type, tmpVarName, 
+		codegen.CopyExp(ref_exp), scope);
+	codegen.InsertStmt(tmpVarDecl, stmt);
+			
+	// Pointer casting
+	void *cast_exp = codegen.CreateVariableRef(tmpVarDecl);
+	cast_exp = codegen.CreateExp(V_SgAddressOfOp, cast_exp);
+	cast_exp = codegen.CreateExp(V_SgCastExp, cast_exp, codegen.GetTypeByString(new_type));
+	cast_exp = codegen.CreateExp(V_SgPointerDerefExp, cast_exp);
+
+
+	if (new_type.find("*") != std::string::npos)
+  	new_type = new_type.substr(0, new_type.length() - 2);
+	if (new_type.find("const") != std::string::npos)
+	  new_type = new_type.substr(6, new_type.length());
+	if (new_type.find("[") != std::string::npos)
+	  new_type = new_type.substr(0, new_type.find("[") - 1);
+
+	// Create a new variable
+	string newVarName = "j2faCast" + std::to_string(tmpCounter);
+	void *newVarDecl = codegen.CreateVariableDecl(new_type, newVarName, 
+		cast_exp, scope);
+	codegen.InsertStmt(newVarDecl, stmt);
+
+	tmpCounter++;
+	return newVarDecl;
+}
+
 void GetBaseClasses(void *sg_class, vector<void *> sg_base) {
 	SgNode *sgDecl = (SgNode *) sg_class;
 	SgClassDefinition *sgClass = isSgClassDefinition(sgDecl);
@@ -167,26 +220,37 @@ void *GetTypebyDecl(void *decl) {
     return sg_decl->get_variables()[0]->get_type();
 }
 
-int GetTypeSize(void *type) {
+// Return the size (in byte) of a primitive type.
+// Return 0 for non-primitive types.
+int GetTypeSizeByString(string type) {
+	if (type.find("*") != std::string::npos)
+		type = type.substr(0, type.length() - 2);
+
+	if (type == "int")
+		return 4;
+	else if (type == "char")
+		return 1;
+	else if (type == "bool")
+		return 1;
+	else if (type == "double")
+		return 8;
+	else if (type == "float")
+		return 4;
+	else if (type == "long")
+		return 8;
+	else if (type == "short")
+		return 2;
+
+	return 0;
+}
+
+// Return the length of complex types.
+// Return 0 (uncertain) for pointer types.
+// Return 1 for scalar primitive types.
+int GetTypeLength(void *type) {
 	SgArrayType *aryType = isSgArrayType((SgNode *) type);
 	string typeClassName = ((SgType *) type)->class_name();
 
-/*
-	if (!typeClassName.compare("SgTypeInt"))
-		return 4;
-	else if (!typeClassName.compare("SgTypeBool"))
-		return 1;
-	else if (!typeClassName.compare("SgTypeChar"))
-		return 1;
-	else if (!typeClassName.compare("SgTypeDouble"))
-		return 8;
-	else if (!typeClassName.compare("SgTypeFloat"))
-		return 4;
-	else if (!typeClassName.compare("SgTypeLong"))
-		return 8;
-	else if (!typeClassName.compare("SgTypeShort"))
-		return 2;
-*/
 	if (typeClassName == "SgClassType") {
 		string className = "::" + ((SgClassType *) type)->get_name();
 		if (map2jClass[className])
@@ -200,13 +264,14 @@ int GetTypeSize(void *type) {
 			cerr << "Array length cannot be a variable" << endl;
 			return -1;
 		}
-		return GetTypeSize(aryType->get_base_type()) * aryIdx->get_value();
+		return GetTypeLength(aryType->get_base_type()) * aryIdx->get_value();
 	}
 	else if (typeClassName == "SgPointerType") {
 		// We don't handle pointer here
 		return 0;
 	}
 
+	// Primitive type always has length 1
 	return 1;
 }
 
@@ -313,7 +378,7 @@ int InferArraySize(CSageCodeGen & codegen, void * pTopFunc, void * sgClass, void
 					continue;
 //				string argName = codegen.UnparseToString(eList[fite->second]);
 				void *varDecl = codegen.GetVariableDecl(eList[fite->second]);
-				int size = GetTypeSize(GetTypebyDecl(varDecl));
+				int size = GetTypeLength(GetTypebyDecl(varDecl));
 				if (size > typeSize)
 					typeSize = size;
 			}
@@ -326,7 +391,6 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
                 int keep_code = 0)
 {
 	string serializedType = "int";
-	int serializedTypeSize = 4;
 
 	// Step 1.1: Parse class definitions and create J2FA class models
 	vector <void*> vecClasses;
@@ -344,7 +408,6 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 		string typeName = codegen.GetVariableTypeName(vecVars[i]);
 		if (typeName == "double" || typeName == "long") {
 			serializedType = "long";
-			serializedTypeSize = 8;
 			break;
 		}
 	}
@@ -386,7 +449,7 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 				if (jClass->HasVariable(varName)) // Ignore known size variables
 					continue;
 
-				int typeSize = GetTypeSize(GetTypebyDecl(var));
+				int typeSize = GetTypeLength(GetTypebyDecl(var));
 				if (!typeSize) { // Need more information
 					done = false;
 					if (isSgPointerType((SgType *) GetTypebyDecl(var))) {
@@ -413,9 +476,9 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 			break;
 	}
 
-	#ifdef DEBUG_FUNC_TRACE_UP
+//	#ifdef DEBUG_FUNC_TRACE_UP
 	cerr << "[j2fa_gen] Class member indexing for serialization" << endl;
-	#endif
+//	#endif
 
 	for (int i = 0; i < vecClasses.size(); i++) {
 		SgNode *sgDecl = (SgNode *) vecClasses[i];
@@ -423,11 +486,11 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 		j2faClass *jClass = map2jClass[sgClass->get_qualified_name()];
 		jClass->CalcIndex();
 
-		#ifdef DEBUG_FUNC_TRACE_UP
+//		#ifdef DEBUG_FUNC_TRACE_UP
 		cerr << "  " << sgClass->get_qualified_name() << ": size ";
 		cerr << map2jClass[sgClass->get_qualified_name()]->GetSize() << endl;
 		jClass->DumpVariables();
-		#endif
+//		#endif
 	}
 
 	vector<void*> vecFuncs;
@@ -498,8 +561,9 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 			}
 
 			// Return class object -> serialized array pointer
+			// Return primitive array -> serialized array pointer (cast later)
 			string returnType = codegen.UnparseToString(codegen.GetFuncReturnType(fun));
-			if (!IsPrimitiveType(returnType))
+			if (!IsPrimitiveType(returnType) || IsArray(returnType))
 				returnType = serializedType + " *";
 
 			// Rename constructor to "init"
@@ -561,32 +625,33 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 						void *thisRef = codegen.CreateVariableRef(thisObj);
 						void *newRef = codegen.CreateArrayRef(thisRef, idxs);
 
-						// Type casting: ... = exp -> ... = *((T *) &exp)
+						// Type casting: U ... = exp ->
+						// U tmp = exp;
+						// T ... = *((T *) &tmp);
 						if (isUse) {
-							bool isPointer = true;
-
 							// Object access: &obj (obj type: class) -> obj (obj type: serialized type *)
 							if (isSgAddressOfOp((SgNode *) codegen.GetParent(access)))
 								access = codegen.GetParent(access);
 
-							// Fetch type name to be cast
+							// Casting based on the type
 							string typeName = codegen.UnparseToString(codegen.GetTypeByExp(access));
-							if (!IsPrimitiveType(typeName))
-								typeName = serializedType + " *";
-							else if (typeName.find("[") != std::string::npos)
-								typeName = typeName.substr(0, typeName.find("[")) + "*";
-							else if (typeName.find("*") == std::string::npos) {
-								typeName = typeName + " *";
-								isPointer = false;
+							if (!IsPrimitiveType(typeName) || IsArray(typeName)) {
+								if (!IsPrimitiveType(typeName))
+									typeName = serializedType + " *";
+								//typeName = typeName.substr(0, typeName.find("[")) + "*";
+
+								newRef = codegen.CreateExp(V_SgAddressOfOp, newRef);
+								codegen.ReplaceExp(access, newRef);
 							}
+							else if (typeName.find("*") == std::string::npos) {
+								codegen.ReplaceExp(access, newRef);
+								void *decl = InsertCastedVarDecl(codegen, serializedType, typeName + " *", newRef, 
+									codegen.GetScope(newFunc));
+								void *castRef = codegen.CreateVariableRef(decl);
 
-							newRef = codegen.CreateExp(V_SgAddressOfOp, newRef);
-							newRef = codegen.CreateExp(V_SgCastExp,	newRef, codegen.GetTypeByString(typeName));
-							if (!isPointer)
-								newRef = codegen.CreateExp(V_SgPointerDerefExp, newRef);
-
-							// Replace variable use with casting
-							codegen.ReplaceExp(access, newRef);
+								// Replace variable use with casting
+								codegen.ReplaceExp(newRef, castRef);
+							}
 						}
 						else { // Def
 							void *rhsExp = access;
@@ -609,7 +674,7 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 							string typeName = codegen.UnparseToString(codegen.GetTypeByExp(rhsExp));
 
 							void *newRhsExp = codegen.CopyExp(rhsExp);
-							if (IsPrimitiveType(typeName)) {
+							if (IsPrimitiveType(typeName) && !IsArray(typeName)) {
 								// Write a scalar value directly
 								newRhsExp = codegen.CreateExp(V_SgAddressOfOp, newRhsExp);
 								newRhsExp = codegen.CreateExp(V_SgCastExp,	newRhsExp, codegen.GetTypeByString(serializedType + " *"));
@@ -618,19 +683,60 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 								codegen.ReplaceExp(access, newRef);
 							}
 							else {
-								// Use memcpy to write an array
+								// Write pointer type data
 								int varSize = jClass->GetVariableSize(codegen.UnparseToString(vecRefs[j]));
-								newRef = codegen.CreateExp(V_SgAddressOfOp, newRef);
-
-								vector<void *> vecParams;
-								vecParams.push_back(newRef); // Target
-								vecParams.push_back(newRhsExp); // Source
-								vecParams.push_back(codegen.CreateConst(varSize * serializedTypeSize)); // Size
-								void *memcpyCall = codegen.CreateFuncCall("memcpy", codegen.GetTypeByString("void"), 
-									vecParams, codegen.GetScope(newFunc));
-								void *newStmt = codegen.CreateStmt(V_SgExprStatement, memcpyCall);
 								void *stmt = codegen.TraceUpByTypeCompatible(access, V_SgStatement);
-								codegen.ReplaceStmt(stmt, newStmt);
+
+								if (!IsPrimitiveType(typeName)) {
+									// Write an object, use memcpy directly
+									typeName = serializedType;
+									newRef = codegen.CreateExp(V_SgAddressOfOp, newRef);
+
+									vector<void *> vecParams;
+									vecParams.push_back(newRef); // Target
+									vecParams.push_back(newRhsExp); // Source
+									vecParams.push_back(codegen.CreateConst(varSize * GetTypeSizeByString(serializedType))); // Size
+									void *memcpyCall = codegen.CreateFuncCall("memcpy", codegen.GetTypeByString("void"), 
+										vecParams, codegen.GetScope(newFunc));
+									void *newStmt = codegen.CreateStmt(V_SgExprStatement, memcpyCall);
+									codegen.ReplaceStmt(stmt, newStmt);
+								}
+								else {
+									// Write an array, use for-loop
+									void *iterVarDecl = codegen.CreateVariableDecl(
+										codegen.GetTypeByString("int"), "j2fa_i" + std::to_string(tmpCounter), 
+										NULL, codegen.GetScope(newFunc));
+									codegen.InsertStmt(iterVarDecl, stmt);
+									void *iterInit = codegen.GetVariableInitializedName(iterVarDecl);
+									void *body = codegen.CreateBasicBlock();
+
+									// Set target offset
+									void *targetRef = codegen.CopyExp(newRef);
+									void *idxExp = codegen.GetExpRightOperand(targetRef);
+									idxExp = codegen.CreateExp(V_SgAddOp, idxExp, codegen.CreateVariableRef(iterVarDecl));
+									isSgPntrArrRefExp((SgNode *) targetRef)->set_rhs_operand(isSgExpression((SgNode *) idxExp));
+
+									// Set source offset
+									void *srcRef = codegen.CreateExp(
+										V_SgPntrArrRefExp, codegen.CopyExp(newRhsExp), codegen.CreateVariableRef(iterVarDecl));
+									void *assignStmt = codegen.CreateStmt(
+										V_SgAssignStatement, targetRef, srcRef);
+
+									// Insert assignment
+									codegen.AppendChild(body, assignStmt);
+
+									// Casting
+									void *castedDecl = InsertCastedVarDecl(codegen, typeName.substr(0, typeName.length() - 2),
+										serializedType + " *", srcRef, codegen.GetScope(body));
+									void *castedRef = codegen.CreateVariableRef(castedDecl);
+									codegen.ReplaceExp(srcRef, castedRef);
+
+									// Create and insert a loop
+									void *copyLoop = codegen.CreateStmt(
+										V_SgForStatement, iterInit, codegen.CreateConst(0), codegen.CreateConst(varSize), body);
+
+									codegen.ReplaceStmt(stmt, copyLoop);
+								}
 							}
 						}
 
@@ -786,6 +892,37 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 			cerr << isSgType((SgNode *) retType)->class_name() << endl;
 			return 0;
 		}
+
+		// Originally return an primitive array, now return a serialized type array
+		if (isSgPointerType((SgNode *) retType) && IsPrimitiveType(retType)) {
+			void *localDecl = codegen.TraceUpByType(call, "SgVariableDeclaration");
+			if (!localDecl) {
+				cerr << "[j2fa_gen] A class member array must be assigned to a local variable before accessing" << endl;
+				dumpASTFromNode(codegen, call);
+				return 0;
+			}
+			string localName = codegen.GetVariableName(localDecl);
+			vector<void *> vecUses;
+			codegen.GetNodesByType(codegen.GetScope(call), "preorder", "SgVarRefExp", &vecUses);
+			for (int j = 0; j < vecUses.size(); j++) {
+				if (codegen.GetVariableDecl(vecUses[j]) != localDecl)
+					continue;
+
+				// Take the array access with index
+				assert(isSgPntrArrRefExp((SgNode *) codegen.GetParent(vecUses[j])));
+				vecUses[j] = codegen.GetParent(vecUses[j]);
+				
+				// Cast to the right type
+				void *castedDecl = InsertCastedVarDecl(codegen, serializedType, 
+					codegen.UnparseToString(retType), vecUses[j], codegen.GetScope(localDecl));
+				void *castedRef = codegen.CreateVariableRef(castedDecl);
+				codegen.ReplaceExp(vecUses[j], castedRef);
+			}
+			codegen.SetTypetoVar(codegen.GetVariableInitializedName(localDecl), 
+				codegen.GetTypeByString(serializedType + " *"));
+			retType = codegen.GetTypeByString(serializedType + " *");
+		}
+
 		void *newCall = codegen.CreateFuncCall(funName, retType, vecParams, codegen.GetScope(call));
 		#ifdef DEBUG_FUNC_TRACE_UP
 		cerr << "  Return: " << codegen.UnparseToString(retType) << endl;

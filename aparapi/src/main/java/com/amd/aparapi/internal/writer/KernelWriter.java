@@ -598,9 +598,6 @@ public abstract class KernelWriter extends BlockWriter {
 		write("public:");
 		newLine();
 
-		if (cm.isDerivedClass())
-			writeln("int j2fa_clazz_type;");
-
 		// Write fields
 		if (fieldSet.size() > 0) {
 			final Iterator<FieldNameInfo> it = fieldSet.iterator();
