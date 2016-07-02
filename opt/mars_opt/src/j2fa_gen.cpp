@@ -407,6 +407,7 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 	for (int i = 0; i < vecVars.size(); i++) {
 		string typeName = codegen.GetVariableTypeName(vecVars[i]);
 		if (typeName == "double" || typeName == "long") {
+			cerr << "Use long as serialized type due to " << codegen.UnparseToString(vecVars[i]) << endl;
 			serializedType = "long";
 			break;
 		}
@@ -686,65 +687,47 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 								codegen.ReplaceExp(access, newRef);
 							}
 							else {
-								// Write pointer type data
+								// Write pointer type data using for-loop
 								int varSize = jClass->GetVariableSize(codegen.UnparseToString(vecRefs[j]));
 								void *stmt = codegen.TraceUpByTypeCompatible(access, V_SgStatement);
-/*
-								if (!IsPrimitiveType(typeName)) {
-									// Write an object, use memcpy directly
-									typeName = serializedType;
-									newRef = codegen.CreateExp(V_SgAddressOfOp, newRef);
 
-									vector<void *> vecParams;
-									vecParams.push_back(newRef); // Target
-									vecParams.push_back(newRhsExp); // Source
-									vecParams.push_back(codegen.CreateConst(varSize * GetTypeSizeByString(serializedType))); // Size
-									void *memcpyCall = codegen.CreateFuncCall("memcpy", codegen.GetTypeByString("void"), 
-										vecParams, codegen.GetScope(newFunc));
-									void *newStmt = codegen.CreateStmt(V_SgExprStatement, memcpyCall);
-									codegen.ReplaceStmt(stmt, newStmt);
-								}
-								else {
-*/
 								if (!IsPrimitiveType(typeName))
 									typeName = serializedType + " *";
 
-									// Write an array, use for-loop
-									void *iterVarDecl = codegen.CreateVariableDecl(
-										codegen.GetTypeByString("int"), "j2fa_i" + std::to_string(tmpCounter), 
-										NULL, codegen.GetScope(newFunc));
-									tmpCounter++;
-									codegen.InsertStmt(iterVarDecl, stmt);
-									void *iterInit = codegen.GetVariableInitializedName(iterVarDecl);
-									void *body = codegen.CreateBasicBlock();
+								void *iterVarDecl = codegen.CreateVariableDecl(
+									codegen.GetTypeByString("int"), "j2fa_i" + std::to_string(tmpCounter), 
+									NULL, codegen.GetScope(newFunc));
+								tmpCounter++;
+								codegen.InsertStmt(iterVarDecl, stmt);
+								void *iterInit = codegen.GetVariableInitializedName(iterVarDecl);
+								void *body = codegen.CreateBasicBlock();
 
-									// Set target offset
-									void *targetRef = codegen.CopyExp(newRef);
-									void *idxExp = codegen.GetExpRightOperand(targetRef);
-									idxExp = codegen.CreateExp(V_SgAddOp, idxExp, codegen.CreateVariableRef(iterVarDecl));
-									isSgPntrArrRefExp((SgNode *) targetRef)->set_rhs_operand(isSgExpression((SgNode *) idxExp));
+								// Set target offset
+								void *targetRef = codegen.CopyExp(newRef);
+								void *idxExp = codegen.GetExpRightOperand(targetRef);
+								idxExp = codegen.CreateExp(V_SgAddOp, idxExp, codegen.CreateVariableRef(iterVarDecl));
+								isSgPntrArrRefExp((SgNode *) targetRef)->set_rhs_operand(isSgExpression((SgNode *) idxExp));
 
-									// Set source offset
-									void *srcRef = codegen.CreateExp(
-										V_SgPntrArrRefExp, codegen.CopyExp(newRhsExp), codegen.CreateVariableRef(iterVarDecl));
-									void *assignStmt = codegen.CreateStmt(
-										V_SgAssignStatement, targetRef, srcRef);
+								// Set source offset
+								void *srcRef = codegen.CreateExp(
+									V_SgPntrArrRefExp, codegen.CopyExp(newRhsExp), codegen.CreateVariableRef(iterVarDecl));
+								void *assignStmt = codegen.CreateStmt(
+									V_SgAssignStatement, targetRef, srcRef);
 
-									// Insert assignment
-									codegen.AppendChild(body, assignStmt);
+								// Insert assignment
+								codegen.AppendChild(body, assignStmt);
 
-									// Casting
-									void *castedDecl = InsertCastedVarDecl(codegen, typeName.substr(0, typeName.length() - 2),
-										serializedType + " *", srcRef, codegen.GetScope(body));
-									void *castedRef = codegen.CreateVariableRef(castedDecl);
-									codegen.ReplaceExp(srcRef, castedRef);
+								// Casting
+								void *castedDecl = InsertCastedVarDecl(codegen, typeName.substr(0, typeName.length() - 2),
+									serializedType + " *", srcRef, codegen.GetScope(body));
+								void *castedRef = codegen.CreateVariableRef(castedDecl);
+								codegen.ReplaceExp(srcRef, castedRef);
 
-									// Create and insert a loop
-									void *copyLoop = codegen.CreateStmt(
-										V_SgForStatement, iterInit, codegen.CreateConst(0), codegen.CreateConst(varSize), body);
+								// Create and insert a loop
+								void *copyLoop = codegen.CreateStmt(
+									V_SgForStatement, iterInit, codegen.CreateConst(0), codegen.CreateConst(varSize), body);
 
-									codegen.ReplaceStmt(stmt, copyLoop);
-//								}
+								codegen.ReplaceStmt(stmt, copyLoop);
 							}
 						}
 
@@ -962,42 +945,50 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 
 		// Process variable initialization
 		if (initExp) {
-			// Change constructor call to normal function call
 			if (!isSgNewExp((SgNode *) initExp)) {
-				cerr << "Unexpected initial exp: ";
-				cerr << codegen.UnparseToString(initExp) << endl;
-				return 0;
+				// Change copy constructor to memcpy
+				vector<void *> vecParams;
+				vecParams.push_back(codegen.CreateVariableRef(newVar));
+				vecParams.push_back(codegen.CopyExp(initExp));
+				vecParams.push_back(codegen.CreateConst(classSize * GetTypeSizeByString(serializedType)));
+				void *initStmt = codegen.CreateStmt(V_SgExprStatement, 
+					codegen.CreateFuncCall("memcpy", codegen.GetTypeByString("void"), 
+					vecParams, codegen.GetScope(vecVars[i])));
+				codegen.InsertAfterStmt(initStmt, vecVars[i]);
 			}
-			SgNewExp *newExp = isSgNewExp((SgNode *) initExp);
-			SgExpressionPtrList &newArgs = newExp->get_constructor_args()
-				->get_args()->get_expressions();
-			vector<void *> vecParams;
-			vecParams.push_back(codegen.CreateVariableRef(newVar));
-			for (int j = 0; j < newArgs.size(); j++) {
-				void *argExp = codegen.CopyExp(newArgs[j]);
-				string argTypeName = codegen.UnparseToString(codegen.GetTypeByExp(argExp));
+			else {
+				// Change constructor call to normal function call
+				SgNewExp *newExp = isSgNewExp((SgNode *) initExp);
+				SgExpressionPtrList &newArgs = newExp->get_constructor_args()
+					->get_args()->get_expressions();
+				vector<void *> vecParams;
+				vecParams.push_back(codegen.CreateVariableRef(newVar));
+				for (int j = 0; j < newArgs.size(); j++) {
+					void *argExp = codegen.CopyExp(newArgs[j]);
+					string argTypeName = codegen.UnparseToString(codegen.GetTypeByExp(argExp));
 
-				// Remove dereference for class type arguments due to type change
-				// constructor(*obj) -> className_constructor(obj)
-				// className *obj -> serializedType *obj
-				// TODO: Apply the same transformation to normal function calls
-				if (!IsPrimitiveType(argTypeName)) {
-					SgConstructorInitializer *constInit = isSgConstructorInitializer((SgNode *) argExp);
-					SgExpressionPtrList &_args = constInit->get_args()->get_expressions();
-					assert (_args.size() == 1);
-					if (isSgPointerDerefExp(_args[0])) {
-						void *operand = codegen.GetExpUniOperand(_args[0]);
-						_args[0] = isSgExpression((SgNode *) operand);
+					// Remove dereference for class type arguments due to type change
+					// constructor(*obj) -> className_constructor(obj)
+					// className *obj -> serializedType *obj
+					// TODO: Apply the same transformation to normal function calls
+					if (!IsPrimitiveType(argTypeName)) {
+						SgConstructorInitializer *constInit = isSgConstructorInitializer((SgNode *) argExp);
+						SgExpressionPtrList &_args = constInit->get_args()->get_expressions();
+						assert (_args.size() == 1);
+						if (isSgPointerDerefExp(_args[0])) {
+							void *operand = codegen.GetExpUniOperand(_args[0]);
+							_args[0] = isSgExpression((SgNode *) operand);
+						}
 					}
+					vecParams.push_back(argExp);
 				}
-				vecParams.push_back(argExp);
+				string funName = isSgClassType(isSgPointerType(
+					newExp->get_type())->get_base_type())->get_name().getString() + "_init";
+				void *constCall = codegen.CreateFuncCall(
+					funName, codegen.GetTypeByString("void"), vecParams, codegen.GetScope(vecVars[i]));
+				void *initStmt = codegen.CreateStmt(V_SgExprStatement, constCall);
+				codegen.InsertAfterStmt(initStmt, vecVars[i]);
 			}
-			string funName = isSgClassType(isSgPointerType(
-				newExp->get_type())->get_base_type())->get_name().getString() + "_init";
-			void *constCall = codegen.CreateFuncCall(
-				funName, codegen.GetTypeByString("void"), vecParams, codegen.GetScope(vecVars[i]));
-			void *initStmt = codegen.CreateStmt(V_SgExprStatement, constCall);
-			codegen.InsertAfterStmt(initStmt, vecVars[i]);
 		}
 		codegen.ReplaceStmt(vecVars[i], newVar);
 
@@ -1019,7 +1010,7 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 		SgFunctionDeclaration *fun = isSgFunctionDeclaration((SgNode *) vecFuncs[i]);
 		string funName = codegen.GetFuncName(fun);
 
-		bool returnObj = false;
+		bool returnAry = false;
 		void *retArg = NULL;
 		vector<void *> vecParams;
 		set<SgInitializedName *> setOriParams;
@@ -1039,11 +1030,14 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 		// Return type: If a function is trying to return an object, 
 		// we transform it to return void and make it as an argument
 		string returnType = codegen.UnparseToString(codegen.GetFuncReturnType(fun));
-		if (!IsPrimitiveType(returnType)) {
-			returnObj = true;
-			returnType = "void";
+		if (!IsPrimitiveType(returnType) || IsArray(returnType)) {
+			returnAry = true;
 			string varName = funName + "_return";
-			retArg = CreateInitializedName(codegen, varName, codegen.GetTypeByString(serializedType + " *"));
+			if (!IsPrimitiveType(returnType))
+				retArg = CreateInitializedName(codegen, varName, codegen.GetTypeByString(serializedType + " *"));
+			else
+				retArg = CreateInitializedName(codegen, varName, codegen.GetTypeByString(returnType));
+			returnType = "void";
 			vecParams.push_back(retArg);
 		}
 
@@ -1104,9 +1098,9 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 		for (int j = 0; j < codegen.GetChildStmtNum(body); j++)
 			codegen.AppendChild(newBody, codegen.GetChildStmt(body, j));
 
-		// Return type: If a function is trying to return an object, 
+		// Return type: If a function is trying to return an object or array, 
 		// we transform it to return void and make it as an argument
-		if (returnObj) {
+		if (returnAry) {
 			vector<void *> vecRets;
 			codegen.GetNodesByType(newFun, "preorder", "SgReturnStmt", &vecRets);
 			assert(vecRets.size() == 1);

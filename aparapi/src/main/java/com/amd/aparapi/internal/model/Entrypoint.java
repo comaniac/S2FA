@@ -209,8 +209,15 @@ public class Entrypoint implements Cloneable {
 	}
 
 	private void addClass(String name, String[] desc) throws AparapiException {
-		ClassModel model = getOrUpdateAllClassAccesses(name,
+		ClassModel model = null;
+
+		try {
+			model = getOrUpdateAllClassAccesses(name,
 				new CustomizedClassModelMatcher(desc));
+		} catch (Exception e) {
+			logger.fine("Skip not found class " + name);
+			return ;
+		}
 
 		addClass(name, model);
 	}
@@ -725,6 +732,16 @@ public class Entrypoint implements Cloneable {
 		// Initialize and add customized classes if necessary
 		for (final JParameter param : params)
 			addParameterClass(param);
+
+		// Add local variable used classes FIXME: Class w. type parameter matching
+		for (final String varName : typeEnv.keySet()) {
+			if (typeEnv.get(varName) == null || typeEnv.get(varName).contains("String"))
+				continue;
+
+			JParameter param = JParameter.createParameter(typeEnv.get(varName), varName, JParameter.DIRECTION.IN);
+			if (!customizedClassModels.hasClass(param.getTypeName()))
+				addParameterClass(param);
+		}
 
 		// Collect all interface methods called from the kernel and their implementations
 		// TODO: Support multi-level inheritance. i.e. interface A -> B extends A -> [C] extends B
