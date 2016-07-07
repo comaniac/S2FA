@@ -681,7 +681,8 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 							if (IsPrimitiveType(typeName) && !IsArray(typeName)) {
 								// Write a scalar value directly
 								newRhsExp = codegen.CreateExp(V_SgAddressOfOp, newRhsExp);
-								newRhsExp = codegen.CreateExp(V_SgCastExp,	newRhsExp, codegen.GetTypeByString(serializedType + " *"));
+								newRhsExp = codegen.CreateExp(V_SgCastExp, newRhsExp, 
+									codegen.GetTypeByString(serializedType + " *"));
 								newRhsExp = codegen.CreateExp(V_SgPointerDerefExp, newRhsExp);
 								codegen.ReplaceExp(rhsExp, newRhsExp);
 								codegen.ReplaceExp(access, newRef);
