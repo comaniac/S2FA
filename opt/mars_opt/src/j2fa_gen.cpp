@@ -395,25 +395,34 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 	// Step 1.1: Parse class definitions and create J2FA class models
 	vector <void*> vecClasses;
 	codegen.GetNodesByType(pTopFunc, "preorder", "SgClassDefinition", &vecClasses);
+	int ignoredClassIdx = -1;
 	for (int i = 0; i < vecClasses.size(); i++) {
 		SgNode *sgDecl = (SgNode *) vecClasses[i];
 		SgClassDefinition *sgClass = isSgClassDefinition(sgDecl);
+		if (sgClass->get_qualified_name() == "::__exception") {
+			ignoredClassIdx = i;
+			continue;
+		}
 		map2jClass[sgClass->get_qualified_name()] = new j2faClass(sgClass, i);
-	}
 
-	// Step 1.2: Determine serialized class data type
-	vector <void*> vecVars;
-	codegen.GetNodesByType(pTopFunc, "preorder", "SgVariableDeclaration", &vecVars);
-	for (int i = 0; i < vecVars.size(); i++) {
-		string typeName = codegen.GetVariableTypeName(vecVars[i]);
-		if (typeName == "double" || typeName == "long") {
-			cerr << "Use long as serialized type due to " << codegen.UnparseToString(vecVars[i]) << endl;
-			serializedType = "long";
-			break;
+		// Step 1.1.1: Determine serialized class data type
+		if (serializedType == "long")
+			continue;
+		vector <void*> vecVars;
+		codegen.GetNodesByType(sgClass, "preorder", "SgVariableDeclaration", &vecVars);
+		for (int i = 0; i < vecVars.size(); i++) {
+			string typeName = codegen.GetVariableTypeName(vecVars[i]);
+			if (typeName == "double" || typeName == "long") {
+				cerr << "Use long as serialized type due to " << codegen.UnparseToString(vecVars[i]) << endl;
+				serializedType = "long";
+				break;
+			}
 		}
 	}
+	if (ignoredClassIdx != -1)
+		vecClasses.erase(vecClasses.begin() + ignoredClassIdx);
 
-	// Step 1.3: Build class inheritance relationships
+	// Step 1.2: Build class inheritance relationships
 	for (int i = 0; i < vecClasses.size(); i++) {
 		SgNode *sgDecl = (SgNode *) vecClasses[i];
 		SgClassDefinition *sgClass = isSgClassDefinition(sgDecl);
@@ -924,7 +933,7 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 	}
 
 	// Step 5: Change class type variables to the serialized type
-	vecVars.clear();
+	vector<void *> vecVars;
 	codegen.GetNodesByType(pTopFunc, "preorder", "SgVariableDeclaration", &vecVars);
 	for (int i = 0; i < vecVars.size(); i++) {
 		if (IsPrimitiveType(codegen.GetVariableTypeName(vecVars[i])))

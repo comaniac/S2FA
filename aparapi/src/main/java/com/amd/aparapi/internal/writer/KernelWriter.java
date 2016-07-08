@@ -103,6 +103,8 @@ public abstract class KernelWriter extends BlockWriter {
 		scalaMapped.add("scala/math/package$.abs(D)D");
 		scalaMapped.add("scala/math/package$.abs(I)I");
 		scalaMapped.add("scala/math/package$.abs(F)F");
+		scalaMapped.add("scala/math/package$.max(DD)D");
+		scalaMapped.add("scala/math/package$.min(DD)D");
 	}
 
 	public final static Set<String> SelfMapped = new HashSet<String>();
@@ -118,6 +120,8 @@ public abstract class KernelWriter extends BlockWriter {
 		XilinxMethodMap.put("log", new String[] {"float"});
 		XilinxMethodMap.put("abs", new String[] {"int"});
 		XilinxMethodMap.put("fabs", new String[] {"float"});
+		XilinxMethodMap.put("fmax", new String[] {"float", "float", "float"});
+		XilinxMethodMap.put("fmin", new String[] {"float", "float", "float"});
 	}
 
 	/**
