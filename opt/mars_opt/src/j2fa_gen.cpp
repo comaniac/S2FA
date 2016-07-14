@@ -553,7 +553,7 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 			set<SgInitializedName *> setOriParams;
 
 			// The first argument must be "this"
-			void *thisObj = codegen.CreateVariable(serializedType + " *", "this");
+			void *thisObj = codegen.CreateVariable(serializedType + " *", "myThis");
 			vecParams.push_back(thisObj);
 			SgInitializedNamePtrList &tempList = fun->get_parameterList()->get_args();
 			for (int j = 0; j < tempList.size(); j++) {
@@ -1067,8 +1067,6 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 		void *body = codegen.CopyStmt(oriBody);
 		vector<void*> vecRefs;
 		codegen.GetNodesByType(body, "preorder", "SgVarRefExp", &vecRefs);
-		cerr << "Processing " << codegen.GetFuncName(newFun) << ": ";
-		cerr << vecRefs.size() << endl;
 		for (int j = 0; j < vecRefs.size(); j++) {
 			SgInitializedName *initName = isSgInitializedName(
 				(SgNode *) codegen.GetVariableInitializedName(vecRefs[j]));

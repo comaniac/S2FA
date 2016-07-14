@@ -18,7 +18,8 @@ public class CustomizedClassModels implements Iterable<CustomizedClassModel> {
 			customizedClassModels.put(model.getClassName(),
 			                         new LinkedList<CustomizedClassModel>());
 		}
-		customizedClassModels.get(model.getClassName()).add(model);
+		if (model.hasTypeParams() || customizedClassModels.get(model.getClassName()).size() < 2)
+			customizedClassModels.get(model.getClassName()).add(model);
 	}
 
 	public List<CustomizedClassModel> get(String className) {

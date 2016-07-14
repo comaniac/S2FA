@@ -51,7 +51,7 @@ public abstract class CustomizedClassModel extends ClassModel {
 		StringBuilder sb = new StringBuilder();
 	  sb.append("class " + getMangledClassName());
 		if (isDerivedClass())
-			sb.append(" : " + getSuperClazz().getMangledClassName());
+			sb.append(" : public " + getSuperClazz().getMangledClassName());
 		sb.append(" {\n  public:\n");
 
 		// Write fields
@@ -210,6 +210,12 @@ public abstract class CustomizedClassModel extends ClassModel {
 
 	public String getTypeParam(int idx) {
 		return typeParams.get(idx);
+	}
+
+	public boolean hasTypeParams() {
+		if (typeParams.size() == 0)
+			return false;
+		return true;
 	}
 
 	public static class TypeParameters implements Comparable<TypeParameters>, Iterable<String> {

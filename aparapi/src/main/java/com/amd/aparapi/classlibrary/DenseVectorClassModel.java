@@ -13,7 +13,31 @@ public class DenseVectorClassModel extends CustomizedClassModel {
 
 		addField(new CustomizedFieldModel("size", "int", 0));
 		addField(new CustomizedFieldModel("values", "double []", 1));
-		
+
+		CustomizedMethodModel<?> get_initMethod = new CustomizedMethodModel<DenseVectorClassModel>(
+			this, "<init>", METHODTYPE.CONSTRUCTOR) {
+
+			@Override
+			public String getReturnType(DenseVectorClassModel clazzModel) {
+				return null;
+			}
+
+			@Override
+			public Map<String, String> getArgs(DenseVectorClassModel clazzModel) {
+				Map<String, String> args = new HashMap<String, String>();
+				args.put("v", "double *");
+				return args;
+			}
+
+			@Override
+			public String getBody(DenseVectorClassModel clazzModel) {
+				return (
+					getFieldModel("values").genAssign("v") + ";"
+				);
+			}
+		};
+		addMethod(get_initMethod);
+
 		CustomizedMethodModel<?> getSizeMethod = new CustomizedMethodModel<DenseVectorClassModel>(
 			this, "size", METHODTYPE.GETTER) {
 

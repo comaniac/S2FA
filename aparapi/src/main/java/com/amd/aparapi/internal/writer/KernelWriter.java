@@ -245,9 +245,14 @@ public abstract class KernelWriter extends BlockWriter {
 				retType = ((I_INVOKEINTERFACE) argInst).getConstantPoolInterfaceMethodEntry()
 					.getReturnType().getType();
 			}
-			if (retType.equals("Ljava/lang/Object;"))
+			else if (argInst instanceof AccessLocalVariable) {
+				LocalVariableInfo localVariableInfo = ((AccessLocalVariable) argInst).getLocalVariableInfo();
+				retType = localVariableInfo.getVariableDescriptor();
+			}
+
+			if (retType.startsWith("L") && !retType.startsWith("Ljava"))
 				write("*");
-			writeInstruction(invokeSpecial.getArg(i));
+			writeInstruction(argInst);
 		}
 		write(")");
 
@@ -288,6 +293,7 @@ public abstract class KernelWriter extends BlockWriter {
 			final Set<String> ignorableMethods = new HashSet<String>();
 			ignorableMethods.add("boxToInteger");
 			ignorableMethods.add("boxToFloat");
+			ignorableMethods.add("boxToDouble");
 			ignorableMethods.add("unboxToFloat");
 			ignorableMethods.add("unboxToInt");
 			ignorableMethods.add("unboxToDouble");
@@ -595,7 +601,7 @@ public abstract class KernelWriter extends BlockWriter {
 		newLine();
 		write("class " + mangledClassName);
 		if (cm.isDerivedClass())
-			write(": " + cm.getSuperClazz().getMangledClassName());
+			write(": public " + cm.getSuperClazz().getMangledClassName());
 		write(" {");
 		in();
 		newLine();
@@ -630,8 +636,8 @@ public abstract class KernelWriter extends BlockWriter {
 			String fullReturnType;
 			String convertedReturnType = convertType(returnType, true);
 
-			if (sampleMM.getGetterField() != null)
-				throw new RuntimeException("Method dispatcher cannot be a getter method");
+//			if (sampleMM.getGetterField() != null)
+//				throw new RuntimeException("Method dispatcher cannot be a getter method");
 
 			// Write return type
 			if (returnType.startsWith("L")) {
@@ -664,12 +670,14 @@ public abstract class KernelWriter extends BlockWriter {
 			// Write arguments
 			if (sampleMM instanceof CustomizedMethodModel) {
 				Map<String, String> args = ((CustomizedMethodModel<?>) sampleMM).getArgs(null);
-				for (final Map.Entry<String, String> arg : args.entrySet()) {
-					if (!isFirst)
-						write(", ");
-					isFirst = false;
+				if (args != null) {
+					for (final Map.Entry<String, String> arg : args.entrySet()) {
+						if (!isFirst)
+							write(", ");
+						isFirst = false;
 
-					write(arg.getValue() + " " + arg.getKey());
+						write(arg.getValue() + " " + arg.getKey());
+					}
 				}
 			}
 			else {
