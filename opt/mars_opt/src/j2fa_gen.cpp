@@ -290,6 +290,31 @@ void GetNewExpsByName(CSageCodeGen & codegen, string funName, void *sg_scope,
   }
 }
 
+// Note: Can be integrated to CSageCodegen.CreateArrayType
+void *CreateArrayTypeWithUnfixedLength(CSageCodeGen & codegen, 
+	string sType, vector<void *> vecDims) {
+
+	SgType *type = isSgType((SgNode *) codegen.GetTypeByString(sType));
+
+	for (int i = vecDims.size() - 1; i >= 0 ; i--)
+		type = SageBuilder::buildArrayType(type, isSgExpression((SgNode *) vecDims[i]));
+
+	return type;
+}
+
+void *CreateSingleStmtLoop(CSageCodeGen & codegen, void *iter, void *bound, void *stmt) {
+	void *loopBody = codegen.CreateBasicBlock();
+	codegen.AppendChild(loopBody, stmt);
+
+	void *loop = codegen.CreateStmt(V_SgForStatement,
+		codegen.GetVariableInitializedName(iter),
+		codegen.CreateConst(0),
+		codegen.CreateVariableRef(bound),
+		loopBody);
+
+	return loop;
+}
+
 int InferArraySize(CSageCodeGen & codegen, void * pTopFunc, void * sgClass, void * sgVarDecl) {
 	string varName = codegen.GetVariableName(((SgVariableDeclaration *) sgVarDecl));
 
@@ -376,7 +401,6 @@ int InferArraySize(CSageCodeGen & codegen, void * pTopFunc, void * sgClass, void
 				SgExpressionPtrList &eList = exp->get_constructor_args()->get_args()->get_expressions();
 				if (eList.size() < fite->second)
 					continue;
-//				string argName = codegen.UnparseToString(eList[fite->second]);
 				void *varDecl = codegen.GetVariableDecl(eList[fite->second]);
 				int size = GetTypeLength(GetTypebyDecl(varDecl));
 				if (size > typeSize)
@@ -385,6 +409,270 @@ int InferArraySize(CSageCodeGen & codegen, void * pTopFunc, void * sgClass, void
 		}
 	}
 	return typeSize;
+}
+
+void ConstructHardwareTemplate(CSageCodeGen & codegen, void* mainFuncDecl, string hwTemplate) {
+	// Identify the top position for insertion
+	void *posFunc = codegen.GetFirstFuncDeclInGlobal(codegen.GetScope(mainFuncDecl));
+
+	// Copy the main function arguments
+	vector<void *> mainFuncArgs;
+	for (int i = 0; i < codegen.GetFuncParamNum(mainFuncDecl); i++)
+		mainFuncArgs.push_back(CopyInitializedName(codegen, codegen.GetFuncParam(mainFuncDecl, i)));
+
+	void *taskNumArg = mainFuncArgs[0];
+
+	// Fetch input/output base data type
+	void *inArg = mainFuncArgs[1];
+	string inType = codegen.GetVariableTypeName(inArg);
+	if (inType.find("*") != string::npos)
+		inType = inType.substr(0, inType.length() - 2);
+	int inTypeLength = 0;
+
+	void *outArg = mainFuncArgs[2];
+	string outType = codegen.GetVariableTypeName(outArg);
+	if (outType.find("*") != string::npos)
+		outType = outType.substr(0, outType.length() - 2);
+	int outTypeLength = 0;
+
+	for (map <string, j2faClass*>::iterator mite = map2jClass.begin(); 
+		mite != map2jClass.end(); mite++) {
+		if (mite->second == NULL)
+			continue;
+		if (mite->second->IsPrimaryIn())
+			inTypeLength = mite->second->GetSize();
+		if (mite->second->IsPrimaryOut())
+			outTypeLength = mite->second->GetSize();
+	}
+	if (!inTypeLength)
+		inTypeLength = 1;
+	if (!outTypeLength)
+		outTypeLength = 1;
+
+	// Copy main function
+	void *newMainFuncDecl = codegen.CreateFuncDecl(
+		"void", 
+		"kernel", 
+		mainFuncArgs, 
+		codegen.GetGlobal(mainFuncDecl), 
+		true);
+
+	void *body = codegen.GetFuncBody(newMainFuncDecl);
+
+	if (hwTemplate == "map") {
+
+		// Fetch the function call for PE
+		vector <void *> vecCalls;
+		codegen.GetNodesByType(mainFuncDecl, "preorder", "SgFunctionCallExp", &vecCalls);
+		assert (vecCalls.size() == 1);
+		void *oriCallStmt = codegen.TraceUpByTypeCompatible(vecCalls[0], V_SgStatement);
+
+		// Create global variables for configing architecture
+		void *jobsPerBatchVarDecl = codegen.CreateVariableDecl("const int", "J2FA_JOBS_PER_BATCH", 
+			codegen.CreateConst(1), codegen.GetGlobal(mainFuncDecl));
+		codegen.InsertStmt(jobsPerBatchVarDecl, posFunc);
+		void *peVarDecl = codegen.CreateVariableDecl("const int", "J2FA_PE", 
+			codegen.CreateConst(1), codegen.GetGlobal(mainFuncDecl));
+		codegen.InsertStmt(peVarDecl, posFunc);
+		void *jobsPerPEVarDecl = codegen.CreateVariableDecl("const int", "J2FA_JOBS_PER_PE", 
+			codegen.CreateExp(V_SgDivideOp, 
+			codegen.CreateVariableRef(jobsPerBatchVarDecl), codegen.CreateVariableRef(peVarDecl)), 
+			codegen.GetGlobal(mainFuncDecl));
+		codegen.InsertStmt(jobsPerPEVarDecl, posFunc);
+
+		// Start: Creat ProcessUnit function
+		// Create function arguements
+		vector <void *> vecPEFuncArgs;
+		for (int i = 1; i < mainFuncArgs.size(); i++)
+			vecPEFuncArgs.push_back(CopyInitializedName(codegen, mainFuncArgs[i]));
+
+		// Create function
+		void *PEFuncDecl = codegen.CreateFuncDecl(
+			"void", 
+			"ProcessUnit", 
+			vecPEFuncArgs, 
+			codegen.GetGlobal(mainFuncDecl), 
+			true);
+		codegen.InsertStmt(PEFuncDecl, mainFuncDecl);
+
+		void *PEbody = codegen.GetFuncBody(PEFuncDecl);
+		void *PEFuncIter = codegen.CreateVariableDecl("int", "i", NULL, codegen.GetScope(PEFuncDecl));
+		codegen.AppendChild(PEbody, PEFuncIter);
+		void *kernelCallStmt = codegen.CopyStmt(oriCallStmt);
+		vector <void *> vecNewCallRefs;
+		codegen.GetNodesByType(kernelCallStmt, "preorder", "SgVarRefExp", &vecNewCallRefs);
+		for (int i = 0; i < vecNewCallRefs.size(); i++) {
+			void *varDecl = codegen.GetVariableInitializedName(vecNewCallRefs[i]);
+			if (codegen.GetVariableName(varDecl) != "idx")
+				continue;
+			codegen.ReplaceExp(vecNewCallRefs[i], codegen.CreateVariableRef(PEFuncIter));
+		}
+		codegen.AppendChild(PEbody, CreateSingleStmtLoop(codegen, PEFuncIter, jobsPerPEVarDecl, kernelCallStmt));
+		// End: Create ProcessUnit function
+
+		// Build local buffers for input/output
+		vector <void *> vecDims;
+
+		// Set range for local_in
+		vecDims.push_back(codegen.CreateVariableRef(peVarDecl));
+		vecDims.push_back(codegen.CreateExp(V_SgMultiplyOp,
+			codegen.CreateVariableRef(jobsPerBatchVarDecl),
+			codegen.CreateConst(inTypeLength))
+		);
+
+		// Creat local_in
+		void *localInVarDecl = codegen.CreateVariableDecl(
+			CreateArrayTypeWithUnfixedLength(codegen, inType, vecDims), 
+			"local_in", NULL, codegen.GetScope(newMainFuncDecl));
+		codegen.AppendChild(body, localInVarDecl);
+		void *partitionInPragma = codegen.CreatePragma("HLS ARRAY_PARTITION variable=local_in complete dim=1", 
+			codegen.GetScope(newMainFuncDecl));
+		codegen.AppendChild(body, partitionInPragma);
+
+		// Set range for local_out
+		vecDims.pop_back();
+		vecDims.push_back(codegen.CreateExp(V_SgMultiplyOp,
+			codegen.CreateVariableRef(jobsPerBatchVarDecl),
+			codegen.CreateConst(outTypeLength))
+		);
+
+		// Create local_out
+		void *localOutVarDecl = codegen.CreateVariableDecl(
+			CreateArrayTypeWithUnfixedLength(codegen, outType, vecDims), 
+			"local_out", NULL, codegen.GetScope(newMainFuncDecl));
+		codegen.AppendChild(body, localOutVarDecl);
+		void *partitionOutPragma = codegen.CreatePragma("HLS ARRAY_PARTITION variable=local_out complete dim=1", 
+			codegen.GetScope(newMainFuncDecl));
+		codegen.AppendChild(body, partitionOutPragma);
+
+		// Create batch number variable
+		void *numBatchVarDecl = codegen.CreateVariableDecl("int", "numBatch", 
+			codegen.CreateExp(V_SgDivideOp, 
+			codegen.CreateVariableRef(taskNumArg), codegen.CreateVariableRef(jobsPerBatchVarDecl)),
+			codegen.GetScope(newMainFuncDecl));
+		codegen.AppendChild(body, numBatchVarDecl);
+
+		// Create main loop
+		void *mainLoopIter = codegen.CreateVariableDecl("int", "idx", NULL, codegen.GetScope(newMainFuncDecl));
+		codegen.AppendChild(body, mainLoopIter);
+		void *peIter = codegen.CreateVariableDecl("int", "pe", NULL, codegen.GetScope(newMainFuncDecl));
+		codegen.AppendChild(body, peIter);
+		void *mainLoopBody = codegen.CreateBasicBlock();
+		void *mainLoop = codegen.CreateStmt(V_SgForStatement, 
+			codegen.GetVariableInitializedName(mainLoopIter), 
+			codegen.CreateConst(0),
+			codegen.CreateVariableRef(numBatchVarDecl),
+			mainLoopBody);
+		codegen.AppendChild(body, mainLoop);
+
+		vector <void *> vecMemcpyParams;
+
+		// Set position for local buffers
+		vector <void *> vecLocalArrayDims;
+		vecLocalArrayDims.push_back(codegen.CreateVariableRef(peIter));
+		vecLocalArrayDims.push_back(codegen.CreateConst(0));
+
+		// Set base position for I/O buffers
+		vector <void *> vecIOArrayDims;
+		void *ioArrayDim = codegen.CreateExp(V_SgAddOp,
+			codegen.CreateExp(V_SgMultiplyOp, 
+				codegen.CreateVariableRef(peIter), 
+				codegen.CreateVariableRef(jobsPerPEVarDecl)),
+			codegen.CreateExp(V_SgMultiplyOp, 
+				codegen.CreateVariableRef(mainLoopIter), 
+				codegen.CreateVariableRef(jobsPerBatchVarDecl))
+		);
+
+		// Create load loop
+		// Target: &local_in[pe][0]
+		vecMemcpyParams.push_back(codegen.CreateExp(V_SgAddressOfOp,
+			codegen.CreateArrayRef(codegen.CreateVariableRef(localInVarDecl), vecLocalArrayDims))
+		);
+
+		// Set real position for I/O buffers
+		vecIOArrayDims.push_back(codegen.CreateExp(V_SgMultiplyOp,
+			ioArrayDim,
+			codegen.CreateConst(inTypeLength))
+		);
+
+		// Source: &in[(idx * JOBS_PER_BATCH + pe * JOBS_PER_PE) * size]
+		vecMemcpyParams.push_back(codegen.CreateExp(V_SgAddressOfOp,
+			codegen.CreateArrayRef(codegen.CreateVariableRef(inArg), vecIOArrayDims))
+		);
+
+		// Size: JOBS_PER_PE * sizeof(type) * sizeof(object)
+		vecMemcpyParams.push_back(codegen.CreateExp(V_SgMultiplyOp, 
+			codegen.CreateVariableRef(jobsPerPEVarDecl), 
+			codegen.CreateConst(inTypeLength * GetTypeSizeByString(inType))));
+
+		void *loadDataCopy = codegen.CreateStmt(V_SgExprStatement,
+		  codegen.CreateFuncCall("memcpy", codegen.GetTypeByString("void"),
+		  vecMemcpyParams, codegen.GetScope(mainLoop))); 
+
+		codegen.AppendChild(mainLoopBody, CreateSingleStmtLoop(codegen, peIter, peVarDecl, loadDataCopy));
+
+		// Create computation loop
+		void *compLoopBody = codegen.CreateBasicBlock();
+		vector <void *> vecCallParams;
+
+		// Create ProcessUnit function call
+		vecCallParams.push_back(codegen.CreateExp(V_SgAddressOfOp,
+			codegen.CreateArrayRef(codegen.CreateVariableRef(localInVarDecl), vecLocalArrayDims))
+		);
+		vecCallParams.push_back(codegen.CreateExp(V_SgAddressOfOp,
+			codegen.CreateArrayRef(codegen.CreateVariableRef(localOutVarDecl), vecLocalArrayDims))
+		);
+		for (int i = 3; i < mainFuncArgs.size(); i++)
+			vecCallParams.push_back(codegen.CreateVariableRef(mainFuncArgs[i]));
+
+		void *PEFuncCall = codegen.CreateStmt(V_SgExprStatement,
+				codegen.CreateFuncCall("ProcessUnit", codegen.GetTypeByString("void"), 
+				vecCallParams, codegen.GetScope(mainLoop)));
+
+		void *compLoop = CreateSingleStmtLoop(codegen, peIter, peVarDecl, PEFuncCall);
+		codegen.AppendChild(mainLoopBody, compLoop);
+
+		void *dupPragma = codegen.CreatePragma("HLS unroll", codegen.GetScope(newMainFuncDecl));
+		codegen.PrependChild(codegen.GetLoopBody(compLoop), dupPragma);
+
+		// Create store loop
+		vecMemcpyParams.clear();
+
+		// Set real position for I/O buffers
+		vecIOArrayDims.pop_back();
+		vecIOArrayDims.push_back(codegen.CreateExp(V_SgMultiplyOp,
+			ioArrayDim,
+			codegen.CreateConst(outTypeLength))
+		);
+
+		// Target: &out[(idx * JOBS_PER_BATCH + pe * JOBS_PER_PE) * size]
+		vecMemcpyParams.push_back(codegen.CreateExp(V_SgAddressOfOp,
+			codegen.CreateArrayRef(codegen.CreateVariableRef(outArg), vecIOArrayDims))
+		);
+
+		// Source: &local_out[pe][0]
+		vecMemcpyParams.push_back(codegen.CreateExp(V_SgAddressOfOp,
+			codegen.CreateArrayRef(codegen.CreateVariableRef(localOutVarDecl), vecLocalArrayDims))
+		);
+
+		// Size: JOBS_PER_PE * sizeof(type) * sizeof(object)
+		vecMemcpyParams.push_back(codegen.CreateExp(V_SgMultiplyOp, 
+			codegen.CreateVariableRef(jobsPerPEVarDecl), 
+			codegen.CreateConst(outTypeLength * GetTypeSizeByString(outType))));
+
+		void *storeDataCopy = codegen.CreateStmt(V_SgExprStatement,
+		  codegen.CreateFuncCall("memcpy", codegen.GetTypeByString("void"),
+		  vecMemcpyParams, codegen.GetScope(mainLoop))); 
+
+		codegen.AppendChild(mainLoopBody, CreateSingleStmtLoop(codegen, peIter, peVarDecl, storeDataCopy));
+	}
+	else {
+		cerr << "Unsupported hardare template " << hwTemplate << endl;
+		return ;
+	}
+
+	codegen.ReplaceStmt(mainFuncDecl, newMainFuncDecl);
+	return ;
 }
 
 int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int debug_gen,
@@ -406,15 +694,15 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 		map2jClass[sgClass->get_qualified_name()] = new j2faClass(sgClass, i);
 
 		// Step 1.1.1: Determine serialized class data type
-		if (serializedType == "long")
+		if (serializedType == "double")
 			continue;
 		vector <void*> vecVars;
 		codegen.GetNodesByType(sgClass, "preorder", "SgVariableDeclaration", &vecVars);
 		for (int i = 0; i < vecVars.size(); i++) {
 			string typeName = codegen.GetVariableTypeName(vecVars[i]);
 			if (typeName == "double" || typeName == "long") {
-				cerr << "Use long as serialized type due to " << codegen.UnparseToString(vecVars[i]) << endl;
-				serializedType = "long";
+				cerr << "Use double as serialized type due to " << codegen.UnparseToString(vecVars[i]) << endl;
+				serializedType = "double";
 				break;
 			}
 		}
@@ -434,6 +722,7 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 			string baseClassName = baseClass->get_qualified_name().getString();
 			j2faClass *jBaseClass = map2jClass[baseClassName];
 			jBaseClass->AddDerivedClass(jClass);
+			jClass->AddBaseClass(jBaseClass);
 			cerr << "Class " << baseClassName << " has a derived class ";
 			cerr << jClass->GetName() << endl;
 		}
@@ -503,17 +792,25 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 //		#endif
 	}
 
+	// Set position for function insertion
 	vector<void*> vecFuncs;
 	codegen.GetNodesByType(pTopFunc, "preorder",  "SgFunctionDeclaration", &vecFuncs);
 	void *posBeforeMainFunc;
 	for (int i = 0; i < vecFuncs.size(); i++) {
-		string sFuncName = codegen.GetFuncName(vecFuncs[i]);
-
 		if (codegen.GetFuncBody(vecFuncs[i])) {
 			posBeforeMainFunc = vecFuncs[i];
 			break;
 		}
 	}
+
+	// Set in/out class types
+	void *runFuncDecl = codegen.GetFuncDeclByName("run");
+	string inType = codegen.GetVariableTypeName(codegen.GetFuncParam(runFuncDecl, 1));
+	if (!IsPrimitiveType(inType))
+		map2jClass["::" + PruneClassTypeName(inType)]->SetAsPrimaryInputType();
+	string outType = codegen.GetVariableTypeName(codegen.GetFuncParam(runFuncDecl, 2));
+	if (!IsPrimitiveType(outType))
+		map2jClass["::" + PruneClassTypeName(outType)]->SetAsPrimaryOutputType();
 
 	// Step 3: Process class member functions
 	for (int i = 0; i < vecClasses.size(); i++) {
@@ -618,6 +915,11 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 					// Ref class field (must be "this->var"), transform to index access
 					if (isSgArrowExp((SgNode *) access)) {
 						int idx = jClass->GetVariableIndex(codegen.UnparseToString(vecRefs[j]));
+						if (idx == -1) {
+							cerr << "Not found variable " << codegen.UnparseToString(vecRefs[j]);
+							cerr << " in class " << jClass->GetName() << endl;
+							assert (0);
+						}
 						vector<void *> idxs;
 						bool isUse = false;
 						if (IsVarRefForUse(codegen, vecRefs[j]))
@@ -651,19 +953,19 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 							if (!IsPrimitiveType(typeName) || IsArray(typeName)) {
 								if (!IsPrimitiveType(typeName))
 									typeName = serializedType + " *";
-								//typeName = typeName.substr(0, typeName.find("[")) + "*";
-
 								newRef = codegen.CreateExp(V_SgAddressOfOp, newRef);
 								codegen.ReplaceExp(access, newRef);
 							}
 							else if (typeName.find("*") == std::string::npos) {
 								codegen.ReplaceExp(access, newRef);
-								void *decl = InsertCastedVarDecl(codegen, serializedType, typeName + " *", newRef, 
-									codegen.GetScope(newFunc));
-								void *castRef = codegen.CreateVariableRef(decl);
+								if (typeName != serializedType) { // Only cast for different type
+									void *decl = InsertCastedVarDecl(codegen, serializedType, typeName + " *", newRef, 
+										codegen.GetScope(newFunc));
+									void *castRef = codegen.CreateVariableRef(decl);
 
-								// Replace variable use with casting
-								codegen.ReplaceExp(newRef, castRef);
+									// Replace variable use with casting
+									codegen.ReplaceExp(newRef, castRef);
+								}
 							}
 						}
 						else { // Def
@@ -690,8 +992,10 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 							if (IsPrimitiveType(typeName) && !IsArray(typeName)) {
 								// Write a scalar value directly
 								newRhsExp = codegen.CreateExp(V_SgAddressOfOp, newRhsExp);
-								newRhsExp = codegen.CreateExp(V_SgCastExp, newRhsExp, 
-									codegen.GetTypeByString(serializedType + " *"));
+								if (serializedType != typeName) {
+									newRhsExp = codegen.CreateExp(V_SgCastExp, newRhsExp, 
+										codegen.GetTypeByString(serializedType + " *"));
+								}
 								newRhsExp = codegen.CreateExp(V_SgPointerDerefExp, newRhsExp);
 								codegen.ReplaceExp(rhsExp, newRhsExp);
 								codegen.ReplaceExp(access, newRef);
@@ -700,9 +1004,12 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 								// Write pointer type data using for-loop
 								int varSize = jClass->GetVariableSize(codegen.UnparseToString(vecRefs[j]));
 								void *stmt = codegen.TraceUpByTypeCompatible(access, V_SgStatement);
+								bool needCast = false;
 
-								if (!IsPrimitiveType(typeName))
+								if (!IsPrimitiveType(typeName)) {
 									typeName = serializedType + " *";
+									needCast = true;
+								}
 
 								void *iterVarDecl = codegen.CreateVariableDecl(
 									codegen.GetTypeByString("int"), "j2fa_i" + std::to_string(tmpCounter), 
@@ -728,10 +1035,12 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 								codegen.AppendChild(body, assignStmt);
 
 								// Casting
-								void *castedDecl = InsertCastedVarDecl(codegen, typeName.substr(0, typeName.length() - 2),
-									serializedType + " *", srcRef, codegen.GetScope(body));
-								void *castedRef = codegen.CreateVariableRef(castedDecl);
-								codegen.ReplaceExp(srcRef, castedRef);
+								if (needCast) {
+									void *castedDecl = InsertCastedVarDecl(codegen, typeName.substr(0, typeName.length() - 2),
+										serializedType + " *", srcRef, codegen.GetScope(body));
+									void *castedRef = codegen.CreateVariableRef(castedDecl);
+									codegen.ReplaceExp(srcRef, castedRef);
+								}
 
 								// Create and insert a loop
 								void *copyLoop = codegen.CreateStmt(
@@ -914,10 +1223,12 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 				vecUses[j] = codegen.GetParent(vecUses[j]);
 				
 				// Cast to the right type
-				void *castedDecl = InsertCastedVarDecl(codegen, serializedType, 
-					codegen.UnparseToString(retType), vecUses[j], codegen.GetScope(localDecl));
-				void *castedRef = codegen.CreateVariableRef(castedDecl);
-				codegen.ReplaceExp(vecUses[j], castedRef);
+				if (serializedType + " *" != codegen.UnparseToString(retType)) {
+					void *castedDecl = InsertCastedVarDecl(codegen, serializedType, 
+						codegen.UnparseToString(retType), vecUses[j], codegen.GetScope(localDecl));
+					void *castedRef = codegen.CreateVariableRef(castedDecl);
+					codegen.ReplaceExp(vecUses[j], castedRef);
+				}
 			}
 			codegen.SetTypetoVar(codegen.GetVariableInitializedName(localDecl), 
 				codegen.GetTypeByString(serializedType + " *"));
@@ -1180,6 +1491,11 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 	codegen.GetNodesByType(pTopFunc, "preorder", "SgClassDeclaration", &vecClassDecls);
 	for (int i = 0; i < vecClassDecls.size(); i++)
 		codegen.RemoveStmt(vecClassDecls[i]);
+
+	// Step 8: Construct template
+	void *mainFuncDecl = codegen.GetFuncDeclByName("run");
+	assert(mainFuncDecl);
+	ConstructHardwareTemplate(codegen, mainFuncDecl, "map");
 
 	cout << "J2FA transformation done" << endl;
 	return 1;

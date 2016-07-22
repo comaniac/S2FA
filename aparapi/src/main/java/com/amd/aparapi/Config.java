@@ -132,7 +132,7 @@ public class Config {
 
 	static {
 		try {
-			final Level level = Level.parse(System.getProperty(getLoggerName(), "FINE"));
+			final Level level = Level.parse(System.getProperty(getLoggerName(), "INFO"));
 
 			logger.setLevel(level);
 			logger.setUseParentHandlers(false);

@@ -416,7 +416,7 @@ public class ExpressionList {
 	 */
 	public boolean foldComposite(final Instruction _instruction) throws ClassParseException {
 		boolean handled = false;
-		try {
+//		try {
 
 			if (logger.isLoggable(Level.FINEST)) {
 				System.err.println("foldComposite: curr = " + _instruction);
@@ -677,10 +677,14 @@ public class ExpressionList {
 									else {
 										// 2/2/16: 2. Check if we have multuple assignments in this block.
 										inst = branchSet.getFirst().getNextExpr();
-										while (inst != reverseGoto.getPrevExpr()) {
+										while (inst != null && inst != reverseGoto.getPrevExpr()) {
 											if (inst instanceof AssignToLocalVariable) {
 												LocalVariableInfo otherLocalVariableInfo = ((AssignToLocalVariable) 
 													inst).getLocalVariableInfo();
+
+												if (otherLocalVariableInfo == null)
+													break;
+
 												if (localVariableInfo.getVariableIndex() == otherLocalVariableInfo.getVariableIndex()) {
 													if (logger.isLoggable(Level.FINEST)) {
 														System.err.println("Find multiple assignments of loop variable " + 
@@ -866,12 +870,12 @@ public class ExpressionList {
 			if (Config.instructionListener != null)
 				Config.instructionListener.showAndTell("after folding", head, _instruction);
 
-		} catch (final ClassParseException _classParseException) {
-			throw new ClassParseException(_classParseException);
-		} catch (final Throwable t) {
-			throw new ClassParseException(t);
+//		} catch (final ClassParseException _classParseException) {
+//			throw new ClassParseException(_classParseException);
+//		} catch (final Throwable t) {
+//			throw new ClassParseException(t);
 
-		}
+//		}
 		return (handled);
 	}
 

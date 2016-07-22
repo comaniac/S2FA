@@ -180,6 +180,9 @@ int tldm_pragma_parse_whole(string sPragma, string & sFilter, string & sCmd, map
 extern void j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options,
                        int debug_gen, int keep_code);
 
+extern void pragma_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options,
+                       int debug_gen, int keep_code);
+
 int extract_top(vector<string> & vecSrcList, string sTldmFile, string sTopFunc,
                 CInputOptions options)
 {
@@ -218,6 +221,9 @@ int extract_top(vector<string> & vecSrcList, string sTldmFile, string sTopFunc,
 	// J2FA code transformation
 	if ("j2fa" == options.get_option("-p")) {
 		j2fa_gen(codegen, pTopFunc, options, XMD_GEN, is_keep_code);
+	}
+	else if ("insert_pragma" == options.get_option("-p")) {
+		pragma_gen(codegen, pTopFunc, options, XMD_GEN, is_keep_code);
 	}
 	else {
 		printf("[mars_opt] ERROR: Unrecognized pass \"%s\"\n\n", options.get_option("-p").c_str());

@@ -524,10 +524,22 @@ public abstract class BlockWriter {
 			final AssignToLocalVariable assignToLocalVariable = (AssignToLocalVariable) _instruction;
 
 			final LocalVariableInfo localVariableInfo = assignToLocalVariable.getLocalVariableInfo();
-			if (localVariableInfo == null)
-				throw new CodeGenException("outOfScope" + _instruction.getThisPC() + " = ");
+			String varName = null;
 
-			final String varName = localVariableInfo.getVariableName();
+			// FIXME: This problem now only happens on loop iterator
+			// so it must be an integer. In general, we should evaluate
+			// the type of RHS expression to decide the right type, 
+			// or even remove this statement.
+			if (localVariableInfo == null) {
+				//throw new CodeGenException("outOfScope" + _instruction.getThisPC() + " = ");
+				varName = "j2faDummyVar" + assignToLocalVariable.getLocalVariableTableIndex();
+
+				// It should be assigned only once
+				write("int ");
+			}
+			else
+				varName = localVariableInfo.getVariableName();
+
 
 			if (assignToLocalVariable.isDeclaration()) {
 				final String descriptor = localVariableInfo.getVariableDescriptor();
@@ -726,7 +738,12 @@ public abstract class BlockWriter {
 //				write("/* access local var */");
 			final AccessLocalVariable localVariableLoadInstruction = (AccessLocalVariable) _instruction;
 			final LocalVariableInfo localVariable = localVariableLoadInstruction.getLocalVariableInfo();
-			write(localVariable.getVariableName());
+			String varName = null;
+			if (localVariable == null)
+				varName = "j2faDummyVar" + localVariableLoadInstruction.getLocalVariableTableIndex();
+			else
+				varName = localVariable.getVariableName();
+			write(varName);
 		} else if (_instruction instanceof I_IINC) {
 //				write("/* iinc */");
 			final I_IINC location = (I_IINC) _instruction;

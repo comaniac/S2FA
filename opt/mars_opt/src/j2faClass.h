@@ -9,7 +9,10 @@ class j2faClass
 	private:
 		SgClassDefinition *sg_class;
 		int id;
+		bool primaryIn;
+		bool primaryOut;
 		vector <j2faClass *> vecDerivedClses;
+		vector <j2faClass *> vecBaseClses;
 		map <string, int> mapVar2Size;
 		map <string, int> mapVar2Idx;
 		int varSize; // The total size of variables
@@ -19,10 +22,10 @@ class j2faClass
 		j2faClass(SgClassDefinition *_class, int _id) {
 			id = _id;
 			sg_class = _class;
-			size = 1;
-			varSize = 1;
-			mapVar2Size["j2fa_clazz"] = 1;
-			mapVar2Idx["j2fa_clazz"] = 0;
+			primaryIn = false;
+			primaryOut = false;
+			size = 0;
+			varSize = 0;
 		}
 
 		void SetSize(int s) { 
@@ -38,7 +41,37 @@ class j2faClass
 
 		string GetName() { return sg_class->get_qualified_name(); }
 
+		void SetAsPrimaryInputType() { primaryIn = true; }
+
+		bool IsPrimaryIn() { return primaryIn;	}
+
+		void SetAsPrimaryOutputType() { primaryOut = true; }
+
+		bool IsPrimaryOut() { return primaryOut;	}
+
+		void AddBaseClass(j2faClass *base) {
+			if (mapVar2Size.find("j2fa_clazz") == mapVar2Size.end()) {
+				// Add class ID for dynamic casting
+				size++;
+				varSize++;
+				mapVar2Size["j2fa_clazz"] = 1;
+				mapVar2Idx["j2fa_clazz"] = 0;
+			}
+			vecBaseClses.push_back(base);
+		}
+
+		bool HasBaseClass() {
+			return (vecBaseClses.size())? true: false;
+		}
+
 		void AddDerivedClass(j2faClass *derived) {
+			if (mapVar2Size.find("j2fa_clazz") == mapVar2Size.end()) {
+				// Add class ID for dynamic casting
+				size++;
+				varSize++;
+				mapVar2Size["j2fa_clazz"] = 1;
+				mapVar2Idx["j2fa_clazz"] = 0;
+			}
 			vecDerivedClses.push_back(derived);
 		}
 
@@ -77,19 +110,23 @@ class j2faClass
 		}
 
 		int GetVariableIndex(string name) {
-			if (mapVar2Idx[name])
-				return mapVar2Idx[name];
+			if (mapVar2Idx.find(name) != mapVar2Idx.end())
+				return mapVar2Idx.find(name)->second;
 			return -1;
 		}
 
 		int GetVariableSize(string name) {
-			if (mapVar2Size[name])
-				return mapVar2Size[name];
+			if (mapVar2Size.find(name) != mapVar2Size.end())
+				return mapVar2Size.find(name)->second;
 			return 0;
 		}
 
 		void CalcIndex() {
-			int idx = 1;
+			int idx = 0;
+
+			if (HasDerivedClass() || HasBaseClass())
+				idx = 1;
+
 			map<string, int>::iterator vite = mapVar2Size.begin();
 			for (; vite != mapVar2Size.end(); vite++) {
 				if (vite->first == "j2fa_clazz")

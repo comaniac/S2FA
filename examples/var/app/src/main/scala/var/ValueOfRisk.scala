@@ -36,12 +36,12 @@ object ValueOfRisk {
     val startTime = System.currentTimeMillis
 
     // Run simulation
-    val tRdd = blazeRdd
+    val firstResult = blazeRdd
       .map_acc(new MonteCarlo(numTrials / parallelism, broadcastInstruments))
-      .flatMap(e => e)
+      .flatMap(e => e).first
 
     val endTime = System.currentTimeMillis
-    println("Sample: " + tRdd.first)
+    println("Sample: " + firstResult)
     System.err.println("Overall time = " + (endTime - startTime))
   }
 

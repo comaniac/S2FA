@@ -13,7 +13,7 @@ public class DenseVectorClassModel extends CustomizedClassModel {
 
 		addField(new CustomizedFieldModel("size", "int", 0));
 		addField(new CustomizedFieldModel("values", "double []", 1));
-
+/*
 		CustomizedMethodModel<?> get_initMethod = new CustomizedMethodModel<DenseVectorClassModel>(
 			this, "<init>", METHODTYPE.CONSTRUCTOR) {
 
@@ -37,7 +37,7 @@ public class DenseVectorClassModel extends CustomizedClassModel {
 			}
 		};
 		addMethod(get_initMethod);
-
+*/
 		CustomizedMethodModel<?> getSizeMethod = new CustomizedMethodModel<DenseVectorClassModel>(
 			this, "size", METHODTYPE.GETTER) {
 

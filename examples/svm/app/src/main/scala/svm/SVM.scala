@@ -3,6 +3,7 @@ import scala.util.Random
 import org.apache.spark.SparkContext._
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.mllib.util.MLUtils
+import org.apache.spark.mllib.linalg.Vectors
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.blaze._
 import org.apache.j2fa.Annotation._
@@ -12,21 +13,27 @@ import scala.math._
 object SVM {
 
   def main(args: Array[String]) {
-    if (args.length < 2) {
-      System.err.println("Usage: SVM <filename> <npar>")
+    if (args.length < 1) {
+      System.err.println("Usage: SVM <filename>")
       System.exit(1)
     }
 
     val sparkConf = new SparkConf().setAppName("SVM")
     val filePath = args(0)
-    val npar = args(1).toInt
     val sc = new SparkContext(sparkConf)
     val acc = new BlazeRuntime(sc)
 
-    val rdd = MLUtils.loadLibSVMFile(sc, filePath).repartition(npar)
+//    val rdd = MLUtils.loadLibSVMFile(sc, filePath)
+    val rdd = sc.textFile(filePath).map(line => {
+      val point = line.split(" ").map(e => e.toDouble)
+      val features = Vectors.dense(point.slice(10, 794))
+      new LabeledPoint(point(0), features)
+    })
     val accRdd = acc.wrap(rdd)
 
-    val weights = (0 until 692).map(e => Random.nextDouble).toArray
+    println("Data count # = " + rdd.count + " with features " + rdd.first.features.size)
+
+    val weights = (0 until rdd.first.features.size).map(e => Random.nextDouble).toArray
     val accWeights = acc.wrap(sc.broadcast(weights))
 
     val t0 = System.nanoTime
@@ -52,17 +59,17 @@ class SVM(weights: org.apache.spark.blaze.BlazeBroadcast[Array[Double]])
 
   @J2FA_Kernel
   override def call(in: org.apache.spark.mllib.regression.LabeledPoint): Array[Double] = {
-    val feature_length = 692
-    val weight_length = 692
+    val feature_length = 784
+    val weight_length = 784
     val ts = 16
     val w = weights.value
     val f: org.apache.spark.mllib.linalg.Vector = in.features
     val label = in.label
     val labelScaled = 2 * label - 1.0
-    val output = new Array[Double](693)
+    val output = new Array[Double](785)
 
     var i = 0
-    while (i < feature_length + 1) {
+    while (i < 29) {
       output(i) = 0.0
       i += 1
     }

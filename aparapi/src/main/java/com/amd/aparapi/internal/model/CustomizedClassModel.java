@@ -55,8 +55,6 @@ public abstract class CustomizedClassModel extends ClassModel {
 		sb.append(" {\n  public:\n");
 
 		// Write fields
-		if (isDerivedClass())
-			sb.append("  int j2fa_clazz_type;\n");
 	  for (CustomizedFieldModel f : getFieldModels()) {
 	  	sb.append("  " + f.getDeclareCode() + ";\n");
 			if (f.isArray())

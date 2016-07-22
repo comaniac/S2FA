@@ -18,8 +18,22 @@ public class CustomizedClassModels implements Iterable<CustomizedClassModel> {
 			customizedClassModels.put(model.getClassName(),
 			                         new LinkedList<CustomizedClassModel>());
 		}
-		if (model.hasTypeParams() || customizedClassModels.get(model.getClassName()).size() < 2)
+		if (!model.hasTypeParams() || customizedClassModels.get(model.getClassName()).size() < 2)
 			customizedClassModels.get(model.getClassName()).add(model);
+		else if (model.hasTypeParams()) {
+			TypeParameters params = model.getTypeParams();
+			List<CustomizedClassModel> cList = customizedClassModels.get(model.getClassName());
+			for (CustomizedClassModel m : cList) {
+				boolean isSame = true;
+				for (int i = 0; i < params.size(); i++) {
+					if (!params.get(i).equals(m.getTypeParam(i)))
+						isSame = false;
+				}
+				if (isSame)
+					return ;
+			}
+			cList.add(model);
+		}
 	}
 
 	public List<CustomizedClassModel> get(String className) {
