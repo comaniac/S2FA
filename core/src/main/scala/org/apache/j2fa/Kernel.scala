@@ -52,7 +52,14 @@ class Kernel(
   ) {
   val logger = Logger.getLogger(Config.getLoggerName)
 
-  def generate: Option[String] = {
+  var kernelString: String = ""
+  var headerString: String = ""
+
+  def getKernel = kernelString
+
+  def getHeader = headerString
+
+  def generate: Boolean = {
     val mName = mInfo.getName
     if (mInfo.getConfig("output_format") == "Merlin")
       System.setProperty("com.amd.aparapi.enable.MERLIN", "true")
@@ -101,17 +108,19 @@ class Kernel(
       // Create Entrypoint and generate the kernel
       val entryPoint = classModel.getEntrypoint(mName, mInfo.getSig, fun, params, loader, typeEnv.asJava)
       val writerAndKernel = KernelWriter.writeToString(entryPoint, params)
-      var kernelString = writerAndKernel.kernel
-      kernelString = KernelWriter.applyXilinxPatch(kernelString)
+      var genString = writerAndKernel.kernel
+      genString = KernelWriter.applyXilinxPatch(genString)
+      headerString = genString.substring(0, genString.indexOf("// Kernel source code starts here\n"))
+      kernelString = genString.substring(genString.indexOf("// Kernel source code starts here\n") + 34)
       logger.info("Generate the kernel successfully")
-      Some(kernelString)
+      true
     } catch {
       case e: Throwable =>
         val sw = new StringWriter
         e.printStackTrace(new PrintWriter(sw))
         val fullMsg = sw.toString
         logger.severe("Kernel generated failed: " + fullMsg)
-        None
+        false
     }
   } 
 }

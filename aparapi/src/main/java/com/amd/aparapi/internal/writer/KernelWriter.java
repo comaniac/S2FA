@@ -619,8 +619,9 @@ public abstract class KernelWriter extends BlockWriter {
 				String cType = Utils.convertToCType(convertType(field.desc, true));
 				assert cType != null : "could not find type for " + field.desc;
 				writeln(cType + " " + field.name + ";");
-				if (cType.contains("*")) // Array field
-					writeln("int " + field.name + BlockWriter.arrayLengthMangleSuffix + ";");
+// FIXME: Should be added only when necessary
+//				if (cType.contains("*")) // Array field
+//					writeln("int " + field.name + BlockWriter.arrayLengthMangleSuffix + ";");
 			}
 		}
 
@@ -791,6 +792,13 @@ public abstract class KernelWriter extends BlockWriter {
 		}
 	}
 
+	public void writeHeader() throws CodeGenException {
+		write("#include <math.h>");
+		newLine();
+		write("#include <string.h>");
+		newLine();
+	}
+
 	@Override public void write(Entrypoint _entryPoint,
 	                            Collection<JParameter> params) throws CodeGenException {
 		String refArgsCall = "";
@@ -825,12 +833,14 @@ public abstract class KernelWriter extends BlockWriter {
 
 			// Add int field into arguements for supporting java arraylength op
 			// named like foo__javaArrayLength
+/*	FIXME: Should be added only when necessary
 			if (isPointer && _entryPoint.getArrayFieldArrayLengthUsed().contains(field.getName())) {
 				String lenName = field.getName() + BlockWriter.arrayLengthMangleSuffix;
 
 				refArgsDef += "int " + lenName + ", ";
 				refArgsCall += lenName + ", ";
 			}
+*/
 		}
 
 		// Remove the last ", "
@@ -839,11 +849,8 @@ public abstract class KernelWriter extends BlockWriter {
 			refArgsCall = refArgsCall.substring(0, refArgsCall.length() - 2);
 		}
 
-		// Macros
-		write("#include <math.h>");
-		newLine();
-		write("#include <string.h>");
-		newLine();
+		// Write header
+		writeHeader();
 		newLine();
 
 		final List<MethodModel> merged = new ArrayList<MethodModel>(_entryPoint.getCalledMethods().size() + 1);
@@ -878,6 +885,12 @@ public abstract class KernelWriter extends BlockWriter {
 				newLine();
 			}
 		}
+
+		write("// Kernel source code starts here");
+		newLine();
+		writeHeader();
+		write("#include \"j2fa_class.h\"");
+		newLine();
 
 		// Write method declaration
 		for (final MethodModel mm : merged) {

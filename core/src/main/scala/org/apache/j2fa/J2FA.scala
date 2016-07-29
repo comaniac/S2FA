@@ -97,11 +97,16 @@ object J2FA {
       case (mName, mInfo) =>
         logger.info("Compiling kernel " + mInfo.toString)
         val kernel = new Kernel(kernels.getVariables, clazz, mInfo, loader)
-        val kernelString = kernel.generate
-        if (kernelString.isEmpty == false) {
+        if (kernel.generate == true) {
+          val outPath = args(4).substring(0, args(4).lastIndexOf("/") + 1)
+          val kernelString = kernel.getKernel
+          val headerString = kernel.getHeader
           val kernelFile = new PrintWriter(new File(args(4)))
-          kernelFile.write(kernelString.get)
+          kernelFile.write(kernelString)
           kernelFile.close
+          val headerFile = new PrintWriter(new File(outPath + "j2fa_class.h"))
+          headerFile.write(headerString)
+          headerFile.close
         }
     })
   }

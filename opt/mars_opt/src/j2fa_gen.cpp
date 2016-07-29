@@ -475,9 +475,7 @@ void ConstructHardwareTemplate(CSageCodeGen & codegen, void* mainFuncDecl, strin
 			codegen.CreateConst(1), codegen.GetGlobal(mainFuncDecl));
 		codegen.InsertStmt(peVarDecl, posFunc);
 		void *jobsPerPEVarDecl = codegen.CreateVariableDecl("const int", "J2FA_JOBS_PER_PE", 
-			codegen.CreateExp(V_SgDivideOp, 
-			codegen.CreateVariableRef(jobsPerBatchVarDecl), codegen.CreateVariableRef(peVarDecl)), 
-			codegen.GetGlobal(mainFuncDecl));
+			codegen.CreateConst(1), codegen.GetGlobal(mainFuncDecl));
 		codegen.InsertStmt(jobsPerPEVarDecl, posFunc);
 
 		// Start: Creat ProcessUnit function
@@ -793,9 +791,9 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 	}
 
 	// Set position for function insertion
+	void *posBeforeMainFunc;
 	vector<void*> vecFuncs;
 	codegen.GetNodesByType(pTopFunc, "preorder",  "SgFunctionDeclaration", &vecFuncs);
-	void *posBeforeMainFunc;
 	for (int i = 0; i < vecFuncs.size(); i++) {
 		if (codegen.GetFuncBody(vecFuncs[i])) {
 			posBeforeMainFunc = vecFuncs[i];
@@ -861,8 +859,8 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 					SgType *sType = NULL;
 					if (serializedType == "int")
 						sType = SageBuilder::buildIntType();
-					else
-						sType = SageBuilder::buildLongType();
+					else // user double type as unified type
+						sType = SageBuilder::buildDoubleType();
 					SgType *sAryType = SageBuilder::buildPointerType(sType);
 					isSgInitializedName((SgNode *) newParam)->set_type(sAryType);
 				}
@@ -1004,12 +1002,9 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 								// Write pointer type data using for-loop
 								int varSize = jClass->GetVariableSize(codegen.UnparseToString(vecRefs[j]));
 								void *stmt = codegen.TraceUpByTypeCompatible(access, V_SgStatement);
-								bool needCast = false;
 
-								if (!IsPrimitiveType(typeName)) {
+								if (!IsPrimitiveType(typeName))
 									typeName = serializedType + " *";
-									needCast = true;
-								}
 
 								void *iterVarDecl = codegen.CreateVariableDecl(
 									codegen.GetTypeByString("int"), "j2fa_i" + std::to_string(tmpCounter), 
@@ -1034,8 +1029,8 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 								// Insert assignment
 								codegen.AppendChild(body, assignStmt);
 
-								// Casting
-								if (needCast) {
+								// Casting if necessary
+								if (typeName != serializedType + " *") {
 									void *castedDecl = InsertCastedVarDecl(codegen, typeName.substr(0, typeName.length() - 2),
 										serializedType + " *", srcRef, codegen.GetScope(body));
 									void *castedRef = codegen.CreateVariableRef(castedDecl);
@@ -1091,12 +1086,14 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 			codegen.InsertStmt(disFunc, posBeforeMainFunc);
 			void *funBody = codegen.GetFuncBody(disFunc);
 
-			// Create selector for looking at class id (this[0])
+			// Create selector for looking at class id ((int) this[0])
 			int idIdx = 0;
 			vector <void *> idxs;
 			idxs.push_back(codegen.CreateConst(&idIdx, V_SgIntVal));
-			SgExpression *selector = isSgExpression((SgNode *) codegen.CreateArrayRef(
-				codegen.CreateVariableRef(codegen.GetFuncParam(disFunc, 0)), idxs));
+			void *idExp = codegen.CreateArrayRef(
+				codegen.CreateVariableRef(codegen.GetFuncParam(disFunc, 0)), idxs);
+			SgExpression *selector = isSgExpression((SgNode *) codegen.CreateExp(V_SgCastExp, 
+				idExp, codegen.GetTypeByString("int")));
 
 			// Create switch body
 			SgBasicBlock *switchBody = isSgBasicBlock((SgNode *) codegen.CreateBasicBlock());
@@ -1487,10 +1484,10 @@ int j2fa_gen(CSageCodeGen & codegen, void * pTopFunc, CInputOptions options, int
 	}
 
 	// Step 7: Remove class declarations
-	vector<void *> vecClassDecls;
-	codegen.GetNodesByType(pTopFunc, "preorder", "SgClassDeclaration", &vecClassDecls);
-	for (int i = 0; i < vecClassDecls.size(); i++)
-		codegen.RemoveStmt(vecClassDecls[i]);
+//	vector<void *> vecClassDecls;
+//	codegen.GetNodesByType(pTopFunc, "preorder", "SgClassDeclaration", &vecClassDecls);
+//	for (int i = 0; i < vecClassDecls.size(); i++)
+//		codegen.RemoveStmt(vecClassDecls[i]);
 
 	// Step 8: Construct template
 	void *mainFuncDecl = codegen.GetFuncDeclByName("run");

@@ -10,6 +10,7 @@ USER_JARS=$2
 KERNEL_NAME=$3
 PRJ_DIR=$KERNEL_NAME
 CPP_FILE=${3}.cpp
+HEADER_FILE="j2fa_class.h"
 CPP_ERROR_FILE=err_cpp_w_class.log
 MERLIN_FILE=run.cpp
 MERLIN_ERROR_FILE=err_cpp_wo_class.log
@@ -29,7 +30,7 @@ echo "Testing $CPP_FILE"
 g++ -o /dev/null -c $CPP_FILE 2>> $CPP_ERROR_FILE
 if [ $? != 0 ]; then
 	echo "Failed to generate compilable C++ kernel code. Find $CPP_ERROR_FILE for details."
-	mv $CPP_FILE $CPP_ERROR_FILE $PRJ_DIR
+	mv $CPP_FILE $HEADER_FILE $CPP_ERROR_FILE $PRJ_DIR
 	exit 1
 fi
 
@@ -40,7 +41,7 @@ fi
 ../opt/mars_opt/bin/mars_opt $CPP_FILE -e c -p j2fa
 if ! [ -f "rose_succeed" ]; then
 	echo "Failed to transform ${CPP_FILE}. Find rose.log for details."
-	mv $CPP_FILE $CPP_ERROR_FILE rose* $PRJ_DIR
+	mv $CPP_FILE $HEADER_FILE $CPP_ERROR_FILE rose* $PRJ_DIR
 	exit 1
 fi
 rm rose_succeed
@@ -49,9 +50,9 @@ mv rose_${CPP_FILE} $MERLIN_FILE
 g++ -o /dev/null -c $MERLIN_FILE 2>> $MERLIN_ERROR_FILE
 if [ $? != 0 ]; then
 	echo "Failed to generate C++ code with serialized classes for the Merlin. Find $MERLIN_ERROR_FILE for details."
-	mv $CPP_FILE $CPP_ERROR_FILE $MERLIN_ERROR_FILE rose* $MERLIN_FILE $PRJ_DIR
+	mv $CPP_FILE $HEADER_FILE $CPP_ERROR_FILE $MERLIN_ERROR_FILE rose* $MERLIN_FILE $PRJ_DIR
 	exit 1
 fi
 rm ${KERNEL_NAME}.o
-mv $CPP_FILE $CPP_ERROR_FILE $MERLIN_ERROR_FILE rose.log $MERLIN_FILE $PRJ_DIR
+mv $CPP_FILE $HEADER_FILE $CPP_ERROR_FILE $MERLIN_ERROR_FILE rose.log $MERLIN_FILE $PRJ_DIR
 

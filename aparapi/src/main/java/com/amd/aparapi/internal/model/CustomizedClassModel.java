@@ -57,8 +57,10 @@ public abstract class CustomizedClassModel extends ClassModel {
 		// Write fields
 	  for (CustomizedFieldModel f : getFieldModels()) {
 	  	sb.append("  " + f.getDeclareCode() + ";\n");
+/* FIXME: Should be added only when necessary
 			if (f.isArray())
 				sb.append("  int " + f.getName() + BlockWriter.arrayLengthMangleSuffix + ";\n");
+*/
 		}
 		sb.append("\n");
 
