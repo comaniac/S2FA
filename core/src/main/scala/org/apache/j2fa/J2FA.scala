@@ -17,6 +17,7 @@
 package org.apache.j2fa
 
 import scala.reflect.ClassTag
+import scala.reflect.runtime.universe._
 import scala.io._
 import scala.sys.process._
 
@@ -27,6 +28,7 @@ import java.util.logging.Level
 import java.util.LinkedList
 import java.util.jar.JarFile
 
+import org.apache.j2fa.Annotation._
 import org.apache.j2fa.AST._
 import com.amd.aparapi.Config
 
@@ -34,35 +36,21 @@ object J2FA {
   val logger = Logger.getLogger(Config.getLoggerName)
  
   def main(args : Array[String]) {
-    if (args.length < 5) {
-      System.err.print("Usage: J2FA <Source file> <jar paths> ")
-      System.err.println("<Load level> <Accelerator class name> <Output kernel file>")
+    if (args.length < 2) {
+      System.err.print("Usage: J2FA <Main class name> <Output kernel file>")
       System.exit(1)
     }
     logger.info("J2FA -- Java to FPGA Accelerator Framework")
-
-    // Parse source code to identify kernel methods
-    val srcTree = ASTUtils.getSourceTree(args(0))
-    val kernels = ASTUtils.getKernelInfo(srcTree)
-
-    if (logger.isLoggable(Level.FINE)) {
-      logger.fine("Type environment:")
-      kernels.getVariables.foreach({
-        case (name, vtype) =>
-          println(name + ": " + vtype)
-      })
-    }
-
-    // Load classes
-    val jarPaths = args(1).split(":")
+/*    
+    // Create customized class loader
+    val jarPaths = args(0).split(":")
     var jars = List[URL]()
     jarPaths.foreach(path => {
       val file = new File(path).toURI.toURL
       jars = jars :+ file
     })
-
     val loader = new URLClassLoader(jars.toArray)
-    val loadLevel = args(2).toInt
+    
     var lastPos = 0
     for (i <- 0 until loadLevel) {
       if (args(3).indexOf(".", lastPos + 1) != -1)
@@ -88,27 +76,62 @@ object J2FA {
         }
       }
     })
+*/
 
-    logger.info("Loading target class: " + args(3))
-    val clazz = loader.loadClass(args(3))
+    logger.info("Loading target class: " + args(0))
+    try {
 
-    // Compile each kernel method to accelerator kernel
-    kernels.getMethods.foreach({
-      case (mName, mInfo) =>
-        logger.info("Compiling kernel " + mInfo.toString)
-        val kernel = new Kernel(kernels.getVariables, clazz, mInfo, loader)
-        if (kernel.generate == true) {
-          val outPath = args(4).substring(0, args(4).lastIndexOf("/") + 1)
-          val kernelString = kernel.getKernel
-          val headerString = kernel.getHeader
-          val kernelFile = new PrintWriter(new File(args(4)))
-          kernelFile.write(kernelString)
-          kernelFile.close
-          val headerFile = new PrintWriter(new File(outPath + "j2fa_class.h"))
-          headerFile.write(headerString)
-          headerFile.close
-        }
-    })
+      // Load the target class
+      val clazz = getClass().getClassLoader().loadClass(args(0))
+
+      // Compile each kernel method to accelerator design
+      clazz.getDeclaredMethods.foreach({m =>
+        val annotations = m.getAnnotations
+        var kernelAnnot: J2FA_Kernel = null
+        annotations.foreach({a => 
+          if (a.isInstanceOf[J2FA_Kernel]) {
+            kernelAnnot = a.asInstanceOf[J2FA_Kernel]
+          }
+        })
+      if (kernelAnnot != null) {
+        val kernelVar = kernelAnnot.kernel()
+        logger.info("Kernel variable " + kernelVar + " in " + m.getName)
+        // TODO: Find methods
+        
+
+        // Compile each kernel method to accelerator kernel
+/* 
+        kernels.getMethods.foreach({
+          case (mName, mInfo) =>
+            logger.info("Compiling kernel " + mInfo.toString)
+            val kernel = new Kernel(kernels.getVariables, clazz, mInfo, loader)
+            if (kernel.generate == true) {
+              val outPath = args(4).substring(0, args(4).lastIndexOf("/") + 1)
+              val kernelString = kernel.getKernel
+              val headerString = kernel.getHeader
+              val kernelFile = new PrintWriter(new File(args(4)))
+              kernelFile.write(kernelString)
+              kernelFile.close
+              val headerFile = new PrintWriter(new File(outPath + "j2fa_class.h"))
+              headerFile.write(headerString)
+              headerFile.close
+            }
+        })
+*/
+      }
+      })
+    } catch {
+      case e: java.lang.ClassNotFoundException =>
+        logger.severe("Cannot load class " + args(0) + ", make sure " + 
+          "the -classpath covers all necessary files.")
+        System.exit(1)
+      case e: Throwable =>
+        val sw = new StringWriter
+        e.printStackTrace(new PrintWriter(sw))
+        val fullMsg = sw.toString
+        logger.severe(e)
+        System.exit(1)
+    }
   }
 }
 
