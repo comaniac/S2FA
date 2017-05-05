@@ -31,6 +31,8 @@ import java.util.jar.JarFile
 import org.apache.j2fa.Annotation._
 import org.apache.j2fa.AST._
 import com.amd.aparapi.Config
+import com.amd.aparapi.internal.model.ClassModel
+import com.amd.aparapi.internal.model.CustomizedClassModels.CustomizedClassModelMatcher
 
 object J2FA {
   val logger = Logger.getLogger(Config.getLoggerName)
@@ -41,46 +43,44 @@ object J2FA {
       System.exit(1)
     }
     logger.info("J2FA -- Java to FPGA Accelerator Framework")
-/*    
-    // Create customized class loader
-    val jarPaths = args(0).split(":")
-    var jars = List[URL]()
-    jarPaths.foreach(path => {
-      val file = new File(path).toURI.toURL
-      jars = jars :+ file
-    })
-    val loader = new URLClassLoader(jars.toArray)
     
-    var lastPos = 0
-    for (i <- 0 until loadLevel) {
-      if (args(3).indexOf(".", lastPos + 1) != -1)
-        lastPos = args(3).indexOf(".", lastPos + 1)
-    }
-    val pkgPrefix = args(3).substring(0, lastPos).replace('.', '/')
-    logger.info("Loading classes from package " + pkgPrefix)
+    // Create customized class loader
+    // val jarPaths = args(0).split(":")
+    // var jars = List[URL]()
+    // jarPaths.foreach(path => {
+    //   val file = new File(path).toURI.toURL
+    //   jars = jars :+ file
+    // })
+    // val loader = new URLClassLoader(jars.toArray)
+    
+    // var lastPos = 0
+    // for (i <- 0 until loadLevel) {
+    //   if (args(3).indexOf(".", lastPos + 1) != -1)
+    //     lastPos = args(3).indexOf(".", lastPos + 1)
+    // }
+    // val pkgPrefix = args(3).substring(0, lastPos).replace('.', '/')
+    // logger.info("Loading classes from package " + pkgPrefix)
 
-    jarPaths.foreach({ path =>
-      val jarFile = new JarFile(path)
-      var entity = jarFile.entries
-      while (entity.hasMoreElements) {
-        val je = entity.nextElement
-        if (!je.isDirectory && je.getName.endsWith(".class") && je.getName.startsWith(pkgPrefix)) {
-          val clazzName = je.getName.substring(0, je.getName.length - 6).replace('/', '.')
-          logger.finest("Load class " + clazzName)
-          try {
-            loader.loadClass(clazzName)
-          } catch {
-            case _ : Throwable =>
-              logger.finest("Cannot find class " + clazzName + " in provided packages")
-          }
-        }
-      }
-    })
-*/
+    // jarPaths.foreach({ path =>
+    //   val jarFile = new JarFile(path)
+    //   var entity = jarFile.entries
+    //   while (entity.hasMoreElements) {
+    //     val je = entity.nextElement
+    //     if (!je.isDirectory && je.getName.endsWith(".class") && je.getName.startsWith(pkgPrefix)) {
+    //       val clazzName = je.getName.substring(0, je.getName.length - 6).replace('/', '.')
+    //       logger.finest("Load class " + clazzName)
+    //       try {
+    //         loader.loadClass(clazzName)
+    //       } catch {
+    //         case _ : Throwable =>
+    //           logger.finest("Cannot find class " + clazzName + " in provided packages")
+    //       }
+    //     }
+    //   }
+    // })
 
     logger.info("Loading target class: " + args(0))
     try {
-
       // Load the target class
       val clazz = getClass().getClassLoader().loadClass(args(0))
 
@@ -93,32 +93,37 @@ object J2FA {
             kernelAnnot = a.asInstanceOf[J2FA_Kernel]
           }
         })
-      if (kernelAnnot != null) {
-        val kernelVar = kernelAnnot.kernel()
-        logger.info("Kernel variable " + kernelVar + " in " + m.getName)
-        // TODO: Find methods
-        
+        if (kernelAnnot != null) {
+          val kernelVar = kernelAnnot.kernel()
+          logger.info("Kernel variable " + kernelVar + " in " + m.getName)
+
+          // Setup output format (currently only use Merlin C)
+          System.setProperty("com.amd.aparapi.enable.MERLIN", "true")
+
+          // Create Aparapi class model
+          val classModel : ClassModel = ClassModel.createClassModel(clazz, null, 
+            new CustomizedClassModelMatcher(null))
+          
+          val methods = classModel.getAllInvokedMethodsByVar(m.getName(), Utils.getMethodSignature(m), kernelVar)
 
         // Compile each kernel method to accelerator kernel
-/* 
-        kernels.getMethods.foreach({
-          case (mName, mInfo) =>
-            logger.info("Compiling kernel " + mInfo.toString)
-            val kernel = new Kernel(kernels.getVariables, clazz, mInfo, loader)
-            if (kernel.generate == true) {
-              val outPath = args(4).substring(0, args(4).lastIndexOf("/") + 1)
-              val kernelString = kernel.getKernel
-              val headerString = kernel.getHeader
-              val kernelFile = new PrintWriter(new File(args(4)))
-              kernelFile.write(kernelString)
-              kernelFile.close
-              val headerFile = new PrintWriter(new File(outPath + "j2fa_class.h"))
-              headerFile.write(headerString)
-              headerFile.close
-            }
-        })
-*/
-      }
+        // kernels.getMethods.foreach({
+        //   case (mName, mInfo) =>
+        //     logger.info("Compiling kernel " + mInfo.toString)
+        //     val kernel = new Kernel(kernels.getVariables, clazz, mInfo, loader)
+        //     if (kernel.generate == true) {
+        //       val outPath = args(4).substring(0, args(4).lastIndexOf("/") + 1)
+        //       val kernelString = kernel.getKernel
+        //       val headerString = kernel.getHeader
+        //       val kernelFile = new PrintWriter(new File(args(4)))
+        //       kernelFile.write(kernelString)
+        //       kernelFile.close
+        //       val headerFile = new PrintWriter(new File(outPath + "j2fa_class.h"))
+        //       headerFile.write(headerString)
+        //       headerFile.close
+        //     }
+        // })
+        }
       })
     } catch {
       case e: java.lang.ClassNotFoundException =>
@@ -129,7 +134,7 @@ object J2FA {
         val sw = new StringWriter
         e.printStackTrace(new PrintWriter(sw))
         val fullMsg = sw.toString
-        logger.severe(e)
+        logger.severe(fullMsg)
         System.exit(1)
     }
   }

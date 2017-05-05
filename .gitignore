@@ -1,0 +1,15 @@
+*.class
+*.log
+*.prefs
+.classpath
+*.timestamp
+*.jar
+*.lst
+dependency-reduced-pom.xml
+.project
+.vscode
+pom.properties
+test_app
+*.txt
+TEST*.xml
+compile.sh

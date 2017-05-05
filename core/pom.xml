@@ -173,11 +173,11 @@
       <artifactId>spark-core_2.11</artifactId>
       <version>1.3.1</version>
     </dependency>
-		<dependency>
+		<!--<dependency>
 		  <groupId>org.apache.spark</groupId>
 		  <artifactId>blaze</artifactId>
 		  <version>1.0</version>
-		</dependency>
+		</dependency>-->
 		<dependency>
 		  <groupId>org.scalatest</groupId>
 		  <artifactId>scalatest_2.11</artifactId>

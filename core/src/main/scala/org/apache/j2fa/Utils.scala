@@ -16,6 +16,7 @@
  */
 
 package org.apache.j2fa
+import java.lang.reflect.Method
 
 object Utils {
 
@@ -25,12 +26,23 @@ object Utils {
     case "float" => "F"
     case "double" => "D"
     case "long" => "J"
+    case "void" => "V"
     case "tuple2" => "Lscala/Tuple2;"
     case "iterator" => "Lscala/collection/Iterator;"
     case _ => 
       if (name.contains("[]"))
         "[" + asBytecodeType(name.replace("[]", ""))
+      else if (!name.startsWith("["))
+        "L" + name.replace(".", "/") + ";"
       else
-        "L" + name + ";"
+        name.replace(".", "/")
+  }
+
+  def getMethodSignature(m: Method): String = {
+    val params = m.getParameterTypes.map(e => asBytecodeType(e.getName))
+    val ret = asBytecodeType(m.getReturnType.getName)
+    var sig = "(";
+    params.foreach(e => sig += e)
+    sig + ")" + ret
   }
 }

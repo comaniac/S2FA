@@ -3,6 +3,7 @@ package com.amd.aparapi.internal.model;
 import com.amd.aparapi.*;
 import com.amd.aparapi.internal.annotation.*;
 import com.amd.aparapi.internal.exception.*;
+import com.amd.aparapi.internal.instruction.*;
 import com.amd.aparapi.internal.instruction.InstructionSet.*;
 import com.amd.aparapi.internal.model.ValueCache.ThrowingValueComputer;
 import com.amd.aparapi.internal.model.ClassModel.AttributePool.*;
@@ -2753,6 +2754,18 @@ public abstract class ClassModel {
 		else return superClazz.getField(_name);
 	}
 
+	public List<MethodModel> getAllInvokedMethodsByVar(String methodName, String methodDes, String varName) throws AparapiException {
+		final MethodModel methodModel = getMethodModel(methodName, methodDes);
+
+		// Find all method invocations from the variable
+		logger.info(methodModel.getMethodCalls().size() + " method calls");
+		for (final MethodCall methodCall : methodModel.getMethodCalls()) {
+			//MethodEntry entry = methodCall.getConstantPoolMethodEntry();
+			logger.info(methodCall.toString());
+		}
+		return new LinkedList<MethodModel>();
+	}
+
 	public ClassModelMethod getKernelMethod(String expectName, String expectDes) {
 		ClassModelMethod result = null;
 
@@ -2859,7 +2872,7 @@ public abstract class ClassModel {
 				return (entry);
 			}
 		}
-		logger.fine("Cannot find " + getMangledClassName().replace('_', '.')
+		logger.warning("Cannot find " + getMangledClassName().replace('_', '.')
 			 + "." + _name + " " + _descriptor);
 		return null;
 	}
