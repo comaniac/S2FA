@@ -20,6 +20,7 @@ import scala.reflect.ClassTag
 import scala.reflect.runtime.universe._
 import scala.io._
 import scala.sys.process._
+import scala.collection.JavaConversions.asScalaBuffer
 
 import java.io._
 import java.net._
@@ -39,7 +40,7 @@ object J2FA {
  
   def main(args : Array[String]) {
     if (args.length < 2) {
-      System.err.print("Usage: J2FA <Main class name> <Output kernel file>")
+      System.err.print("Usage: J2FA <Main class name> <Output kernel path>")
       System.exit(1)
     }
     logger.info("J2FA -- Java to FPGA Accelerator Framework")
@@ -104,25 +105,41 @@ object J2FA {
           val classModel : ClassModel = ClassModel.createClassModel(clazz, null, 
             new CustomizedClassModelMatcher(null))
           
-          val methods = classModel.getAllInvokedMethodsByVar(m.getName(), Utils.getMethodSignature(m), kernelVar)
+          val methodCallsJava = classModel.getAllMethodCallsByVar(m.getName(), Utils.getMethodSignature(m), kernelVar)
+          val methodCalls = asScalaBuffer(methodCallsJava)
 
-        // Compile each kernel method to accelerator kernel
-        // kernels.getMethods.foreach({
-        //   case (mName, mInfo) =>
-        //     logger.info("Compiling kernel " + mInfo.toString)
-        //     val kernel = new Kernel(kernels.getVariables, clazz, mInfo, loader)
-        //     if (kernel.generate == true) {
-        //       val outPath = args(4).substring(0, args(4).lastIndexOf("/") + 1)
-        //       val kernelString = kernel.getKernel
-        //       val headerString = kernel.getHeader
-        //       val kernelFile = new PrintWriter(new File(args(4)))
-        //       kernelFile.write(kernelString)
-        //       kernelFile.close
-        //       val headerFile = new PrintWriter(new File(outPath + "j2fa_class.h"))
-        //       headerFile.write(headerString)
-        //       headerFile.close
-        //     }
-        // })
+          logger.fine("Kernel flow:")
+          methodCalls.foreach(call => logger.fine("  -> " + call))
+
+          // Compile each kernel method to accelerator kernel
+          val outPath = args(1).substring(0, args(1).lastIndexOf("/") + 1)
+          methodCalls.foreach(call => {
+            logger.info("Compiling kernel " + call)
+            val kernel = new Kernel(call)
+            if (kernel.generate == true) {
+              val fileName = call.replace("(", "_").replace(")", "").replace("$", "")
+              val filePath = outPath + fileName
+
+              // Write kernel code
+              val kernelString = kernel.getKernel
+              val kernelFile = new PrintWriter(new File(filePath + ".cpp"))
+              kernelFile.write("#include \"" + fileName + ".h\"\n")              
+              kernelFile.write(kernelString)
+              kernelFile.close
+
+              // Write header code
+              val headerString = kernel.getHeader
+              val headerFile = new PrintWriter(new File(filePath + ".h"))
+              headerFile.write("#ifndef " + fileName + "\n")
+              headerFile.write("#define " + fileName + "\n")
+              headerFile.write(headerString)
+              headerFile.write("\n#endif\n")
+              headerFile.close
+              logger.info("Successfully generated the kernel " + call)
+            }
+            else
+              logger.info("Fail to generate the kernel " + call)           
+          })
         }
       })
     } catch {

@@ -50,6 +50,13 @@ public class LoadedMethodModel extends MethodModel {
 		init(_method);
 	}
 
+	LoadedMethodModel(ClassModelMethod _method, boolean doAnalysis) throws AparapiException {
+		if (!doAnalysis)
+			initWithoutAnalysis(_method);
+		else
+			init(_method);
+	}
+
 	@Override
 	public String getGetterField() {
 		if (accessorVariableFieldEntry == null)

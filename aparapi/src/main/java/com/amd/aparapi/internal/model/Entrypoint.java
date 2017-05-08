@@ -89,12 +89,6 @@ public class Entrypoint implements Cloneable {
 
 	private final CustomizedClassModels customizedClassModels;
 
-	private final URLClassLoader appClassLoader;
-
-	private final Object [] loadedClasses;
-
-	private final Object [] systemClasses;
-
 	public CustomizedClassModels getCustomizedClassModels() {
 		return customizedClassModels;
 	}
@@ -383,10 +377,9 @@ public class Entrypoint implements Cloneable {
 		Class<?> memberClass = null;
 		if (memberClassModel == null) {
 			try {
-				memberClass = appClassLoader.loadClass(className);
+				memberClass = Class.forName(className);
 			} catch (final Exception e) {
-				if (logger.isLoggable(Level.INFO))
-					logger.info("Cannot load: " + className);
+				logger.info("Cannot load: " + className);
 				throw new AparapiException(e);
 			}
 
@@ -621,15 +614,15 @@ public class Entrypoint implements Cloneable {
 	}
 
 	public Entrypoint(ClassModel _classModel, MethodModel _methodModel,
-	                  Object _k, Collection<JParameter> params, 
-										URLClassLoader _loader, Map<String, String> _typeEnv)
+	                  Object _k, Collection<JParameter> params)
 	throws AparapiException {
 		classModel = _classModel;
 		methodModel = _methodModel;
 		kernelInstance = _k;
 		argumentList = params;
-		appClassLoader = _loader;
-		typeEnv = _typeEnv;
+
+		// FIXME: Maybe useful again in the future
+		typeEnv = new HashMap<String, String>();
 
 		config = new Config();
 
@@ -640,80 +633,80 @@ public class Entrypoint implements Cloneable {
 
 		boolean discovered = true;
 
-		// Load com.amd.aparapi.classlibrary
-		try {
-			ClassLoader cl = CustomizedClassModel.class.getClassLoader();
-			URL pkgURL = Thread.currentThread().getContextClassLoader()
-				.getResource("com/amd/aparapi");
-			String jarFileName = URLDecoder.decode(pkgURL.getFile(), "UTF-8");
-			jarFileName = jarFileName.substring(5, jarFileName.indexOf("!"));
-			JarFile jarFile = new JarFile(jarFileName);
+		// // Load com.amd.aparapi.classlibrary
+		// try {
+		// 	ClassLoader cl = CustomizedClassModel.class.getClassLoader();
+		// 	URL pkgURL = Thread.currentThread().getContextClassLoader()
+		// 		.getResource("com/amd/aparapi");
+		// 	String jarFileName = URLDecoder.decode(pkgURL.getFile(), "UTF-8");
+		// 	jarFileName = jarFileName.substring(5, jarFileName.indexOf("!"));
+		// 	JarFile jarFile = new JarFile(jarFileName);
 
-			Enumeration<JarEntry> jarEntries = jarFile.entries();
-			while (jarEntries.hasMoreElements()) {
-				String entryName = jarEntries.nextElement().getName();
-				if (entryName.startsWith("com/amd/aparapi/classlibrary") && 
-						entryName.endsWith(".class") && 
-						!entryName.contains("$")) {
-					cl.loadClass(entryName.replace("/", ".").substring(0, entryName.length() - 6));
-				}
-			}
-		} catch (Exception e) {
-			throw new RuntimeException("Fail to load com.amd.aparapi.classlibaray");
-		}
+		// 	Enumeration<JarEntry> jarEntries = jarFile.entries();
+		// 	while (jarEntries.hasMoreElements()) {
+		// 		String entryName = jarEntries.nextElement().getName();
+		// 		if (entryName.startsWith("com/amd/aparapi/classlibrary") && 
+		// 				entryName.endsWith(".class") && 
+		// 				!entryName.contains("$")) {
+		// 			cl.loadClass(entryName.replace("/", ".").substring(0, entryName.length() - 6));
+		// 		}
+		// 	}
+		// } catch (Exception e) {
+		// 	throw new RuntimeException("Fail to load com.amd.aparapi.classlibaray");
+		// }
 
-		// Build a loaded class list
-		Class<?> loaderClazz = appClassLoader.getClass();
-		while (loaderClazz != java.lang.ClassLoader.class)
-			loaderClazz = loaderClazz.getSuperclass();
-		try {
-			Field fieldClazz = loaderClazz.getDeclaredField("classes");
-			fieldClazz.setAccessible(true);
+		// // Build a loaded class list
+		// Class<?> loaderClazz = appClassLoader.getClass();
+		// while (loaderClazz != java.lang.ClassLoader.class)
+		// 	loaderClazz = loaderClazz.getSuperclass();
+		// try {
+		// 	Field fieldClazz = loaderClazz.getDeclaredField("classes");
+		// 	fieldClazz.setAccessible(true);
 
-			// Load classes from user input classpath
-			loadedClasses = ((Vector) fieldClazz.get(appClassLoader)).toArray();
+		// 	// Load classes from user input classpath
+		// 	loadedClasses = ((Vector) fieldClazz.get(appClassLoader)).toArray();
 
-			// Load com.amd.aparapi.classlibrary
-			systemClasses = ((Vector) fieldClazz.get(CustomizedClassModel.class.getClassLoader())).toArray();
-		} catch (Exception e) {
-			throw new RuntimeException("Fail to load class list");
-		}
+		// 	// Load com.amd.aparapi.classlibrary
+		// 	systemClasses = ((Vector) fieldClazz.get(CustomizedClassModel.class.getClassLoader())).toArray();
+		// } catch (Exception e) {
+		// 	throw new RuntimeException("Fail to load class list");
+		// }
 
-		// Traverse customized class models from user
-		ArrayList<String> customizedClassFileList = findDerivedClasses("CustomizedClassModel");
-		for (String name : customizedClassFileList) {
-			try {
-				Class<?> clazz = appClassLoader.loadClass(name);
-				@SuppressWarnings("unchecked")
-				Class<CustomizedClassModel> customizedClass = (Class<CustomizedClassModel>) clazz;
-				Constructor<?> cstr = customizedClass.getConstructor();
-				addCustomizedClass((CustomizedClassModel) cstr.newInstance());
-			} catch (Exception e) {
-				throw new RuntimeException("Cannot load customized class model from user input class path " + 
-					name + ": " + e);
-			}
-		}
+		// // Traverse customized class models from user
+		// ArrayList<String> customizedClassFileList = findDerivedClasses("CustomizedClassModel");
+		// for (String name : customizedClassFileList) {
+		// 	try {
+		// 		Class<?> clazz = appClassLoader.loadClass(name);
+		// 		@SuppressWarnings("unchecked")
+		// 		Class<CustomizedClassModel> customizedClass = (Class<CustomizedClassModel>) clazz;
+		// 		Constructor<?> cstr = customizedClass.getConstructor();
+		// 		addCustomizedClass((CustomizedClassModel) cstr.newInstance());
+		// 	} catch (Exception e) {
+		// 		throw new RuntimeException("Cannot load customized class model from user input class path " + 
+		// 			name + ": " + e);
+		// 	}
+		// }
 
-		// Traverse customized class models from system
-		ArrayList<String> systemCustomizedClassFileList = findDefaultCustomizedClassModels();
-		for (String name : systemCustomizedClassFileList) {
-			try {
-				Class<?> clazz = Class.forName(name);
-				@SuppressWarnings("unchecked")
-				Class<CustomizedClassModel> customizedClass = (Class<CustomizedClassModel>) clazz;
-				Constructor<?> cstr = customizedClass.getConstructor();
-				addCustomizedClass((CustomizedClassModel) cstr.newInstance());
-			} catch (Exception e) {
-				throw new RuntimeException("Cannot load customized class model from system " + 
-					name + ": " + e);
-			}
-		}
+		// // Traverse customized class models from system
+		// ArrayList<String> systemCustomizedClassFileList = findDefaultCustomizedClassModels();
+		// for (String name : systemCustomizedClassFileList) {
+		// 	try {
+		// 		Class<?> clazz = Class.forName(name);
+		// 		@SuppressWarnings("unchecked")
+		// 		Class<CustomizedClassModel> customizedClass = (Class<CustomizedClassModel>) clazz;
+		// 		Constructor<?> cstr = customizedClass.getConstructor();
+		// 		addCustomizedClass((CustomizedClassModel) cstr.newInstance());
+		// 	} catch (Exception e) {
+		// 		throw new RuntimeException("Cannot load customized class model from system " + 
+		// 			name + ": " + e);
+		// 	}
+		// }
 
-		if (logger.isLoggable(Level.FINEST)) {
-			logger.finest("Loaded CustomizedClassModels:");
-			for (String s : customizedClassModels.getClassList())
-				System.err.println(s);
-		}
+		// if (logger.isLoggable(Level.FINEST)) {
+		// 	logger.finest("Loaded CustomizedClassModels:");
+		// 	for (String s : customizedClassModels.getClassList())
+		// 		System.err.println(s);
+		// }
 
 		// Record which pragmas we need to enable
 		if (methodModel.requiresDoublePragma()) {
@@ -734,133 +727,133 @@ public class Entrypoint implements Cloneable {
 			addParameterClass(param);
 
 		// Add local variable used classes FIXME: Class w. type parameter matching
-		for (final String varName : typeEnv.keySet()) {
-			if (typeEnv.get(varName) == null || typeEnv.get(varName).contains("String"))
-				continue;
+		// for (final String varName : typeEnv.keySet()) {
+		// 	if (typeEnv.get(varName) == null || typeEnv.get(varName).contains("String"))
+		// 		continue;
 
-			JParameter param = JParameter.createParameter(typeEnv.get(varName), varName, JParameter.DIRECTION.IN);
-			if (!customizedClassModels.hasClass(param.getTypeName()))
-				addParameterClass(param);
-		}
+		// 	JParameter param = JParameter.createParameter(typeEnv.get(varName), varName, JParameter.DIRECTION.IN);
+		// 	if (!customizedClassModels.hasClass(param.getTypeName()))
+		// 		addParameterClass(param);
+		// }
 
 		// Collect all interface methods called from the kernel and their implementations
 		// TODO: Support multi-level inheritance. i.e. interface A -> B extends A -> [C] extends B
-		for (final I_INVOKEINTERFACE interfaceCall : methodModel.getInterfaceMethodCalls()) {
-			final InterfaceMethodEntry methodEntry = interfaceCall.getConstantPoolInterfaceMethodEntry();
-			final String clazzName = methodEntry.getClassEntry().getNameUTF8Entry().getUTF8().replace('/', '.');
-			final String methodName = methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
-			final String methodDesc = methodEntry.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
-			final String fullSig = clazzName + "." + methodName + methodDesc;
+		// for (final I_INVOKEINTERFACE interfaceCall : methodModel.getInterfaceMethodCalls()) {
+		// 	final InterfaceMethodEntry methodEntry = interfaceCall.getConstantPoolInterfaceMethodEntry();
+		// 	final String clazzName = methodEntry.getClassEntry().getNameUTF8Entry().getUTF8().replace('/', '.');
+		// 	final String methodName = methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+		// 	final String methodDesc = methodEntry.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
+		// 	final String fullSig = clazzName + "." + methodName + methodDesc;
 
-			if (customizedClassModels.hasClass(clazzName))
-				continue;
+		// 	if (customizedClassModels.hasClass(clazzName))
+		// 		continue;
 
-			// Avoid redundent work
-			if (hasMethodImplList(fullSig))
-				continue;
+		// 	// Avoid redundent work
+		// 	if (hasMethodImplList(fullSig))
+		// 		continue;
 
-			List<String> clzList = null;
+		// 	List<String> clzList = null;
 
-			// Avoid redundent class scanning
-			if (hasDerivedClassList(clazzName))
-				clzList = getDerivedClasses(clazzName);
-			else {
-				// Scan all loaded classes to find derived classes
-				clzList = findDerivedClasses(clazzName);
-				addOrUpdateDerivedClass(clazzName, clzList);
-			}
+		// 	// Avoid redundent class scanning
+		// 	if (hasDerivedClassList(clazzName))
+		// 		clzList = getDerivedClasses(clazzName);
+		// 	else {
+		// 		// Scan all loaded classes to find derived classes
+		// 		clzList = findDerivedClasses(clazzName);
+		// 		addOrUpdateDerivedClass(clazzName, clzList);
+		// 	}
 
-			// Check if the base class has the method implementation
-			Class<?> baseClazz = null;
-			try {
-				baseClazz = appClassLoader.loadClass(clazzName);
-			} catch (final Exception e) {
-				if (logger.isLoggable(Level.INFO))
-					logger.info("Cannot load " + clazzName);
-				throw new AparapiException(e);
-			}
-			ClassModel baseClassModel = ClassModel.createClassModel(baseClazz, this, 
-					new CustomizedClassModelMatcher(null));
-			ClassModelMethod baseMethodImpl = baseClassModel.getMethod(methodName, methodDesc);
+		// 	// Check if the base class has the method implementation
+		// 	Class<?> baseClazz = null;
+		// 	try {
+		// 		baseClazz = appClassLoader.loadClass(clazzName);
+		// 	} catch (final Exception e) {
+		// 		if (logger.isLoggable(Level.INFO))
+		// 			logger.info("Cannot load " + clazzName);
+		// 		throw new AparapiException(e);
+		// 	}
+		// 	ClassModel baseClassModel = ClassModel.createClassModel(baseClazz, this, 
+		// 			new CustomizedClassModelMatcher(null));
+		// 	ClassModelMethod baseMethodImpl = baseClassModel.getMethod(methodName, methodDesc);
 
-			try {
-				MethodModel method = null;
-				if (baseMethodImpl.getCodeEntry() != null) {
-					method = new LoadedMethodModel(baseMethodImpl, this);
-					// FIXME: We want to generate method implementation for based class 
-					// as well, but for some reason we cannot load method implementation from 
-					// interface.
-					//methodMap.put(baseMethodImpl, method);
-					addOrUpdateMethodImpl(fullSig, method);
-				}
-				else {
-					if (logger.isLoggable(Level.FINEST))
-						logger.finest(fullSig + " has no implementation");
-				}
-			} catch (final Exception e) {
-				throw new AparapiException(e);
-			}
+		// 	try {
+		// 		MethodModel method = null;
+		// 		if (baseMethodImpl.getCodeEntry() != null) {
+		// 			method = new LoadedMethodModel(baseMethodImpl, this);
+		// 			// FIXME: We want to generate method implementation for based class 
+		// 			// as well, but for some reason we cannot load method implementation from 
+		// 			// interface.
+		// 			//methodMap.put(baseMethodImpl, method);
+		// 			addOrUpdateMethodImpl(fullSig, method);
+		// 		}
+		// 		else {
+		// 			if (logger.isLoggable(Level.FINEST))
+		// 				logger.finest(fullSig + " has no implementation");
+		// 		}
+		// 	} catch (final Exception e) {
+		// 		throw new AparapiException(e);
+		// 	}
 				
-			// Create method models for overritten methods in derived classes
-			for (final String derivedClazzName : clzList) {
-				Class<?> derivedClazz = null;
-				try {
-					derivedClazz = appClassLoader.loadClass(derivedClazzName);
-				} catch (final Exception e) {
-					if (logger.isLoggable(Level.INFO))
-						logger.info("Cannot load " + derivedClazzName);
-					throw new AparapiException(e);
-				}
-				ClassModel derivedClassModel = ClassModel.createClassModel(derivedClazz, this, 
-						new CustomizedClassModelMatcher(null));
+		// 	// Create method models for overritten methods in derived classes
+		// 	for (final String derivedClazzName : clzList) {
+		// 		Class<?> derivedClazz = null;
+		// 		try {
+		// 			derivedClazz = appClassLoader.loadClass(derivedClazzName);
+		// 		} catch (final Exception e) {
+		// 			if (logger.isLoggable(Level.INFO))
+		// 				logger.info("Cannot load " + derivedClazzName);
+		// 			throw new AparapiException(e);
+		// 		}
+		// 		ClassModel derivedClassModel = ClassModel.createClassModel(derivedClazz, this, 
+		// 				new CustomizedClassModelMatcher(null));
 
-				MethodModel method = null;
-				if (derivedClassModel instanceof CustomizedClassModel)
-					method = ((CustomizedClassModel) derivedClassModel).getCustomizedMethod(methodName);
-				else {
-					ClassModelMethod methodImpl = derivedClassModel.getMethod(methodName, methodDesc);
-					if (methodImpl == null) // Skip the derived class without the overrided method
-						continue;
-					method = new LoadedMethodModel(methodImpl, this);
+		// 		MethodModel method = null;
+		// 		if (derivedClassModel instanceof CustomizedClassModel)
+		// 			method = ((CustomizedClassModel) derivedClassModel).getCustomizedMethod(methodName);
+		// 		else {
+		// 			ClassModelMethod methodImpl = derivedClassModel.getMethod(methodName, methodDesc);
+		// 			if (methodImpl == null) // Skip the derived class without the overrided method
+		// 				continue;
+		// 			method = new LoadedMethodModel(methodImpl, this);
 
-					// Add interface implementations to methodMap
-					methodMap.put(methodImpl, method);
-				}
+		// 			// Add interface implementations to methodMap
+		// 			methodMap.put(methodImpl, method);
+		// 		}
 
-				// Skip the derived class without the overrided method
-				if (method == null)
-					continue;
+		// 		// Skip the derived class without the overrided method
+		// 		if (method == null)
+		// 			continue;
 
-				addOrUpdateMethodImpl(fullSig, method);
+		// 		addOrUpdateMethodImpl(fullSig, method);
 
-				// Add derived class to customized class list
-				derivedClassModel.setSuperClazz(baseClassModel);
-				addClass(derivedClazzName, derivedClassModel);
+		// 		// Add derived class to customized class list
+		// 		derivedClassModel.setSuperClazz(baseClassModel);
+		// 		addClass(derivedClazzName, derivedClassModel);
 
-				methodModel.getCalledMethods().add(method);
-			}
-		}
+		// 		methodModel.getCalledMethods().add(method);
+		// 	}
+		// }
 
-		if (logger.isLoggable(Level.FINE)) {
-			Set<String> baseSet = getKernelCalledInterfaceClasses();
-			for (final String base : baseSet) {			
-				String msg = "Interface class " + base + " has implemented by ";
-				List<String> derivedList = getDerivedClasses(base);
-				for (final String derived : derivedList)
-					msg += derived + " ";
-				logger.fine(msg);
-			}
+		// if (logger.isLoggable(Level.FINE)) {
+		// 	Set<String> baseSet = getKernelCalledInterfaceClasses();
+		// 	for (final String base : baseSet) {			
+		// 		String msg = "Interface class " + base + " has implemented by ";
+		// 		List<String> derivedList = getDerivedClasses(base);
+		// 		for (final String derived : derivedList)
+		// 			msg += derived + " ";
+		// 		logger.fine(msg);
+		// 	}
 
-			Set<String> itfMethodSet = getKernelCalledInterfaceMethods();
-			for (final String sig : itfMethodSet) {
-				List<MethodModel> methodImpls = getMethodImpls(sig);
-				String msg = "Interface method " + sig + " has " + methodImpls.size() + 
-						" possible implementations ";
-				for (final MethodModel impl : methodImpls)
-					msg += impl.getName() + " ";
-				logger.fine(msg);
-			}
-		}
+		// 	Set<String> itfMethodSet = getKernelCalledInterfaceMethods();
+		// 	for (final String sig : itfMethodSet) {
+		// 		List<MethodModel> methodImpls = getMethodImpls(sig);
+		// 		String msg = "Interface method " + sig + " has " + methodImpls.size() + 
+		// 				" possible implementations ";
+		// 		for (final MethodModel impl : methodImpls)
+		// 			msg += impl.getName() + " ";
+		// 		logger.fine(msg);
+		// 	}
+		// }
 
 		// Collect all methods called directly from kernel's run method
 		for (final MethodCall methodCall : methodModel.getMethodCalls()) {
@@ -1220,46 +1213,46 @@ public class Entrypoint implements Cloneable {
 		}
 	}
 
-	public ArrayList<String> findDerivedClasses(String baseClass) {
-		ArrayList<String> clzList = new ArrayList<String>();
-		for (final Object clazz : loadedClasses) {
-			boolean found = false;
+	// public ArrayList<String> findDerivedClasses(String baseClass) {
+	// 	ArrayList<String> clzList = new ArrayList<String>();
+	// 	for (final Object clazz : loadedClasses) {
+	// 		boolean found = false;
 
-			// Check interfaces
-			Class<?> [] interfaceList = ((Class) clazz).getInterfaces();
-			if (interfaceList.length == 0)
-				continue ;
-			for (final Class<?> itf : interfaceList) {
-				if (itf.getName().equals(baseClass)) {
-					clzList.add(((Class<?>) clazz).getName());
-					found = true;
-					break ;
-				}
-			}
+	// 		// Check interfaces
+	// 		Class<?> [] interfaceList = ((Class) clazz).getInterfaces();
+	// 		if (interfaceList.length == 0)
+	// 			continue ;
+	// 		for (final Class<?> itf : interfaceList) {
+	// 			if (itf.getName().equals(baseClass)) {
+	// 				clzList.add(((Class<?>) clazz).getName());
+	// 				found = true;
+	// 				break ;
+	// 			}
+	// 		}
 
-			// Check super class
-			if (found == false) {
-				Class<?> superClazz = ((Class) clazz).getSuperclass();
-				if (superClazz == null)
-					continue ;
-				if (superClazz.getName().contains(baseClass))
-					clzList.add(((Class<?>) clazz).getName());
-			}
-		}
-		return clzList;	
-	}
+	// 		// Check super class
+	// 		if (found == false) {
+	// 			Class<?> superClazz = ((Class) clazz).getSuperclass();
+	// 			if (superClazz == null)
+	// 				continue ;
+	// 			if (superClazz.getName().contains(baseClass))
+	// 				clzList.add(((Class<?>) clazz).getName());
+	// 		}
+	// 	}
+	// 	return clzList;	
+	// }
 
-	public ArrayList<String> findDefaultCustomizedClassModels() {
-		ArrayList<String> clzList = new ArrayList<String>();
-		for (final Object clazz : systemClasses) {
-			Class<?> superClazz = ((Class) clazz).getSuperclass();
-			if (superClazz == null)
-				continue ;
-			if (superClazz.getName().contains("CustomizedClassModel"))
-				clzList.add(((Class<?>) clazz).getName());
-		}
-		return clzList;	
-	}
+	// public ArrayList<String> findDefaultCustomizedClassModels() {
+	// 	ArrayList<String> clzList = new ArrayList<String>();
+	// 	for (final Object clazz : systemClasses) {
+	// 		Class<?> superClazz = ((Class) clazz).getSuperclass();
+	// 		if (superClazz == null)
+	// 			continue ;
+	// 		if (superClazz.getName().contains("CustomizedClassModel"))
+	// 			clzList.add(((Class<?>) clazz).getName());
+	// 	}
+	// 	return clzList;	
+	// }
 
 	public int getSizeOf(String desc) {
 		if (desc.equals("Z")) desc = "B";
@@ -1578,7 +1571,7 @@ public class Entrypoint implements Cloneable {
 						.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
 				} 
 				else if (refInst instanceof Return)
-					varName = "j2faOut";
+					varName = "s2fa_out";
 				else
 					throw new RuntimeException("cannot find the first argument for " + methodName + " from: " + refInst);
 

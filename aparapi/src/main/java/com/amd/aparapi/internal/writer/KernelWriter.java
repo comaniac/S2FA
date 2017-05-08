@@ -888,9 +888,6 @@ public abstract class KernelWriter extends BlockWriter {
 
 		write("// Kernel source code starts here");
 		newLine();
-		writeHeader();
-		write("#include \"j2fa_class.h\"");
-		newLine();
 
 		// Write method declaration
 		for (final MethodModel mm : merged) {

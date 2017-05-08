@@ -119,7 +119,8 @@ public class LoadedClassModel extends ClassModel {
 		// The java.lang.Object test is for unit test framework to succeed - should
 		// not occur in normal use
 		if ((mySuper != null) && (!mySuper.getName().equals(Kernel.class.getName()))
-		    && (!mySuper.getName().equals("java.lang.Object")))
+		    && (!mySuper.getName().equals("java.lang.Object")) 
+			&& (!mySuper.getName().contains("scala.runtime.AbstractFunction")))
 			superClazz = ClassModel.createClassModel(mySuper, null, new CustomizedClassModelMatcher(null));
 	}
 

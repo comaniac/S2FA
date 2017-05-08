@@ -2647,8 +2647,9 @@ public abstract class ClassModel {
 	 * @throws ClassParseException
 	 */
 	public void parse(Class<?> _class) throws ClassParseException {
-
 		clazz = _class;
+		if (clazz.getClassLoader() == null)
+			throw new RuntimeException("Unable to load ClassLoader from " + clazz.getName());
 		parse(_class.getClassLoader(), _class.getName());
 	}
 
@@ -2754,16 +2755,95 @@ public abstract class ClassModel {
 		else return superClazz.getField(_name);
 	}
 
-	public List<MethodModel> getAllInvokedMethodsByVar(String methodName, String methodDes, String varName) throws AparapiException {
-		final MethodModel methodModel = getMethodModel(methodName, methodDes);
+	/* This function collects a sequence of virtual method calls of the target variable.
+	 * Assumptions:
+	 * 1. The variable is loaded only once.
+	 * 2. All computation methods are called consecutively.
+	 * 3. The result of the computation is stored to another variable right after the computation.
+	 * 
+	 * @return A sorted map that has method type to lambda function pairs. 
+	*/
+	public List<String> getAllMethodCallsByVar(String methodName, String methodDes, String varName) throws AparapiException {
 
-		// Find all method invocations from the variable
-		logger.info(methodModel.getMethodCalls().size() + " method calls");
-		for (final MethodCall methodCall : methodModel.getMethodCalls()) {
-			//MethodEntry entry = methodCall.getConstantPoolMethodEntry();
-			logger.info(methodCall.toString());
+		final List<String> kernelFlow = new LinkedList<String>();
+		final ClassModelMethod method = getMethod(methodName, methodDes);
+		final MethodModel methodModel =  new LoadedMethodModel(method, false);
+
+		// Find all virtual method calls from the variable
+		for (Instruction i = methodModel.getPCHead(); i != null; i = i.getNextPC()) {
+
+			// Start from the load instruction that loads the target variable
+			if (!(i instanceof LocalVariableIndex08Load) && 
+				!(i instanceof LocalVariableConstIndexLoad)) {
+				continue ;
+			}
+			AccessLocalVariable var = (AccessLocalVariable) i;
+			LocalVariableInfo info = var.getLocalVariableInfo();
+			if (!info.getVariableName().equals(varName))
+				continue ;
+
+			// Fetch the object type of the target variable
+			String targetVarType = info.getVariableDescriptor();
+			if (!targetVarType.startsWith("L")) {
+				logger.severe("The target variable is not an object and cannot have kernels");
+				System.exit(0);
+			}
+			else {
+				// Cut the head "L" and tail ";"
+				targetVarType = targetVarType.substring(1, targetVarType.length() - 1);
+			}
+
+			logger.fine("Found an ALOAD instruction " + i.toString() + 
+				" for target variable " + varName);
+
+			// Search for all virtual method calls before storing the result
+			while (i != null && !(i instanceof LocalVariableIndex08Store) && 
+				!(i instanceof LocalVariableConstIndexStore)) {
+				if (i instanceof VirtualMethodCall) {
+					VirtualMethodCall methodCall = (VirtualMethodCall) i;
+					String methodCallerType = methodCall.getConstantPoolMethodEntry().
+						getClassEntry().getNameUTF8Entry().UTF8;
+
+					// Filter the method call from the target variable
+					if (methodCallerType.equals(targetVarType)) {
+						String methodCallName = methodCall.getConstantPoolMethodEntry().
+							getNameAndTypeEntry().getNameUTF8Entry().UTF8;
+						logger.fine("Method call: " + methodCallerType + "." + methodCallName);
+
+						// Check if the method call has lambda expression argument
+						boolean hasLambdaFunc = false;
+						MethodReferenceEntry.Arg[] args = methodCall.getConstantPoolMethodEntry().getArgs();
+						for (MethodReferenceEntry.Arg arg : args) {
+							if (arg.getType().contains("Lscala/Function"))
+								hasLambdaFunc = true;
+						}
+						
+						// Backtrack for the lambda expression function argument.
+						// Note that we cannot use most builtin methods such as "getArg" here 
+						// because we adopt the method init without analysis.
+						if (hasLambdaFunc) {
+							Instruction j = i;
+							while (j != null && !(j instanceof I_NEW))
+								j = j.getPrevPC();
+
+							I_NEW lfun = (I_NEW) j;
+							ClassEntry entry = lfun.getClassEntry();
+							if (entry == null) {
+								logger.severe("The instruction " + j.toString() + "'s u2 doesn't point to a class");
+								System.exit(1);
+							}
+							String lambdaName = lfun.getClassEntry().getNameUTF8Entry().UTF8;
+							kernelFlow.add(methodCallName + "(" + lambdaName + ")");
+							logger.fine("Lambda expression: " + lfun.getClassEntry().getNameUTF8Entry().UTF8);
+						}
+						else
+							kernelFlow.add(methodCallName + "()");
+					}
+				}
+				i = i.getNextPC();
+			}
 		}
-		return new LinkedList<MethodModel>();
+		return kernelFlow;
 	}
 
 	public ClassModelMethod getKernelMethod(String expectName, String expectDes) {
@@ -2976,17 +3056,15 @@ public abstract class ClassModel {
 	});
 
 	public Entrypoint getEntrypoint(String _entrypointName, String _descriptor,
-	                                Object _k, Collection<JParameter> params, 
-																	URLClassLoader loader, Map<String, String> typeEnv
-	) throws AparapiException {
+	                                Object _k, Collection<JParameter> params) throws AparapiException {
 		final MethodModel method = getMethodModel(_entrypointName, _descriptor);
-		return new Entrypoint(this, method, _k, params, loader, typeEnv);
+		return new Entrypoint(this, method, _k, params);
 	}
 
 	Entrypoint computeBasicEntrypoint(EntrypointKey entrypointKey) throws AparapiException {
 		final MethodModel method = getMethodModel(entrypointKey.getEntrypointName(),
 		                           entrypointKey.getDescriptor());
-		return new Entrypoint(this, method, null, entrypointKey.getParams(), null, null);
+		return new Entrypoint(this, method, null, entrypointKey.getParams());
 	}
 
 	public String getClassName() {
@@ -2998,11 +3076,11 @@ public abstract class ClassModel {
 	}
 
 	public Entrypoint getEntrypoint(String _entrypointName, Object _k) throws AparapiException {
-		return (getEntrypoint(_entrypointName, "()V", _k, null, null, null));
+		return (getEntrypoint(_entrypointName, "()V", _k, null));
 	}
 
 	public Entrypoint getEntrypoint() throws AparapiException {
-		return (getEntrypoint("run", "()V", null, null, null, null));
+		return (getEntrypoint("run", "()V", null, null));
 	}
 
 	public static void invalidateCaches() {

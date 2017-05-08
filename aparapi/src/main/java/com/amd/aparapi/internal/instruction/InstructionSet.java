@@ -3429,6 +3429,17 @@ public class InstructionSet {
 		@Override public String getDescription() {
 			return ("new");
 		}
+
+		public int getConstantPoolIndex() {
+			return (index);
+		}
+
+		public ClassEntry getClassEntry() {
+			Entry entry = method.getConstantPool().get(getConstantPoolIndex());
+			if (!(entry instanceof ClassEntry))
+				return null;
+			return ((ClassEntry) entry);
+		}
 	}
 
 	public static class I_NEWARRAY extends Instruction implements New {

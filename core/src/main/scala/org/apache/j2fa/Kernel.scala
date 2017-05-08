@@ -24,6 +24,7 @@ import scala.sys.process._
 import scala.collection.mutable.Map
 import collection.JavaConverters._
 
+import java.lang.reflect.Method
 import java.util._
 import java.util.logging.Logger
 import java.io._
@@ -44,12 +45,7 @@ import com.amd.aparapi.internal.util.{Utils => AparapiUtils}
 
 import org.apache.j2fa.AST._
 
-class Kernel(
-    typeEnv: Map[String, String], 
-    accClazz: Class[_], 
-    mInfo: MethodInfo, 
-    loader: URLClassLoader
-  ) {
+class Kernel(kernelSig: String) {
   val logger = Logger.getLogger(Config.getLoggerName)
 
   var kernelString: String = ""
@@ -59,69 +55,83 @@ class Kernel(
 
   def getHeader = headerString
 
-  def generate: Boolean = {
-    val mName = mInfo.getName
-    if (mInfo.getConfig("output_format") == "Merlin")
-      System.setProperty("com.amd.aparapi.enable.MERLIN", "true")
-    else
-      System.setProperty("com.amd.aparapi.enable.MERLIN", "false")
-
-    System.setProperty("com.amd.aparapi.kernelType", mInfo.getConfig("kernel_type"))
-
-    val classModel : ClassModel = ClassModel.createClassModel(accClazz, null, 
-      new CustomizedClassModelMatcher(null))
+  def generateWithLambdaExp(kernelName: String, kernelType: String, 
+    lambdaClassName: String): Boolean = {
+    System.setProperty("com.amd.aparapi.kernelType", kernelType)
 
     try {
-      // Setup arguments and return values
-      val params : LinkedList[JParameter] = new LinkedList[JParameter]
-      mInfo.getArgs.foreach({ arg =>
-        val param = JParameter.createParameter(
-            arg.getFullType, arg.getName, JParameter.DIRECTION.IN)
-        params.add(param)
-      })
-      if (mInfo.hasOutput) {
-        val outArg = mInfo.getOutput
-        val param = JParameter.createParameter(
-            outArg.getFullType, "j2faOut", JParameter.DIRECTION.OUT)
-        params.add(param)
-      }
-
-      // Identify the kernel method object
-      val methods = accClazz.getMethods.filter(m => m.getName.equals(mName))
-      var fun: Object = null
+      val clazz = getClass.getClassLoader.loadClass(lambdaClassName)
+      val classModel : ClassModel = ClassModel.createClassModel(clazz, null, 
+        new CustomizedClassModelMatcher(null))
+      
+      // Identify the apply method in the lambda class
+      val methods = clazz.getMethods
+      var applyMethod: Method = null
       methods.foreach(m => {
-        // Transform to signature
-        try {
-          val des = m.toString.replace(".", "/").split(' ')
-          val args = des(2).substring(des(2).indexOf('(') + 1, des(2).indexOf(')')).split(',')
-          var sig = "("
-          args.foreach(e => sig += Utils.asBytecodeType(e))
-          sig += ")" + Utils.asBytecodeType(des(1))
-          if (sig.equals(mInfo.getSig))
-            fun = m
-        } catch {
-          case _: Throwable =>
-            logger.warning("Transform method fail: " + m.toString)
+        if (!m.isBridge() && m.getName.equals("apply")) {
+          if (applyMethod != null)
+            logger.warning("Found multiple apply methods and only take the first one")
+          else
+            applyMethod = m
         }
       })
+      if (applyMethod == null) {
+        logger.severe("Cannot find the apply method in " + lambdaClassName)
+        System.exit(1)
+      }
+
+      // Setup arguments and return values
+      val params : LinkedList[JParameter] = new LinkedList[JParameter]
+      var sig = "("
+      applyMethod.getParameterTypes.zipWithIndex.foreach(arg => {
+        val argClazz = arg._1
+        val idx = arg._2
+        val param = JParameter.createParameter(
+            argClazz.getName, "s2fa_in_" + idx, JParameter.DIRECTION.IN)
+        params.add(param)
+        sig += Utils.asBytecodeType(argClazz.getName)
+      })
+      val returnType = applyMethod.getReturnType.getName
+      if (!returnType.equals("void")) {
+        val param = JParameter.createParameter(
+            returnType, "s2fa_out", JParameter.DIRECTION.OUT)
+        params.add(param)
+      }
+      sig += ")" + Utils.asBytecodeType(returnType)
+      logger.info("Kernel signature: " + sig)
 
       // Create Entrypoint and generate the kernel
-      val entryPoint = classModel.getEntrypoint(mName, mInfo.getSig, fun, params, loader, typeEnv.asJava)
+      val entryPoint = classModel.getEntrypoint("apply", sig, applyMethod, params)
       val writerAndKernel = KernelWriter.writeToString(entryPoint, params)
       var genString = writerAndKernel.kernel
       genString = KernelWriter.applyXilinxPatch(genString)
       headerString = genString.substring(0, genString.indexOf("// Kernel source code starts here\n"))
       kernelString = genString.substring(genString.indexOf("// Kernel source code starts here\n") + 34)
-      logger.info("Generate the kernel successfully")
       true
     } catch {
+      case e: java.lang.ClassNotFoundException =>
+        logger.severe("Cannot load class " + lambdaClassName + ", make sure " + 
+          "the -classpath covers all necessary files.")
+        false
       case e: Throwable =>
         val sw = new StringWriter
         e.printStackTrace(new PrintWriter(sw))
         val fullMsg = sw.toString
         logger.severe("Kernel generated failed: " + fullMsg)
         false
+    }    
+  }  
+
+  def generate: Boolean = {
+    val kernelName = kernelSig.replace("$", "_").replace("(", "_").replace(")", "_")
+    val kernelType = kernelSig.substring(0, kernelSig.indexOf('('))
+    val lambdaExpName = kernelSig.substring(kernelSig.indexOf('(') + 1, kernelSig.indexOf(')'))
+    if (lambdaExpName.length == 0) {
+      logger.finest(kernelSig + " doesn't have lambda expression")
+      true
     }
+    else
+      generateWithLambdaExp(kernelType, kernelType, lambdaExpName)
   } 
 }
 
