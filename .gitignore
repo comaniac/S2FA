@@ -9,7 +9,6 @@ dependency-reduced-pom.xml
 .project
 .vscode
 pom.properties
-test_app
 *.txt
 TEST*.xml
 compile.sh
