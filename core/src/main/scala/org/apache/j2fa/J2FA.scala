@@ -148,8 +148,10 @@ object J2FA {
 
       // Generate the top function to build the DAG
       kernelList = kernelList.reverse
-      val topKernel = new TopKernelWriter(outPath, kernelList)      
-
+      val topKernelWriter = new TopKernelWriter(kernelList)      
+      val pw = new PrintWriter(new File(outPath + "/kernel_top.cpp"))
+      pw.write(topKernelWriter.writeToString)
+      pw.close
     } catch {
       case e: java.lang.ClassNotFoundException =>
         logger.severe("Cannot load class " + args(0) + ", make sure " + 

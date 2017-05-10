@@ -20,10 +20,11 @@ import java.io._
 import collection.JavaConversions._
 
 import com.amd.aparapi.Config
+import com.amd.aparapi.internal.writer.KernelWriter
 import com.amd.aparapi.internal.writer.JParameter
 import com.amd.aparapi.internal.writer.JParameter.DIRECTION
 
-class TopKernelWriter(filePath: String, kernelList : List[Kernel]) {
+class TopKernelWriter(kernelList : List[Kernel]) {
     val logger = Logger.getLogger(Config.getLoggerName)
 
     if (logger.isLoggable(Level.FINEST)) {
@@ -31,54 +32,68 @@ class TopKernelWriter(filePath: String, kernelList : List[Kernel]) {
         kernelList.foreach(k => logger.finest("-> " + k.getKernelName))
     }
 
-    // Open the top kernel file
-    val pw = new PrintWriter(new File(filePath + "/kernel_top.cpp"))
+    // Create a string builder for writing the kernel
+    val sb = new StringBuilder
 
-    // Write headers
-    writeln("#include <string.h>")
+    def writeToString(): String = {
+        // Write headers
+        writeln("#include <string.h>")
 
-    // Write subkernels
-    kernelList.foreach(k => {
-        writeln("// ============")
-        writeln("// Kernel " + k.getKernelName + " Start")
-        writeln("// ============")
-        write(k.getKernel) // FIXME: Subfunction name conflict
-        writeln("// ============")
-        writeln("// Kernel " + k.getKernelName + " End")
-        writeln("// ============")        
-    })
+        // Write subkernels
+        kernelList.foreach(k => {
+            writeln("// ============")
+            writeln("// Kernel " + k.getKernelName + " Start")
+            writeln("// ============")
+            write(k.getKernel) // FIXME: Subfunction name conflict
+            writeln("// ============")
+            writeln("// Kernel " + k.getKernelName + " End")
+            writeln("// ============")        
+        })
 
-    // Write the top kernel
-    writeln()
-    write("void kernel_top(int N")
+        // Write the top kernel
+        writeln()
+        write("void kernel_top(int N")
 
-    // Take input arguments from the first kernel
-    val firstKernelArgs = asScalaBuffer(kernelList.head.getArgs)
-    firstKernelArgs.foreach(arg => {
-        if (arg.getDir == JParameter.DIRECTION.IN)
-            write(",\n\t" + arg.getCType + " *" + arg.getName)
-    })
+        // Take input arguments from the first kernel
+        val firstKernelArgs = asScalaBuffer(kernelList.head.getArgs)
+        firstKernelArgs.foreach(arg => {
+            if (arg.getDir == JParameter.DIRECTION.IN)
+                write(",\n\t" + arg.getCType + "* " + arg.getName)
+        })
 
-    // Take the output arguments from the last kernel
-    val lastKernelArgs = asScalaBuffer(kernelList.last.getArgs)
-    lastKernelArgs.foreach(arg => {
-        if (arg.getDir == JParameter.DIRECTION.OUT)
-            write(",\n\t" + arg.getCType + " *" + arg.getName)
-    })
+        // Take the output arguments from the last kernel
+        val lastKernelArgs = asScalaBuffer(kernelList.last.getArgs)
+        lastKernelArgs.foreach(arg => {
+            if (arg.getDir == JParameter.DIRECTION.OUT)
+                write(",\n\t" + arg.getCType + "* " + arg.getName)
+        })
 
-    // Broadcast arguments
+        // Broadcast arguments
+        var refArgs = Set[JParameter]()
+        kernelList.foreach(k => {
+            val refArgSet = asScalaBuffer(k.getRefArgs).toSet
+            refArgs = refArgs | refArgSet
+            logger.info("total " + refArgs.size + " refs")
+        })
+        refArgs.foreach(arg => {
+            write(",\n\t" + arg.getCType + " " + arg.getName)
+        })
 
-    writeln(") {")
+        writeln(") {")
 
-    kernelList.foreach(kernel => {
-        write(kernel.getKernelName + "(")
-        writeln(");")
-    })
+        kernelList.foreach(kernel => {
+            write(kernel.getKernelName + "(")
+            writeln(");")
+        })
 
-    writeln("}")
-    pw.close
+        writeln("}")
+        commitToString
+    }
 
-    // Writer utils
+    def commitToString(): String = {
+        val str = sb.toString
+        KernelWriter.postProcforHLS(str)
+    }
 
     def writeln(): Unit = writeln("")
 
@@ -87,6 +102,6 @@ class TopKernelWriter(filePath: String, kernelList : List[Kernel]) {
     }
 
     def write(_string: String): Unit = {
-        pw.write(_string)
+        sb.append(_string)
     }
 }

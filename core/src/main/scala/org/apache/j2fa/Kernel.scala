@@ -48,8 +48,11 @@ import org.apache.j2fa.AST._
 class Kernel(kernelSig: String) {
   val logger = Logger.getLogger(Config.getLoggerName)
 
-  val params : LinkedList[JParameter] = new LinkedList[JParameter]
+  val params : List[JParameter] = new LinkedList[JParameter]
   def getArgs = params
+
+  var refParams: List[JParameter] = new LinkedList[JParameter]
+  def getRefArgs = refParams
 
   var kernelString: String = ""
   var headerString: String = ""
@@ -108,8 +111,9 @@ class Kernel(kernelSig: String) {
       // Create Entrypoint and generate the kernel
       val entryPoint = classModel.getEntrypoint("apply", sig, applyMethod, params)
       val writerAndKernel = KernelWriter.writeToString(kernelName, entryPoint, params)
+      refParams = KernelWriter.getRefArgs(entryPoint)
       var genString = writerAndKernel.kernel
-      genString = KernelWriter.applyXilinxPatch(genString)
+      genString = KernelWriter.postProcforHLS(genString)
       headerString = genString.substring(0, genString.indexOf("// Kernel source code starts here\n"))
       kernelString = genString.substring(genString.indexOf("// Kernel source code starts here\n") + 34)
       true

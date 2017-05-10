@@ -512,7 +512,7 @@ public abstract class KernelWriter extends BlockWriter {
 			if (cm != null)
 				fullReturnType = cm.getMangledClassName();
 			else
-				fullReturnType = Utils.convertToCType(entryPoint.getArgument("j2faOut").getCType());
+				fullReturnType = Utils.convertToCType(entryPoint.getArgument("s2fa_out").getCType());
 
 			// Object must be passed by address
 			fullReturnType += "*";
@@ -656,7 +656,7 @@ public abstract class KernelWriter extends BlockWriter {
 				if (retClazzModel != null)
 					fullReturnType = retClazzModel.getMangledClassName();
 				else
-					fullReturnType = Utils.convertToCType(entryPoint.getArgument("j2faOut").getCType());
+					fullReturnType = Utils.convertToCType(entryPoint.getArgument("s2fa_out").getCType());
 			} else
 				fullReturnType = convertedReturnType;
 
@@ -1034,7 +1034,7 @@ public abstract class KernelWriter extends BlockWriter {
 		return XilinxMethodMap.get(_method)[idx];
 	}
 
-	public static String applyXilinxPatch(String kernel) {
+	public static String postProcforHLS(String kernel) {
 		String xKernel = kernel.replace("$", "___");
 
 		// Add specified work group number
@@ -1087,5 +1087,21 @@ public abstract class KernelWriter extends BlockWriter {
 		String kernel = openCLStringBuilder.toString();
 
 		return (new WriterAndKernel(openCLWriter, kernel));
+	}
+
+	public static List<JParameter> getRefArgs(Entrypoint _entrypoint) 
+		throws AparapiException {
+		List<JParameter> refParams = new LinkedList<JParameter>();
+
+		for (final ClassModelField field : _entrypoint.getReferencedClassModelFields()) {
+			String signature = field.getDescriptorUTF8Entry().getUTF8();
+			if (signature.startsWith("L") && field.hasTypeHint())
+				signature += "<" + field.getDescriptor() + ">";
+			JParameter param = JParameter.createParameter(signature, field.getName(), JParameter.DIRECTION.IN);
+			param.setAsReference();
+			param.init(_entrypoint);
+			refParams.add(param);
+		}
+		return refParams;
 	}
 }
