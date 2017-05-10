@@ -82,6 +82,9 @@ object J2FA {
 
     logger.info("Loading target class: " + args(0))
     try {
+      var kernelList = List[Kernel]()
+      val outPath = args(1).substring(0, args(1).lastIndexOf("/") + 1)
+
       // Load the target class
       val clazz = getClass().getClassLoader().loadClass(args(0))
 
@@ -112,12 +115,12 @@ object J2FA {
           methodCalls.foreach(call => logger.fine("  -> " + call))
 
           // Compile each kernel method to accelerator kernel
-          val outPath = args(1).substring(0, args(1).lastIndexOf("/") + 1)
           methodCalls.foreach(call => {
             logger.info("Compiling kernel " + call)
             val kernel = new Kernel(call)
+            kernelList = kernel :: kernelList
             if (kernel.generate == true) {
-              val fileName = call.replace("(", "_").replace(")", "").replace("$", "")
+              val fileName = Utils.getLegalKernelName(call)
               val filePath = outPath + fileName
 
               // Write kernel code
@@ -138,10 +141,15 @@ object J2FA {
               logger.info("Successfully generated the kernel " + call)
             }
             else
-              logger.info("Fail to generate the kernel " + call)           
+              throw new RuntimeException("Fail to generate the kernel " + call)
           })
         }
       })
+
+      // Generate the top function to build the DAG
+      kernelList = kernelList.reverse
+      val topKernel = new TopKernelWriter(outPath, kernelList)      
+
     } catch {
       case e: java.lang.ClassNotFoundException =>
         logger.severe("Cannot load class " + args(0) + ", make sure " + 

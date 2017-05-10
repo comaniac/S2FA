@@ -45,4 +45,8 @@ object Utils {
     params.foreach(e => sig += e)
     sig + ")" + ret
   }
+
+  def getLegalKernelName(str : String): String = {
+    str.replace("(", "_").replace(")", "").replace("$", "")    
+  }
 }

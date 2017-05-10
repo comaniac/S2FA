@@ -154,7 +154,7 @@ public class InstructionHelper {
 			return (sw.toString());
 		}
 
-		@Override public void write(Entrypoint entryPoint,
+		@Override public void write(String kernelName, Entrypoint entryPoint,
 		                            java.util.Collection<JParameter> params) {
 			// TODO Auto-generated method stub
 		}

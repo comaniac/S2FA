@@ -1043,6 +1043,6 @@ public abstract class BlockWriter {
 			writeBlock(_methodModel.getExprHead(), null);
 	}
 
-	public abstract void write(Entrypoint entryPoint,
+	public abstract void write(String kernelName, Entrypoint entryPoint,
 	                           Collection<JParameter> params) throws CodeGenException;
 }

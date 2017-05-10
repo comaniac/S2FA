@@ -799,7 +799,7 @@ public abstract class KernelWriter extends BlockWriter {
 		newLine();
 	}
 
-	@Override public void write(Entrypoint _entryPoint,
+	@Override public void write(String kernelName, Entrypoint _entryPoint,
 	                            Collection<JParameter> params) throws CodeGenException {
 		String refArgsCall = "";
 		String refArgsDef = "";
@@ -899,10 +899,10 @@ public abstract class KernelWriter extends BlockWriter {
 			writeMethodDecl(mm, refArgsDef);
 		}
 
-		// Start writing main function
+		// Start writing kernel function
 		JParameter outParam = null;
 		newLine();
-		write("void run(");
+		write("void " + kernelName + "(");
 		in();
 		in();
 		newLine();
@@ -1049,7 +1049,7 @@ public abstract class KernelWriter extends BlockWriter {
 		return xKernel;
 	}
 
-	public static WriterAndKernel writeToString(Entrypoint _entrypoint,
+	public static WriterAndKernel writeToString(String kernelName, Entrypoint _entrypoint,
 	    Collection<JParameter> params) throws CodeGenException, AparapiException {
 
 		final StringBuilder openCLStringBuilder = new StringBuilder();
@@ -1077,7 +1077,7 @@ public abstract class KernelWriter extends BlockWriter {
 			}
 		};
 		try {
-			openCLWriter.write(_entrypoint, params);
+			openCLWriter.write(kernelName, _entrypoint, params);
 		} catch (final CodeGenException codeGenException) {
 			throw codeGenException;
 		}/* catch (final Throwable t) {

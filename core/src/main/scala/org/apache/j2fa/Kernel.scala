@@ -50,13 +50,16 @@ class Kernel(kernelSig: String) {
 
   var kernelString: String = ""
   var headerString: String = ""
-
   def getKernel = kernelString
-
   def getHeader = headerString
 
-  def generateWithLambdaExp(kernelName: String, kernelType: String, 
-    lambdaClassName: String): Boolean = {
+  val kernelName = Utils.getLegalKernelName(kernelSig)
+  val kernelType = kernelSig.substring(0, kernelSig.indexOf('('))
+  val lambdaClassName = kernelSig.substring(kernelSig.indexOf('(') + 1, kernelSig.indexOf(')'))
+  def getKernelName = kernelName
+  def getKernelType = kernelType
+
+  def generateWithLambdaExp: Boolean = {
     System.setProperty("com.amd.aparapi.kernelType", kernelType)
 
     try {
@@ -102,7 +105,7 @@ class Kernel(kernelSig: String) {
 
       // Create Entrypoint and generate the kernel
       val entryPoint = classModel.getEntrypoint("apply", sig, applyMethod, params)
-      val writerAndKernel = KernelWriter.writeToString(entryPoint, params)
+      val writerAndKernel = KernelWriter.writeToString(kernelName, entryPoint, params)
       var genString = writerAndKernel.kernel
       genString = KernelWriter.applyXilinxPatch(genString)
       headerString = genString.substring(0, genString.indexOf("// Kernel source code starts here\n"))
@@ -123,15 +126,33 @@ class Kernel(kernelSig: String) {
   }  
 
   def generate: Boolean = {
-    val kernelName = kernelSig.replace("$", "_").replace("(", "_").replace(")", "_")
-    val kernelType = kernelSig.substring(0, kernelSig.indexOf('('))
-    val lambdaExpName = kernelSig.substring(kernelSig.indexOf('(') + 1, kernelSig.indexOf(')'))
-    if (lambdaExpName.length == 0) {
+    if (lambdaClassName.length == 0) {
       logger.finest(kernelSig + " doesn't have lambda expression")
       true
     }
     else
-      generateWithLambdaExp(kernelType, kernelType, lambdaExpName)
-  } 
+      generateWithLambdaExp
+  }
+
+  def getArgString: String = {
+    require(kernelString != "", "Cannot invoke this method before generating kernel!")
+    val argStart = kernelString.indexOf(kernelName + "(") + kernelName.length + 1
+    val argEnd = kernelString.indexOf(")", kernelString.indexOf(kernelName + "(") + kernelName.length + 1)
+    kernelString.substring(argStart, argEnd)
+  }
+
+  def getArgList: scala.List[(String, String)] = {
+    val argList = getArgString.split(",").map(e => e.trim)
+    var args = scala.List[(String, String)]()
+
+    argList.foreach(arg => {
+      val typeAndName = arg.split(" ")
+      if (typeAndName(1).startsWith("*"))
+        args = (typeAndName(1).substring(1) -> (typeAndName(0) + "*")) :: args
+      else
+        args = (typeAndName(1) -> typeAndName(0)) :: args
+    })
+    args.reverse
+  }
 }
 
