@@ -48,6 +48,9 @@ import org.apache.j2fa.AST._
 class Kernel(kernelSig: String) {
   val logger = Logger.getLogger(Config.getLoggerName)
 
+  val params : LinkedList[JParameter] = new LinkedList[JParameter]
+  def getArgs = params
+
   var kernelString: String = ""
   var headerString: String = ""
   def getKernel = kernelString
@@ -84,7 +87,6 @@ class Kernel(kernelSig: String) {
       }
 
       // Setup arguments and return values
-      val params : LinkedList[JParameter] = new LinkedList[JParameter]
       var sig = "("
       applyMethod.getParameterTypes.zipWithIndex.foreach(arg => {
         val argClazz = arg._1
@@ -139,20 +141,6 @@ class Kernel(kernelSig: String) {
     val argStart = kernelString.indexOf(kernelName + "(") + kernelName.length + 1
     val argEnd = kernelString.indexOf(")", kernelString.indexOf(kernelName + "(") + kernelName.length + 1)
     kernelString.substring(argStart, argEnd)
-  }
-
-  def getArgList: scala.List[(String, String)] = {
-    val argList = getArgString.split(",").map(e => e.trim)
-    var args = scala.List[(String, String)]()
-
-    argList.foreach(arg => {
-      val typeAndName = arg.split(" ")
-      if (typeAndName(1).startsWith("*"))
-        args = (typeAndName(1).substring(1) -> (typeAndName(0) + "*")) :: args
-      else
-        args = (typeAndName(1) -> typeAndName(0)) :: args
-    })
-    args.reverse
   }
 }
 

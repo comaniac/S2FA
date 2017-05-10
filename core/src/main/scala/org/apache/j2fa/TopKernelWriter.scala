@@ -17,8 +17,11 @@
 package org.apache.j2fa
 import java.util.logging._
 import java.io._
+import collection.JavaConversions._
 
 import com.amd.aparapi.Config
+import com.amd.aparapi.internal.writer.JParameter
+import com.amd.aparapi.internal.writer.JParameter.DIRECTION
 
 class TopKernelWriter(filePath: String, kernelList : List[Kernel]) {
     val logger = Logger.getLogger(Config.getLoggerName)
@@ -47,31 +50,28 @@ class TopKernelWriter(filePath: String, kernelList : List[Kernel]) {
 
     // Write the top kernel
     writeln()
-    write("void kernel_top(")
+    write("void kernel_top(int N")
 
     // Take input arguments from the first kernel
-    var isFirst = true
-    val firstKernelArgList = kernelList.head.getArgList
-    firstKernelArgList.foreach(arg => {
-        if (!arg._1.startsWith("s2fa_out")) {
-            if (!isFirst)
-                write(",\n\t")
-            write(arg._2 + " " + arg._1)
-            isFirst = false
-        }
+    val firstKernelArgs = asScalaBuffer(kernelList.head.getArgs)
+    firstKernelArgs.foreach(arg => {
+        if (arg.getDir == JParameter.DIRECTION.IN)
+            write(",\n\t" + arg.getCType + " *" + arg.getName)
     })
 
     // Take the output arguments from the last kernel
-    val lastKernelArgList = kernelList.last.getArgList
-    lastKernelArgList.foreach(arg => {
-        if (arg._1.startsWith("s2fa_out"))
-            write(",\n\t" + arg._2 + " " + arg._1)
+    val lastKernelArgs = asScalaBuffer(kernelList.last.getArgs)
+    lastKernelArgs.foreach(arg => {
+        if (arg.getDir == JParameter.DIRECTION.OUT)
+            write(",\n\t" + arg.getCType + " *" + arg.getName)
     })
+
+    // Broadcast arguments
+
     writeln(") {")
 
     kernelList.foreach(kernel => {
         write(kernel.getKernelName + "(")
-        val argList = kernel.getArgList
         writeln(");")
     })
 
