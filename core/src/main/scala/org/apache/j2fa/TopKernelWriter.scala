@@ -35,6 +35,11 @@ class TopKernelWriter(kernelList : List[Kernel]) {
     // Create a string builder for writing the kernel
     val sb = new StringBuilder
 
+    // Indent level for code formatting
+    val indent_pat = "  "
+    var indent = 0
+    var write_indent = true
+
     def writeToString(): String = {
         // Write headers
         writeln("#include <string.h>")
@@ -52,20 +57,22 @@ class TopKernelWriter(kernelList : List[Kernel]) {
 
         // Write the top kernel
         writeln()
-        write("void kernel_top(int N")
+        write("void kernel_top(int s2fa_total_task_num")
 
         // Take input arguments from the first kernel
         val firstKernelArgs = asScalaBuffer(kernelList.head.getArgs)
         firstKernelArgs.foreach(arg => {
             if (arg.getDir == JParameter.DIRECTION.IN)
-                write(",\n\t" + arg.getCType + "* " + arg.getName)
+                write(",\n" + indent_pat + arg.getCType + "* " + 
+                    kernelList.head.getKernelName + "_" + arg.getName)
         })
 
         // Take the output arguments from the last kernel
         val lastKernelArgs = asScalaBuffer(kernelList.last.getArgs)
         lastKernelArgs.foreach(arg => {
             if (arg.getDir == JParameter.DIRECTION.OUT)
-                write(",\n\t" + arg.getCType + "* " + arg.getName)
+                write(",\n" + indent_pat + arg.getCType + "* " + 
+                    kernelList.last.getKernelName + "_" + arg.getName)
         })
 
         // Broadcast arguments
@@ -73,21 +80,86 @@ class TopKernelWriter(kernelList : List[Kernel]) {
         kernelList.foreach(k => {
             val refArgSet = asScalaBuffer(k.getRefArgs).toSet
             refArgs = refArgs | refArgSet
-            logger.info("total " + refArgs.size + " refs")
         })
         refArgs.foreach(arg => {
-            write(",\n\t" + arg.getCType + " " + arg.getName)
+            write(",\n" + indent_pat + arg.getCType + " " + arg.getName)
         })
 
         writeln(") {")
+        in()
 
-        kernelList.foreach(kernel => {
+        // Function body
+
+        // Inter-kernel buffer declaration 
+        // Argunment format for kernels: (taskNum, input, output, reference)
+        kernelList.view.zipWithIndex.foreach({case(k, idx) => 
+            if (idx != 0) { // The first kernel inputs are top kernel arguments
+                asScalaBuffer(k.getArgs).foreach(arg => {
+                    if (arg.getDir == JParameter.DIRECTION.IN) {
+                        writeln(arg.getCType + " " + k.getKernelName + 
+                            "_" + arg.getName + "[];")
+                        // FIXME: Array size
+                    }
+                })
+            }
+        })
+
+        // Batch size declaration
+        // FIXME         
+
+        // Outermost loop for tasks
+        writeln("for (int task = 0; task < s2fa_total_task_num; task += global_batch_size) {")
+        in()  
+
+        // Kernel function calls
+        kernelList.view.zipWithIndex.foreach({case(kernel, idx) => 
             write(kernel.getKernelName + "(")
+            write("global_batch_size") // Batch size (total task number )
+
+            // Input
+            asScalaBuffer(kernel.getArgs).foreach(arg => {
+                if (arg.getDir == JParameter.DIRECTION.IN)
+                    write(", " + kernel.getKernelName + "_" + arg.getName)
+            })
+
+            // Output
+            if (idx == kernelList.size - 1) {
+                // Outputs of the last kernel are arguments
+                asScalaBuffer(kernel.getArgs).foreach(arg => {
+                    if (arg.getDir == JParameter.DIRECTION.OUT)
+                        write(", " + kernel.getKernelName + "_" + arg.getName)
+                })
+            }
+            else {
+                // Outputs of other kernels are inputs of the next kernel
+                val nextKernel = kernelList(idx + 1)
+                asScalaBuffer(nextKernel.getArgs).foreach(arg => {
+                    if (arg.getDir == JParameter.DIRECTION.IN)
+                        write(", " + nextKernel.getKernelName + "_" + arg.getName)
+                })                
+            }
+
+            // Reference
+            asScalaBuffer(kernel.getRefArgs).foreach(arg => {
+                write(", " + arg.getName)
+            })
+
             writeln(");")
         })
 
+        out()
+        writeln("}")
+        out()        
         writeln("}")
         commitToString
+    }
+
+    def in() = {
+        indent += 1
+    }
+
+    def out() = {
+        indent = if (indent > 0) indent - 1 else indent
     }
 
     def commitToString(): String = {
@@ -99,9 +171,14 @@ class TopKernelWriter(kernelList : List[Kernel]) {
 
     def writeln(_string: String): Unit = {
         write(_string + "\n")
+        write_indent = true
     }
 
     def write(_string: String): Unit = {
+        if (write_indent) {
+            1 to indent foreach(_ => sb.append("  "))
+            write_indent = false
+        }
         sb.append(_string)
     }
 }
