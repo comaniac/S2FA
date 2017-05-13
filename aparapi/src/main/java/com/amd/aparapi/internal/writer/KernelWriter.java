@@ -269,6 +269,22 @@ public abstract class KernelWriter extends BlockWriter {
 	@Override 
 	public boolean writeMethod(MethodCall _methodCall, MethodEntry _methodEntry) 
 		throws CodeGenException {
+
+		// NOTE: "argc" is inaccurate for C generation because Java doesn't have to
+		// pass class fields to other methods. For example:
+		// public int bar() {
+		//   return my_field + 10; // "my_field" doesn't have to be an argument.
+		// }
+		// public int foo() {
+		//   return bar(); // foo() doesn't have to pass "my_field"
+		// }
+		// However in C code, we have to bypass the field:
+		// int bar(int my_field) { ... }
+		// int foo(int my_field) { return bar(my_field); }
+		//
+		// Solution:
+		// Looking into the MethodModel.getReferencedFields of the called method.
+
 		final int argc = _methodEntry.getStackConsumeCount();
 		final String methodName =
 		  _methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
@@ -410,10 +426,20 @@ public abstract class KernelWriter extends BlockWriter {
 		} else
 			write(intrinsicMapping);
 
-		// write arguments of real method call
+		// start writing arguments
 		write("(");
 
 		boolean isFirst = true;
+
+		// write arguement for referenced fields
+		for (final Map.Entry<String, String> entry : m.getReferencedFieldNames().entrySet()) {
+			if (!isFirst)
+				write(", ");
+			isFirst = false;
+			write(entry.getKey());
+		}
+
+		// write arguments of real method call
 		for (int arg = 0; arg < argc; arg++) {
 			if (!isFirst)
 				write(", ");
@@ -480,7 +506,7 @@ public abstract class KernelWriter extends BlockWriter {
 	}
 
 
-	private void writeMethodDecl(MethodModel mm, String refArgsDef) 
+	private void writeMethodDecl(MethodModel mm, List<JParameter> refParams) 
 		throws CodeGenException {
 		final String returnType = mm.getReturnType();
 		this.currentReturnType = returnType;
@@ -528,16 +554,20 @@ public abstract class KernelWriter extends BlockWriter {
 		boolean isFirst = true;
 
 		// Write reference arguments if necessary
-		// Only write reference arguments for "call" method
-		if (!mm.getMethod().isStatic() && mm.getMethodName().equals("call")) {
-			if ((mm.getMethod().getClassModel() == entryPoint.getClassModel())
-			    || mm.getMethod().getClassModel().isSuperClass(
-			      entryPoint.getClassModel().getClassWeAreModelling())) {
-				if (refArgsDef.length() > 0) {
-					write(refArgsDef);
+		if ((mm.getMethod().getClassModel() == entryPoint.getClassModel()) || 
+			mm.getMethod().getClassModel().isSuperClass(entryPoint.getClassModel()
+			.getClassWeAreModelling())) {
+				for (final Map.Entry<String, String> refField : mm.getReferencedFieldNames().entrySet()) {
+					if (!isFirst)
+						write(", ");
+					for (JParameter param : refParams) {
+						if (param.getName().equals(refField.getKey())) {
+							write(param.getCType() + " " + param.getName());
+							break;
+						}
+					}
 					isFirst = false;
 				}
-			}
 		}
 
 		// Write arguments
@@ -594,7 +624,7 @@ public abstract class KernelWriter extends BlockWriter {
 		return ;
 	}
 
-	private void emitExternalObjectDef(ClassModel cm, List<MethodModel> merged, String refArgsDef) 
+	private void emitExternalObjectDef(ClassModel cm, List<MethodModel> merged, List<JParameter> refParams) 
 		throws CodeGenException {
 		final ArrayList<FieldNameInfo> fieldSet = cm.getStructMembers();
 
@@ -741,7 +771,7 @@ public abstract class KernelWriter extends BlockWriter {
 			if (mm.getOwnerClassMangledName().equals(mangledClassName)) {
 				logger.fine("Writing member method " + mm.getName());
 				newLine();
-				writeMethodDecl(mm, refArgsDef);
+				writeMethodDecl(mm, refParams);
 				newLine();
 			}
 		}
@@ -813,18 +843,18 @@ public abstract class KernelWriter extends BlockWriter {
 		useMerlinKernel = entryPoint.config.enableMerlinKernel;
 
 		// Add reference fields to argument list
-		for (final ClassModelField field : _entryPoint.getReferencedClassModelFields()) {
-			String signature = field.getDescriptorUTF8Entry().getUTF8();
-			if (signature.startsWith("L") && field.hasTypeHint())
-				signature += "<" + field.getDescriptor() + ">";
-			JParameter param = JParameter.createParameter(signature, field.getName(), JParameter.DIRECTION.IN);
-			logger.fine("Create reference JParameter: " + param.toString());
-			param.setAsReference();
-			param.init(entryPoint);
+		List<JParameter> refParams = new LinkedList<JParameter>();
+		try {
+			refParams = getRefArgs(entryPoint);
+		} catch(AparapiException e) {
+			logger.severe("Cannot get the reference argument list");
+			System.exit(1);
+		}
+		for (final JParameter param : refParams) {
 			if (_entryPoint.getCustomizedClassModels().hasClass(param.getTypeName()))
 				_entryPoint.addCustomizedClass(param.getClassModel());
 
-			boolean isPointer = signature.startsWith("[");
+			boolean isPointer = param.isArray();
 
 			refArgsDef += param.getParameterCode() + ", ";
 			if (param instanceof ObjectJParameter && param.isArray())
@@ -866,7 +896,7 @@ public abstract class KernelWriter extends BlockWriter {
 				final String mangled = cm.getMangledClassName();
 				if (emitted.contains(mangled)) continue;
 
-				emitExternalObjectDef(cm, merged, refArgsDef);
+				emitExternalObjectDef(cm, merged, refParams);
 				emitted.add(mangled);
 			}
 		}
@@ -896,7 +926,7 @@ public abstract class KernelWriter extends BlockWriter {
 			if (lexicalOrdering.contains(mm.getOwnerClassName()))
 				continue;
 			logger.fine("Writing method " + mm.getName());
-			writeMethodDecl(mm, refArgsDef);
+			writeMethodDecl(mm, refParams);
 		}
 
 		// Start writing kernel function

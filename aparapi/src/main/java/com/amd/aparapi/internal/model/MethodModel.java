@@ -28,6 +28,8 @@ public abstract class MethodModel {
 
 	protected ClassModelMethod method;
 
+	private final Map<String, String> referencedFieldNames = new HashMap<String, String>();
+
 	/**
 	   True is an indication to use the fp64 pragma
 	*/
@@ -48,6 +50,19 @@ public abstract class MethodModel {
 	protected FieldEntry accessorVariableFieldEntry;
 
 	private boolean noCL = false;
+
+	public void addToReferencedFieldNames(String f, String hint) {
+		referencedFieldNames.put(f, hint);
+	}
+
+	public void updateReferencedFieldNames(Map<String, String> that) {
+		for (final Map.Entry<String, String> entry : that.entrySet())
+			referencedFieldNames.put(entry.getKey(), entry.getValue());
+	}	
+
+	public Map<String, String> getReferencedFieldNames() {
+		return referencedFieldNames;
+	}
 
 	public METHODTYPE getMethodType() {
 		return methodType;

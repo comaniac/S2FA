@@ -120,24 +120,24 @@ object J2FA {
             val kernel = new Kernel(call)
             kernelList = kernel :: kernelList
             if (kernel.generate == true) {
-              val fileName = Utils.getLegalKernelName(call)
-              val filePath = outPath + fileName
+              // val fileName = Utils.getLegalKernelName(call)
+              // val filePath = outPath + fileName
 
-              // Write kernel code
-              val kernelString = kernel.getKernel
-              val kernelFile = new PrintWriter(new File(filePath + ".cpp"))
-              kernelFile.write("#include \"" + fileName + ".h\"\n")              
-              kernelFile.write(kernelString)
-              kernelFile.close
+              // // Write kernel code
+              // val kernelString = kernel.getKernel
+              // val kernelFile = new PrintWriter(new File(filePath + ".cpp"))
+              // kernelFile.write("#include \"" + fileName + ".h\"\n")
+              // kernelFile.write(kernelString)
+              // kernelFile.close
 
-              // Write header code
-              val headerString = kernel.getHeader
-              val headerFile = new PrintWriter(new File(filePath + ".h"))
-              headerFile.write("#ifndef " + fileName + "\n")
-              headerFile.write("#define " + fileName + "\n")
-              headerFile.write(headerString)
-              headerFile.write("\n#endif\n")
-              headerFile.close
+              // // Write header code
+              // val headerString = kernel.getHeader
+              // val headerFile = new PrintWriter(new File(filePath + ".h"))
+              // headerFile.write("#ifndef " + fileName + "\n")
+              // headerFile.write("#define " + fileName + "\n")
+              // headerFile.write(headerString)
+              // headerFile.write("\n#endif\n")
+              // headerFile.close
               logger.info("Successfully generated the kernel " + call)
             }
             else

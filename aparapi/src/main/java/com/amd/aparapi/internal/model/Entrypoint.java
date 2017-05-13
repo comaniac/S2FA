@@ -540,6 +540,16 @@ public class Entrypoint implements Cloneable {
 	}
 
 	/*
+	 * Synchronize the fields that referred by sub-methods in order to by pass
+	 */
+	public void syncMethodReferencedFields(MethodModel currMethod) {
+		for (final MethodModel calledMethod : currMethod.getCalledMethods())
+			syncMethodReferencedFields(calledMethod);
+		for (final MethodModel calledMethod : currMethod.getCalledMethods())
+			currMethod.updateReferencedFieldNames(calledMethod.getReferencedFieldNames());
+	}
+
+	/*
 	 * Find a suitable call target in the kernel class, supers, object members or static calls
 	 */
 	public ClassModelMethod resolveCalledMethod(final MethodCall methodCall,
@@ -928,6 +938,7 @@ public class Entrypoint implements Cloneable {
 						final String assignedArrayFieldName = field.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
 						arrayFieldAssignments.add(assignedArrayFieldName);
 						addToReferencedFieldNames(assignedArrayFieldName, null);
+						methodModel.addToReferencedFieldNames(assignedArrayFieldName, null);
 						arrayFieldArrayLengthUsed.add(assignedArrayFieldName);
 
 					}
@@ -942,6 +953,7 @@ public class Entrypoint implements Cloneable {
 						final String accessedArrayFieldName = field.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
 						arrayFieldAccesses.add(accessedArrayFieldName);
 						addToReferencedFieldNames(accessedArrayFieldName, null);
+						methodModel.addToReferencedFieldNames(accessedArrayFieldName, null);
 						arrayFieldArrayLengthUsed.add(accessedArrayFieldName);
 					}
 				} else if (instruction instanceof I_ARRAYLENGTH) {
@@ -975,6 +987,7 @@ public class Entrypoint implements Cloneable {
 						I_CHECKCAST cast = scalaGet.getCast();
 						signature = cast.getConstantPoolClassEntry().getNameUTF8Entry().getUTF8().replace('/', '.');
 						addToReferencedFieldNames(accessedFieldName, "L" + signature);
+						methodModel.addToReferencedFieldNames(accessedFieldName, "L" + signature);
 					} else {
 						// Get signature (class name) of the field.
 						// Example: signature BlazeBroadcast for BlazeBroadcast[Tuple2[_,_]]
@@ -991,8 +1004,11 @@ public class Entrypoint implements Cloneable {
 
 							String typeHint = findTypeHintForCustomizedClass(accessedFieldName, signature, next);
 							addToReferencedFieldNames(accessedFieldName, typeHint);
-						} else
+							methodModel.addToReferencedFieldNames(accessedFieldName, typeHint);
+						} else {
 							addToReferencedFieldNames(accessedFieldName, null);
+							methodModel.addToReferencedFieldNames(accessedFieldName, null);
+						}
 					}
 					logger.fine("AccessField field type= " + signature + " in " + methodModel.getName());
 
@@ -1007,6 +1023,8 @@ public class Entrypoint implements Cloneable {
 							if (arrayFieldModel instanceof CustomizedClassModel) {
 								addToReferencedFieldNames(accessedFieldName,
 								                          "[" + ((CustomizedClassModel) arrayFieldModel).getDescriptor());
+								methodModel.addToReferencedFieldNames(accessedFieldName,
+								                          "[" + ((CustomizedClassModel) arrayFieldModel).getDescriptor());														  
 							}
 							final Class<?> memberClass = arrayFieldModel.getClassWeAreModelling();
 							final int modifiers = memberClass.getModifiers();
@@ -1064,6 +1082,7 @@ public class Entrypoint implements Cloneable {
 					final String assignedFieldName = field.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
 					fieldAssignments.add(assignedFieldName);
 					addToReferencedFieldNames(assignedFieldName, null);
+					methodModel.addToReferencedFieldNames(assignedFieldName, null);
 
 					final String className = (field.getClassEntry().getNameUTF8Entry().getUTF8()).replace('/', '.');
 					// Look for object data member access
@@ -1083,8 +1102,10 @@ public class Entrypoint implements Cloneable {
 					final I_INVOKEVIRTUAL invokeInstruction = (I_INVOKEVIRTUAL) instruction;
 					MethodModel invokedMethod = invokeInstruction.getMethod();
 					FieldEntry getterField = getSimpleGetterField(invokedMethod);
-					if (getterField != null)
+					if (getterField != null) {
 						addToReferencedFieldNames(getterField.getNameAndTypeEntry().getNameUTF8Entry().getUTF8(), null);
+						methodModel.addToReferencedFieldNames(getterField.getNameAndTypeEntry().getNameUTF8Entry().getUTF8(), null);
+					}
 					else {
 						final MethodEntry methodEntry = invokeInstruction.getConstantPoolMethodEntry();
 						if (Kernel.isMappedMethod(methodEntry)) { // only do this for intrinsics
@@ -1103,6 +1124,7 @@ public class Entrypoint implements Cloneable {
 									final String accessedFieldName = field.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
 									arrayFieldAssignments.add(accessedFieldName);
 									addToReferencedFieldNames(accessedFieldName, null);
+									methodModel.addToReferencedFieldNames(accessedFieldName, null);
 								} else
 									throw new ClassParseException(ClassParseException.TYPE.ACCESSEDOBJECTSETTERARRAY);
 							}
@@ -1158,6 +1180,7 @@ public class Entrypoint implements Cloneable {
 		
 							typeHint = typeHint.replace(methodName, realType);
 							addToReferencedFieldNames(varName, typeHint);
+							methodModel.addToReferencedFieldNames(varName, typeHint);
 						}
 					}
 				} else if (instruction instanceof I_NEWARRAY) {
@@ -1168,6 +1191,8 @@ public class Entrypoint implements Cloneable {
 				}
 			}
 		}
+
+		syncMethodReferencedFields(methodModel);
 
 		// Process referenced fields to a list for KernelWriter
 		for (final Map.Entry<String, String> referencedField : referencedFieldNames.entrySet()) {
