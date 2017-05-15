@@ -404,6 +404,7 @@ public abstract class KernelWriter extends BlockWriter {
 			boolean isSelfMapped = SelfMapped.contains(_methodEntry.toString());
 
 			if (m != null) {
+				write(m.getOwnerClassMangledName() + "_");
 				if (m.getGetterField() != null)
 					write("get");
 				write(m.getMethodName());
@@ -423,8 +424,10 @@ public abstract class KernelWriter extends BlockWriter {
 					isIntrinsic = true;
 				write(methodName);
 			}
-		} else
+		} else {
+			write(m.getOwnerClassMangledName() + "_");
 			write(intrinsicMapping);
+		}
 
 		// start writing arguments
 		write("(");
@@ -516,6 +519,7 @@ public abstract class KernelWriter extends BlockWriter {
 
 		if (mm.getGetterField() != null) {
 			write(convertedReturnType + " ");
+			write(mm.getOwnerClassMangledName() + "_");
 			write("get" + mm.getMethodName() + "()");
 			newLine();
 			writeMethodBody(mm);
@@ -548,8 +552,11 @@ public abstract class KernelWriter extends BlockWriter {
 		// Write method name
 		if (mm.getSimpleName().equals("<init>"))
 			write(mm.getOwnerClassMangledName() + "(");
-		else
-			write(fullReturnType + " " + mm.getMethodName() + "(");
+		else {
+			write(fullReturnType + " ");
+			write(mm.getOwnerClassMangledName() + "_");
+			write(mm.getMethodName() + "(");
+		}
 
 		boolean isFirst = true;
 
@@ -987,6 +994,7 @@ public abstract class KernelWriter extends BlockWriter {
 		write(outParam.getName() + "[idx] = ");
 		if (outParam.isArray() || (outParam instanceof ObjectJParameter))
 			write("*");
+		write(_entryPoint.getMethodModel().getOwnerClassMangledName() + "_");
 		write(_entryPoint.getMethodModel().getMethodName() + "(");
 		write(refArgsCall);
 		if (refArgsCall.length() > 0)
