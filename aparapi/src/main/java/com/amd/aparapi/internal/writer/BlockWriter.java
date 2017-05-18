@@ -83,7 +83,7 @@ public abstract class BlockWriter {
 
 	public final static String arrayDimMangleSuffix = "__javaArrayDimension";
 
-	public final static String arrayItemLengthMangleSuffix = "__javaItemLength";
+//	public final static String arrayItemLengthMangleSuffix = "__javaItemLength";
 
 	public abstract void write(String _string);
 

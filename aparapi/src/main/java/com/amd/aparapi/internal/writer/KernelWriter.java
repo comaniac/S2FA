@@ -619,8 +619,8 @@ public abstract class KernelWriter extends BlockWriter {
 				write(lvi.getVariableName());
 
 				// Add item length argument for input array.
-				if (descriptor.startsWith("["))
-					write(", int " + lvi.getVariableName() + BlockWriter.arrayItemLengthMangleSuffix);
+				//if (descriptor.startsWith("["))
+				//	write(", int " + lvi.getVariableName() + BlockWriter.arrayItemLengthMangleSuffix);
 			}
 		}
 
@@ -761,8 +761,8 @@ public abstract class KernelWriter extends BlockWriter {
 						write(lvi.getVariableName());
 	
 						// Add item length argument for input array.
-						if (descriptor.startsWith("["))
-							write(", int " + lvi.getVariableName() + BlockWriter.arrayItemLengthMangleSuffix);
+						//if (descriptor.startsWith("["))
+						//	write(", int " + lvi.getVariableName() + BlockWriter.arrayItemLengthMangleSuffix);
 					}
 				}
 			}
@@ -965,11 +965,11 @@ public abstract class KernelWriter extends BlockWriter {
 			write(paramCode);
 
 			// Add length and item number for 1-D array I/O.
-			if (p.isArray()) {
-				write(", ");
-				newLine();
-				write("int " + p.getName() + BlockWriter.arrayItemLengthMangleSuffix);
-			}
+			// if (p.isArray()) {
+			// 	write(", ");
+			// 	newLine();
+			// 	write("int " + p.getName() + BlockWriter.arrayItemLengthMangleSuffix);
+			// }
 		}
 
 		// Write reference data
@@ -1005,9 +1005,8 @@ public abstract class KernelWriter extends BlockWriter {
 				if (!first)	
 					write(", ");
 				if (p.isArray()) { // Deserialized access
-					write("&" + p.getName() + "[idx * " + p.getName() + 
-							BlockWriter.arrayItemLengthMangleSuffix + "]");
-					write(", " + p.getName() + BlockWriter.arrayItemLengthMangleSuffix);
+					write("&" + p.getName() + 
+						"[idx * " + ((PrimitiveJParameter) p).getItemLength() + "]");
 				}
 				else { // One-by-one access
 					if (!p.isPrimitive()) // Objects are always passed by address

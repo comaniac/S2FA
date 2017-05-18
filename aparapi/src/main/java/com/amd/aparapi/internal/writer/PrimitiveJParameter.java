@@ -8,6 +8,7 @@ import com.amd.aparapi.internal.model.ClassModel;
 import com.amd.aparapi.internal.model.Entrypoint;
 
 public class PrimitiveJParameter extends JParameter {
+	int itemLength = 1;
 
 	public PrimitiveJParameter(String fullSig, String name, DIRECTION dir) {
 		super(fullSig, name, dir);
@@ -32,5 +33,13 @@ public class PrimitiveJParameter extends JParameter {
 	@Override
 	public boolean isPrimitive() {
 		return true;
+	}
+
+	public void setItemLength(int length) {
+		itemLength = length;
+	}
+
+	public int getItemLength() {
+		return itemLength;
 	}
 }

@@ -22,6 +22,7 @@ import collection.JavaConversions._
 import com.amd.aparapi.Config
 import com.amd.aparapi.internal.writer.KernelWriter
 import com.amd.aparapi.internal.writer.JParameter
+import com.amd.aparapi.internal.writer.PrimitiveJParameter
 import com.amd.aparapi.internal.writer.JParameter.DIRECTION
 
 class TopKernelWriter(kernelList : List[Kernel]) {
@@ -62,17 +63,21 @@ class TopKernelWriter(kernelList : List[Kernel]) {
         // Take input arguments from the first kernel
         val firstKernelArgs = asScalaBuffer(kernelList.head.getArgs)
         firstKernelArgs.foreach(arg => {
-            if (arg.getDir == JParameter.DIRECTION.IN)
-                write(",\n" + indent_pat + arg.getCType + "* " + 
+            if (arg.getDir == JParameter.DIRECTION.IN) {
+                val ctype = if (arg.getCType.contains("*")) arg.getCType else arg.getCType + "*"
+                write(",\n" + indent_pat + ctype + " " + 
                     kernelList.head.getKernelName + "_" + arg.getName)
+            }
         })
 
         // Take the output arguments from the last kernel
         val lastKernelArgs = asScalaBuffer(kernelList.last.getArgs)
         lastKernelArgs.foreach(arg => {
-            if (arg.getDir == JParameter.DIRECTION.OUT)
-                write(",\n" + indent_pat + arg.getCType + "* " + 
+            if (arg.getDir == JParameter.DIRECTION.OUT) {
+                val ctype = if (arg.getCType.contains("*")) arg.getCType else arg.getCType + "*"
+                write(",\n" + indent_pat + ctype + " " +
                     kernelList.last.getKernelName + "_" + arg.getName)
+            }
         })
 
         // Broadcast arguments
@@ -118,24 +123,33 @@ class TopKernelWriter(kernelList : List[Kernel]) {
 
             // Input
             asScalaBuffer(kernel.getArgs).foreach(arg => {
-                if (arg.getDir == JParameter.DIRECTION.IN)
+                if (arg.getDir == JParameter.DIRECTION.IN) {
                     write(", " + kernel.getKernelName + "_" + arg.getName)
+                    if (arg.isArray && arg.isPrimitive)
+                        write("[task * " + arg.asInstanceOf[PrimitiveJParameter].getItemLength() + "]")
+                }
             })
 
             // Output
             if (idx == kernelList.size - 1) {
                 // Outputs of the last kernel are arguments
                 asScalaBuffer(kernel.getArgs).foreach(arg => {
-                    if (arg.getDir == JParameter.DIRECTION.OUT)
+                    if (arg.getDir == JParameter.DIRECTION.OUT) {
                         write(", " + kernel.getKernelName + "_" + arg.getName)
+                        if (arg.isArray && arg.isPrimitive)
+                            write("[task * " + arg.asInstanceOf[PrimitiveJParameter].getItemLength() + "]")                        
+                    }
                 })
             }
             else {
                 // Outputs of other kernels are inputs of the next kernel
                 val nextKernel = kernelList(idx + 1)
                 asScalaBuffer(nextKernel.getArgs).foreach(arg => {
-                    if (arg.getDir == JParameter.DIRECTION.IN)
+                    if (arg.getDir == JParameter.DIRECTION.IN) {
                         write(", " + nextKernel.getKernelName + "_" + arg.getName)
+                        if (arg.isArray && arg.isPrimitive)
+                            write("[task * " + arg.asInstanceOf[PrimitiveJParameter].getItemLength() + "]")                        
+                    }
                 })                
             }
 

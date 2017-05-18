@@ -248,6 +248,10 @@ public abstract class MethodModel {
 	private BytecodeReplacement[] replacers = new BytecodeReplacement[] { new ObjectRefGetReplace(),
 			new IntRefCreateReplace() };
 
+	public Map<Integer, Instruction> createListOfInstructions() throws ClassParseException {
+		return createListOfInstructions(true);
+	}
+
 	/**
 	 * Create a linked list of instructions (from pcHead to pcTail).
 	 *
@@ -260,7 +264,7 @@ public abstract class MethodModel {
 	 *
 	 * @return Map<Integer, Instruction> the returned pc to Instruction map
 	 */
-	public Map<Integer, Instruction> createListOfInstructions() throws ClassParseException {
+	public Map<Integer, Instruction> createListOfInstructions(Boolean check) throws ClassParseException {
 		final Map<Integer, Instruction> pcMap = new LinkedHashMap<Integer, Instruction>();
 		final byte[] code = method.getCode();
 
@@ -271,37 +275,37 @@ public abstract class MethodModel {
 			final int pc = codeReader.getOffset();
 			final Instruction instruction = InstructionSet.ByteCode.create(this, codeReader);
 
-			if ((!Config.enablePUTFIELD) && (instruction instanceof I_PUTFIELD)) {
+			if ((check) && (!Config.enablePUTFIELD) && (instruction instanceof I_PUTFIELD)) {
 				// Special case putfield handling to allow object setter processing
 				// and bail later if necessary
 				//throw new ClassParseException("We don't support putfield instructions");
 				usesPutfield = true;
 			}
 
-			if ((!Config.enableARETURN) && (instruction instanceof I_ARETURN))
+			if ((check) && (!Config.enableARETURN) && (instruction instanceof I_ARETURN))
 				throw new ClassParseException(instruction, ClassParseException.TYPE.ARRAY_RETURN);
 
-			if ((!Config.enablePUTSTATIC) && (instruction instanceof I_PUTSTATIC))
+			if ((check) && (!Config.enablePUTSTATIC) && (instruction instanceof I_PUTSTATIC))
 				throw new ClassParseException(instruction, ClassParseException.TYPE.PUTFIELD);
 
-			if ((!Config.enableGETSTATIC) && (instruction instanceof I_GETSTATIC))
+			if ((check) && (!Config.enableGETSTATIC) && (instruction instanceof I_GETSTATIC))
 				throw new ClassParseException(instruction, ClassParseException.TYPE.GETSTATIC);
 
-			if ((!Config.enableATHROW) && (instruction instanceof I_ATHROW))
+			if ((check) && (!Config.enableATHROW) && (instruction instanceof I_ATHROW))
 				throw new ClassParseException(instruction, ClassParseException.TYPE.ATHROW);
 
-			if ((!Config.enableMONITOR)
+			if ((check) && (!Config.enableMONITOR)
 					&& ((instruction instanceof I_MONITORENTER) || (instruction instanceof I_MONITOREXIT)))
 				throw new ClassParseException(instruction, ClassParseException.TYPE.SYNCHRONIZE);
 
-			if (instruction instanceof I_AASTORE)
+			if ((check) && instruction instanceof I_AASTORE)
 				throw new ClassParseException(instruction, ClassParseException.TYPE.ARRAYALIAS);
 
-			if ((!Config.enableSWITCH)
+			if ((check) && (!Config.enableSWITCH)
 					&& ((instruction instanceof I_LOOKUPSWITCH) || (instruction instanceof I_TABLESWITCH)))
 				throw new ClassParseException(instruction, ClassParseException.TYPE.SWITCH);
 
-			if (!Config.enableMETHODARRAYPASSING) {
+			if ((check) && !Config.enableMETHODARRAYPASSING) {
 				if (instruction instanceof MethodCall) {
 					final MethodCall methodCall = (MethodCall) instruction;
 
@@ -1772,7 +1776,7 @@ public abstract class MethodModel {
 
 	protected void initWithoutAnalysis(ClassModelMethod _method) throws AparapiException {
 		method = _method;
-		createListOfInstructions();
+		createListOfInstructions(false);
 		return ;
 	}
 

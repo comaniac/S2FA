@@ -45,7 +45,10 @@ import com.amd.aparapi.internal.util.{Utils => AparapiUtils}
 
 import org.apache.j2fa.AST._
 
-class Kernel(kernelSig: String) {
+class Kernel(kernelSig: String, ioItemLength: (Int, Int)) {
+
+  def this(sig: String) = this(sig, (1, 1))
+
   val logger = Logger.getLogger(Config.getLoggerName)
 
   val params : List[JParameter] = new LinkedList[JParameter]
@@ -90,12 +93,16 @@ class Kernel(kernelSig: String) {
       }
 
       // Setup arguments and return values
+      // NOTE: Currently we assume only one input argument 
+      // (but we can have multiple reference arguments, of course)
       var sig = "("
       applyMethod.getParameterTypes.zipWithIndex.foreach(arg => {
         val argClazz = arg._1
         val idx = arg._2
         val param = JParameter.createParameter(
             argClazz.getName, "s2fa_in_" + idx, JParameter.DIRECTION.IN)
+        if (param.isInstanceOf[PrimitiveJParameter])
+          param.asInstanceOf[PrimitiveJParameter].setItemLength(ioItemLength._1)
         params.add(param)
         sig += Utils.asBytecodeType(argClazz.getName)
       })
@@ -103,6 +110,8 @@ class Kernel(kernelSig: String) {
       if (!returnType.equals("void")) {
         val param = JParameter.createParameter(
             returnType, "s2fa_out", JParameter.DIRECTION.OUT)
+        if (param.isInstanceOf[PrimitiveJParameter])
+          param.asInstanceOf[PrimitiveJParameter].setItemLength(ioItemLength._2)            
         params.add(param)
       }
       sig += ")" + Utils.asBytecodeType(returnType)

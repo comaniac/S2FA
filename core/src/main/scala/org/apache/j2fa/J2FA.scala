@@ -20,6 +20,7 @@ import scala.reflect.ClassTag
 import scala.reflect.runtime.universe._
 import scala.io._
 import scala.sys.process._
+import scala.xml.XML
 import scala.collection.JavaConversions.asScalaBuffer
 
 import java.io._
@@ -40,7 +41,7 @@ object J2FA {
  
   def main(args : Array[String]) {
     if (args.length < 2) {
-      System.err.print("Usage: J2FA <Main class name> <Output kernel path>")
+      System.err.print("Usage: J2FA <Config file> <Output kernel path>")
       System.exit(1)
     }
     logger.info("J2FA -- Java to FPGA Accelerator Framework")
@@ -80,26 +81,34 @@ object J2FA {
     //   }
     // })
 
-    logger.info("Loading target class: " + args(0))
+    // Parse config file
+    val config = XML.loadFile(args(0))
+
     try {
+      val targetClazz = (config \ "main" \ "class").text
+      val targetMethod = (config \ "main" \ "method").text
+      val targetVar = (config \ "main" \ "variable").text
+
+      logger.info("Loading target class: " + targetClazz)      
+      
       var kernelList = List[Kernel]()
       val outPath = args(1).substring(0, args(1).lastIndexOf("/") + 1)
 
       // Load the target class
-      val clazz = getClass().getClassLoader().loadClass(args(0))
-
+      val clazz = getClass().getClassLoader().loadClass(targetClazz)
+      
       // Compile each kernel method to accelerator design
       clazz.getDeclaredMethods.foreach({m =>
-        val annotations = m.getAnnotations
-        var kernelAnnot: J2FA_Kernel = null
-        annotations.foreach({a => 
-          if (a.isInstanceOf[J2FA_Kernel]) {
-            kernelAnnot = a.asInstanceOf[J2FA_Kernel]
-          }
-        })
-        if (kernelAnnot != null) {
-          val kernelVar = kernelAnnot.kernel()
-          logger.info("Kernel variable " + kernelVar + " in " + m.getName)
+        if (m.getName.equals(targetMethod)) {
+          logger.info("Kernel variable " + targetVar + " in " + m.getName)
+
+          // Build IO info table if any
+          val ioInfos = (config \ "kernel").map(e => {
+            val idx = (e \ "index").text.toInt
+            val in = (e \ "input_item_length").text.toInt
+            val out = (e \ "output_item_length").text.toInt
+            (idx, in, out)
+          })
 
           // Setup output format (currently only use Merlin C)
           System.setProperty("com.amd.aparapi.enable.MERLIN", "true")
@@ -108,16 +117,24 @@ object J2FA {
           val classModel : ClassModel = ClassModel.createClassModel(clazz, null, 
             new CustomizedClassModelMatcher(null))
           
-          val methodCallsJava = classModel.getAllMethodCallsByVar(m.getName(), Utils.getMethodSignature(m), kernelVar)
+          val methodCallsJava = classModel.getAllMethodCallsByVar(m.getName(), Utils.getMethodSignature(m), targetVar)
           val methodCalls = asScalaBuffer(methodCallsJava)
 
           logger.fine("Kernel flow:")
           methodCalls.foreach(call => logger.fine("  -> " + call))
 
           // Compile each kernel method to accelerator kernel
-          methodCalls.foreach(call => {
-            logger.info("Compiling kernel " + call)
-            val kernel = new Kernel(call)
+          methodCalls.zipWithIndex.foreach({case (call, kernelIdx) => 
+            val ioInfo = ioInfos.find(e => e._1 == kernelIdx)
+            
+            val kernel = if (ioInfo.isDefined) {
+              logger.info("Compiling kernel " + call + ", IO={" + ioInfo.get._2 + ", " + ioInfo.get._3 + "}")
+              new Kernel(call, (ioInfo.get._2, ioInfo.get._3))
+            } else {
+              logger.info("Compiling kernel " + call + ", IO={1, 1}")
+              new Kernel(call)
+            }
+
             kernelList = kernel :: kernelList
             if (kernel.generate == true) {
               // val fileName = Utils.getLegalKernelName(call)
