@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<data>
+	<main>
+		<class>AES$</class>
+		<method>main</method>
+		<variable>rdd</variable>
+	</main>
+	<kernel>
+		<index>0</index>
+		<input_item_length>16</input_item_length>
+		<output_item_length>16</output_item_length>
+	</kernel>
+</data>

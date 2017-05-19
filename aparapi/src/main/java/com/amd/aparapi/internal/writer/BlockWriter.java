@@ -428,6 +428,9 @@ public abstract class BlockWriter {
 			case 7:
 				typeName = "double";
 				break;
+ 			case 8: // Byte
+				typeName = "char";
+				break;               
 			case 9:
 				typeName = "short";
 				break;
