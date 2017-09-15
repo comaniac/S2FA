@@ -104,10 +104,10 @@ object J2FA {
 
           // Build IO info table if any
           val ioInfos = (config \ "kernel").map(e => {
-            val idx = (e \ "index").text.toInt
+            val fun = (e \ "function").text
             val in = (e \ "input_item_length").text.toInt
             val out = (e \ "output_item_length").text.toInt
-            (idx, in, out)
+            (fun, in, out)
           })
 
           // Setup output format (currently only use Merlin C)
@@ -124,41 +124,42 @@ object J2FA {
           methodCalls.foreach(call => logger.fine("  -> " + call))
 
           // Compile each kernel method to accelerator kernel
-          methodCalls.zipWithIndex.foreach({case (call, kernelIdx) => 
-            val ioInfo = ioInfos.find(e => e._1 == kernelIdx)
+          methodCalls.foreach(call => {
+            val ioInfo = ioInfos.find(e => e._1 == call.toString)
             
             val kernel = if (ioInfo.isDefined) {
               logger.info("Compiling kernel " + call + ", IO={" + ioInfo.get._2 + ", " + ioInfo.get._3 + "}")
-              new Kernel(call, (ioInfo.get._2, ioInfo.get._3))
+              Some(new Kernel(call, (ioInfo.get._2, ioInfo.get._3)))
             } else {
-              logger.info("Compiling kernel " + call + ", IO={1, 1}")
-              new Kernel(call)
+              None
             }
 
-            kernelList = kernel :: kernelList
-            if (kernel.generate == true) {
-              // val fileName = Utils.getLegalKernelName(call)
-              // val filePath = outPath + fileName
-
-              // // Write kernel code
-              // val kernelString = kernel.getKernel
-              // val kernelFile = new PrintWriter(new File(filePath + ".cpp"))
-              // kernelFile.write("#include \"" + fileName + ".h\"\n")
-              // kernelFile.write(kernelString)
-              // kernelFile.close
-
-              // // Write header code
-              // val headerString = kernel.getHeader
-              // val headerFile = new PrintWriter(new File(filePath + ".h"))
-              // headerFile.write("#ifndef " + fileName + "\n")
-              // headerFile.write("#define " + fileName + "\n")
-              // headerFile.write(headerString)
-              // headerFile.write("\n#endif\n")
-              // headerFile.close
-              logger.info("Successfully generated the kernel " + call)
+            if (kernel.isDefined) {
+              kernelList = kernel.get :: kernelList
+              if (kernel.get.generate == true) {
+                // val fileName = Utils.getLegalKernelName(call)
+                // val filePath = outPath + fileName
+  
+                // // Write kernel code
+                // val kernelString = kernel.getKernel
+                // val kernelFile = new PrintWriter(new File(filePath + ".cpp"))
+                // kernelFile.write("#include \"" + fileName + ".h\"\n")
+                // kernelFile.write(kernelString)
+                // kernelFile.close
+  
+                // // Write header code
+                // val headerString = kernel.getHeader
+                // val headerFile = new PrintWriter(new File(filePath + ".h"))
+                // headerFile.write("#ifndef " + fileName + "\n")
+                // headerFile.write("#define " + fileName + "\n")
+                // headerFile.write(headerString)
+                // headerFile.write("\n#endif\n")
+                // headerFile.close
+                logger.info("Successfully generated the kernel " + call)
+              }
+              else
+                throw new RuntimeException("Fail to generate the kernel " + call)
             }
-            else
-              throw new RuntimeException("Fail to generate the kernel " + call)
           })
         }
       })

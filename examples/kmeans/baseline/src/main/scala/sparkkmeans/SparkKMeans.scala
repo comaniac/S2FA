@@ -28,15 +28,40 @@ import java.net._
  * K-means clustering.
  */
 object SparkKMeans {
+  def get_spark_context(appName : String) : SparkContext = {
+    val conf = new SparkConf()
+    conf.setAppName(appName)
 
-  def squaredDistance(p: Array[Double], q: Array[Double]): Double = {
-    var tempDist: Double = 0
-    var j: Int = 0
-    while (j < p.length) {
-      tempDist += (p(j) - q(j)) * (p(j) - q(j))
-      j += 1
+    return new SparkContext(conf)
+  }
+ 
+  def squaredDistance(p: Array[Double], center: Array[Double]): Double = {
+    var i: Int = 0
+    var dis: Double = 0
+    while (i < p.length) {
+      dis += (p(i) - center(i)) * (p(i) - center(i))
+      i += 1
     }
-    tempDist
+    dis
+  }
+
+  def parseVector(line: String): Array[Double] = {
+    line.split(' ').map(e => e.toDouble)
+  }
+
+  def closestPoint(p: Array[Double], centers: Array[Array[Double]]): Int = {
+    var bestIndex = 0
+    var closest = Double.PositiveInfinity
+
+    for (i <- 0 until centers.length) {
+      val tempDist = squaredDistance(p, centers(i))
+      if (tempDist < closest) {
+        closest = tempDist
+        bestIndex = i
+      }
+    }
+
+    bestIndex
   }
 
   def main(args: Array[String]) {
@@ -46,11 +71,10 @@ object SparkKMeans {
       System.exit(1)
     }
 
-    val sparkConf = new SparkConf().setAppName("KMeans")
-    val spark = new SparkContext(sparkConf)
+    val spark = get_spark_context("Spark KMeans")
 
     val lines = spark.textFile(args(0))
-    val data = lines.map(l => l.split(' ').map(e => e.toDouble)).cache()
+    val data = lines.map(parseVector _).cache()
     val K = args(1).toInt
     val convergeDist = args(2).toDouble
 
@@ -58,29 +82,8 @@ object SparkKMeans {
     var tempDist = 1.0
 
     while(tempDist > convergeDist) {
-      val flatKPoints = kPoints.flatMap(e => e)
-      val closestIdx = data.map(p => {
-        var bestIndex = 0
-        var closest = 1e10
-
-        var i: Int = 0
-        while (i < 3) {
-          var dist = 0.0
-          var j: Int = 0
-          while (j < 12) {
-            dist += (p(j) - flatKPoints(i * 12 + j)) * (p(j) - flatKPoints(i * 12 + j))
-            j += 1
-          }
-          if (dist < closest) {
-            closest = dist
-            bestIndex = i
-          }
-          i += 1
-        }
-        bestIndex
-      })
-
-      val closest = closestIdx.zip(data).map{case (i, p) => (i, (p, 1))}
+      val closestIdx = data.map(p => closestPoint(p, kPoints))
+      val closest = data.zip(closestIdx).map{case (p, i) => (i, (p, 1))}
 
       val pointStats = closest.reduceByKey{case ((p1, c1), (p2, c2)) =>
         (p1.zip(p2).map{case (x, y) => x + y}, c1 + c2)
