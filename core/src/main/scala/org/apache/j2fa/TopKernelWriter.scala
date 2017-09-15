@@ -27,6 +27,8 @@ import com.amd.aparapi.internal.writer.JParameter.DIRECTION
 
 class TopKernelWriter(kernelList : List[Kernel]) {
     val logger = Logger.getLogger(Config.getLoggerName)
+    val total_task_num_str = "s2fa_total_task_num"
+    val batch_task_num_str = total_task_num_str // FIXME
 
     if (logger.isLoggable(Level.FINEST)) {
         logger.finest("Subkernels: ")
@@ -58,7 +60,7 @@ class TopKernelWriter(kernelList : List[Kernel]) {
 
         // Write the top kernel
         writeln()
-        write("void kernel_top(int s2fa_total_task_num")
+        write("void kernel_top(int " + total_task_num_str)
 
         // Take input arguments from the first kernel
         val firstKernelArgs = asScalaBuffer(kernelList.head.getArgs)
@@ -110,23 +112,26 @@ class TopKernelWriter(kernelList : List[Kernel]) {
         })
 
         // Batch size declaration
-        // FIXME         
+        // FIXME: Determine the batch size if we have multiple kernels.
 
         // Outermost loop for tasks
-        writeln("for (int task = 0; task < s2fa_total_task_num; task += global_batch_size) {")
-        in()  
+        writeln("for (int task = 0; task < " + total_task_num_str + "; task += " + batch_task_num_str + ") {")
+        in()
 
         // Kernel function calls
         kernelList.view.zipWithIndex.foreach({case(kernel, idx) => 
             write(kernel.getKernelName + "(")
-            write("global_batch_size") // Batch size (total task number )
+            write(batch_task_num_str) // Batch size (total task number for one kernel case)
 
             // Input
             asScalaBuffer(kernel.getArgs).foreach(arg => {
                 if (arg.getDir == JParameter.DIRECTION.IN) {
                     write(", " + kernel.getKernelName + "_" + arg.getName)
-                    if (arg.isArray && arg.isPrimitive)
-                        write("[task * " + arg.asInstanceOf[PrimitiveJParameter].getItemLength() + "]")
+                    if (arg.isArray && arg.isPrimitive) {
+                        write("[task * " +
+                          batch_task_num_str + " * " +
+                          arg.asInstanceOf[PrimitiveJParameter].getItemLength() + "]")
+                    }
                 }
             })
 
@@ -136,8 +141,11 @@ class TopKernelWriter(kernelList : List[Kernel]) {
                 asScalaBuffer(kernel.getArgs).foreach(arg => {
                     if (arg.getDir == JParameter.DIRECTION.OUT) {
                         write(", " + kernel.getKernelName + "_" + arg.getName)
-                        if (arg.isArray && arg.isPrimitive)
-                            write("[task * " + arg.asInstanceOf[PrimitiveJParameter].getItemLength() + "]")                        
+                        if (arg.isArray && arg.isPrimitive) {
+                            write("[task * " +
+                              batch_task_num_str + " * " +
+                              arg.asInstanceOf[PrimitiveJParameter].getItemLength() + "]")
+                        }
                     }
                 })
             }
@@ -147,8 +155,11 @@ class TopKernelWriter(kernelList : List[Kernel]) {
                 asScalaBuffer(nextKernel.getArgs).foreach(arg => {
                     if (arg.getDir == JParameter.DIRECTION.IN) {
                         write(", " + nextKernel.getKernelName + "_" + arg.getName)
-                        if (arg.isArray && arg.isPrimitive)
-                            write("[task * " + arg.asInstanceOf[PrimitiveJParameter].getItemLength() + "]")                        
+                        if (arg.isArray && arg.isPrimitive) {
+                            write("[task * " +
+                              batch_task_num_str + " * " +
+                              arg.asInstanceOf[PrimitiveJParameter].getItemLength() + "]")
+                        }
                     }
                 })                
             }
