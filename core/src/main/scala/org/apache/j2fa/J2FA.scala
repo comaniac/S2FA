@@ -102,7 +102,7 @@ object J2FA {
         if (m.getName.equals(targetMethod)) {
           logger.info("Kernel variable " + targetVar + " in " + m.getName)
 
-          // Build IO info table if any
+          // Build IO info table
           val ioInfos = (config \ "kernel").map(e => {
             val fun = (e \ "function").text
             val in = (e \ "input_item_length").text.toInt
@@ -136,27 +136,8 @@ object J2FA {
 
             if (kernel.isDefined) {
               kernelList = kernel.get :: kernelList
-              if (kernel.get.generate == true) {
-                // val fileName = Utils.getLegalKernelName(call)
-                // val filePath = outPath + fileName
-  
-                // // Write kernel code
-                // val kernelString = kernel.getKernel
-                // val kernelFile = new PrintWriter(new File(filePath + ".cpp"))
-                // kernelFile.write("#include \"" + fileName + ".h\"\n")
-                // kernelFile.write(kernelString)
-                // kernelFile.close
-  
-                // // Write header code
-                // val headerString = kernel.getHeader
-                // val headerFile = new PrintWriter(new File(filePath + ".h"))
-                // headerFile.write("#ifndef " + fileName + "\n")
-                // headerFile.write("#define " + fileName + "\n")
-                // headerFile.write(headerString)
-                // headerFile.write("\n#endif\n")
-                // headerFile.close
+              if (kernel.get.generate == true)
                 logger.info("Successfully generated the kernel " + call)
-              }
               else
                 throw new RuntimeException("Fail to generate the kernel " + call)
             }
@@ -164,7 +145,7 @@ object J2FA {
         }
       })
 
-      // Generate the top function to build the DAG
+      // Generate the top function
       kernelList = kernelList.reverse
       val topKernelWriter = new TopKernelWriter(kernelList)      
       val pw = new PrintWriter(new File(outPath + "/kernel_top.cpp"))

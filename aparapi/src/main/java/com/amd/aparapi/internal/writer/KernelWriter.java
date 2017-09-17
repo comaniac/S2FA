@@ -939,6 +939,9 @@ public abstract class KernelWriter extends BlockWriter {
 		// Start writing kernel function
 		JParameter outParam = null;
 		newLine();
+        // FIXME: Move out to support multiple kernels
+        write("#pragma S2FA kernel");
+        newLine();
 		write("void " + kernelName + "(");
 		in();
 		in();
@@ -991,7 +994,8 @@ public abstract class KernelWriter extends BlockWriter {
 		// Call the kernel function.
 		first = true;
 
-		write(outParam.getName() + "[idx] = ");
+		write(outParam.getName() + "[idx * " +
+                ((PrimitiveJParameter) outParam).getItemLength() + "] = ");
 		if (outParam.isArray() || (outParam instanceof ObjectJParameter))
 			write("*");
 		write(_entryPoint.getMethodModel().getOwnerClassMangledName() + "_");

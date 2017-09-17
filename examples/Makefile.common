@@ -1,0 +1,8 @@
+compile:
+	scala -cp ../../../core/target/j2fa_core-0.0.0.jar:${APP_JAR} org.apache.j2fa.J2FA s2fa_config.xml ./
+
+opt:
+	${S2FA_OPT_HOME}/bin/exec-opt.sh kernel_top.cpp
+
+clean:
+	rm -f *.cpp *.o *.log

@@ -26,6 +26,9 @@ import com.amd.aparapi.internal.writer.PrimitiveJParameter
 import com.amd.aparapi.internal.writer.JParameter.DIRECTION
 
 class TopKernelWriter(kernelList : List[Kernel]) {
+    // FIXME: Enable dataflow with multiple functions in the future.
+    require(kernelList.length == 1)
+
     val logger = Logger.getLogger(Config.getLoggerName)
     val total_task_num_str = "s2fa_total_task_num"
     val batch_task_num_str = total_task_num_str // FIXME
@@ -45,7 +48,9 @@ class TopKernelWriter(kernelList : List[Kernel]) {
 
     def writeToString(): String = {
         // Write headers
-        writeln("#include <string.h>")
+        // FIXME: Now disable due to the ROSE bug
+        // "error: cannot find stddef.h"
+        // writeln("#include <string.h>")
 
         // Write subkernels
         kernelList.foreach(k => {
@@ -58,124 +63,125 @@ class TopKernelWriter(kernelList : List[Kernel]) {
             writeln("// ============")        
         })
 
-        // Write the top kernel
-        writeln()
-        write("void kernel_top(int " + total_task_num_str)
-
-        // Take input arguments from the first kernel
-        val firstKernelArgs = asScalaBuffer(kernelList.head.getArgs)
-        firstKernelArgs.foreach(arg => {
-            if (arg.getDir == JParameter.DIRECTION.IN) {
-                val ctype = if (arg.getCType.contains("*")) arg.getCType else arg.getCType + "*"
-                write(",\n" + indent_pat + ctype + " " + 
-                    kernelList.head.getKernelName + "_" + arg.getName)
-            }
-        })
-
-        // Take the output arguments from the last kernel
-        val lastKernelArgs = asScalaBuffer(kernelList.last.getArgs)
-        lastKernelArgs.foreach(arg => {
-            if (arg.getDir == JParameter.DIRECTION.OUT) {
-                val ctype = if (arg.getCType.contains("*")) arg.getCType else arg.getCType + "*"
-                write(",\n" + indent_pat + ctype + " " +
-                    kernelList.last.getKernelName + "_" + arg.getName)
-            }
-        })
-
-        // Broadcast arguments
-        var refArgs = Set[JParameter]()
-        kernelList.foreach(k => {
-            val refArgSet = asScalaBuffer(k.getRefArgs).toSet
-            refArgs = refArgs | refArgSet
-        })
-        refArgs.foreach(arg => {
-            write(",\n" + indent_pat + arg.getCType + " " + arg.getName)
-        })
-
-        writeln(") {")
-        in()
-
-        // Function body
-
-        // Inter-kernel buffer declaration 
-        // Argunment format for kernels: (taskNum, input, output, reference)
-        kernelList.view.zipWithIndex.foreach({case(k, idx) => 
-            if (idx != 0) { // The first kernel inputs are top kernel arguments
-                asScalaBuffer(k.getArgs).foreach(arg => {
-                    if (arg.getDir == JParameter.DIRECTION.IN) {
-                        writeln(arg.getCType + " " + k.getKernelName + 
-                            "_" + arg.getName + "[];")
-                        // FIXME: Array size
-                    }
-                })
-            }
-        })
-
-        // Batch size declaration
-        // FIXME: Determine the batch size if we have multiple kernels.
-
-        // Outermost loop for tasks
-        writeln("for (int task = 0; task < " + total_task_num_str + "; task += " + batch_task_num_str + ") {")
-        in()
-
-        // Kernel function calls
-        kernelList.view.zipWithIndex.foreach({case(kernel, idx) => 
-            write(kernel.getKernelName + "(")
-            write(batch_task_num_str) // Batch size (total task number for one kernel case)
-
-            // Input
-            asScalaBuffer(kernel.getArgs).foreach(arg => {
-                if (arg.getDir == JParameter.DIRECTION.IN) {
-                    write(", " + kernel.getKernelName + "_" + arg.getName)
-                    if (arg.isArray && arg.isPrimitive) {
-                        write("[task * " +
-                          batch_task_num_str + " * " +
-                          arg.asInstanceOf[PrimitiveJParameter].getItemLength() + "]")
-                    }
-                }
-            })
-
-            // Output
-            if (idx == kernelList.size - 1) {
-                // Outputs of the last kernel are arguments
-                asScalaBuffer(kernel.getArgs).foreach(arg => {
-                    if (arg.getDir == JParameter.DIRECTION.OUT) {
-                        write(", " + kernel.getKernelName + "_" + arg.getName)
-                        if (arg.isArray && arg.isPrimitive) {
-                            write("[task * " +
-                              batch_task_num_str + " * " +
-                              arg.asInstanceOf[PrimitiveJParameter].getItemLength() + "]")
-                        }
-                    }
-                })
-            }
-            else {
-                // Outputs of other kernels are inputs of the next kernel
-                val nextKernel = kernelList(idx + 1)
-                asScalaBuffer(nextKernel.getArgs).foreach(arg => {
-                    if (arg.getDir == JParameter.DIRECTION.IN) {
-                        write(", " + nextKernel.getKernelName + "_" + arg.getName)
-                        if (arg.isArray && arg.isPrimitive) {
-                            write("[task * " +
-                              batch_task_num_str + " * " +
-                              arg.asInstanceOf[PrimitiveJParameter].getItemLength() + "]")
-                        }
-                    }
-                })                
-            }
-
-            // Reference
-            asScalaBuffer(kernel.getRefArgs).foreach(arg => {
-                write(", " + arg.getName)
-            })
-
-            writeln(");")
-        })
-
-        out()
-        writeln("}")
-        out()        
-        writeln("}")
+// FIXME: Enable multiple kernels.
+//        // Write the top kernel
+//        writeln()
+//        write("void kernel_top(int " + total_task_num_str)
+//
+//        // Take input arguments from the first kernel
+//        val firstKernelArgs = asScalaBuffer(kernelList.head.getArgs)
+//        firstKernelArgs.foreach(arg => {
+//            if (arg.getDir == JParameter.DIRECTION.IN) {
+//                val ctype = if (arg.getCType.contains("*")) arg.getCType else arg.getCType + "*"
+//                write(",\n" + indent_pat + ctype + " " + 
+//                    kernelList.head.getKernelName + "_" + arg.getName)
+//            }
+//        })
+//
+//        // Take the output arguments from the last kernel
+//        val lastKernelArgs = asScalaBuffer(kernelList.last.getArgs)
+//        lastKernelArgs.foreach(arg => {
+//            if (arg.getDir == JParameter.DIRECTION.OUT) {
+//                val ctype = if (arg.getCType.contains("*")) arg.getCType else arg.getCType + "*"
+//                write(",\n" + indent_pat + ctype + " " +
+//                    kernelList.last.getKernelName + "_" + arg.getName)
+//            }
+//        })
+//
+//        // Broadcast arguments
+//        var refArgs = Set[JParameter]()
+//        kernelList.foreach(k => {
+//            val refArgSet = asScalaBuffer(k.getRefArgs).toSet
+//            refArgs = refArgs | refArgSet
+//        })
+//        refArgs.foreach(arg => {
+//            write(",\n" + indent_pat + arg.getCType + " " + arg.getName)
+//        })
+//
+//        writeln(") {")
+//        in()
+//
+//        // Function body
+//
+//        // Inter-kernel buffer declaration 
+//        // Argunment format for kernels: (taskNum, input, output, reference)
+//        kernelList.view.zipWithIndex.foreach({case(k, idx) => 
+//            if (idx != 0) { // The first kernel inputs are top kernel arguments
+//                asScalaBuffer(k.getArgs).foreach(arg => {
+//                    if (arg.getDir == JParameter.DIRECTION.IN) {
+//                        writeln(arg.getCType + " " + k.getKernelName + 
+//                            "_" + arg.getName + "[];")
+//                        // FIXME: Array size
+//                    }
+//                })
+//            }
+//        })
+//
+//        // Batch size declaration
+//        // FIXME: Determine the batch size if we have multiple kernels.
+//
+//        // Outermost loop for tasks
+//        writeln("for (int task = 0; task < " + total_task_num_str + "; task += " + batch_task_num_str + ") {")
+//        in()
+//
+//        // Kernel function calls
+//        kernelList.view.zipWithIndex.foreach({case(kernel, idx) => 
+//            write(kernel.getKernelName + "(")
+//            write(batch_task_num_str) // Batch size (total task number for one kernel case)
+//
+//            // Input
+//            asScalaBuffer(kernel.getArgs).foreach(arg => {
+//                if (arg.getDir == JParameter.DIRECTION.IN) {
+//                    write(", " + kernel.getKernelName + "_" + arg.getName)
+//                    if (arg.isArray && arg.isPrimitive) {
+//                        write("[task * " +
+//                          batch_task_num_str + " * " +
+//                          arg.asInstanceOf[PrimitiveJParameter].getItemLength() + "]")
+//                    }
+//                }
+//            })
+//
+//            // Output
+//            if (idx == kernelList.size - 1) {
+//                // Outputs of the last kernel are arguments
+//                asScalaBuffer(kernel.getArgs).foreach(arg => {
+//                    if (arg.getDir == JParameter.DIRECTION.OUT) {
+//                        write(", " + kernel.getKernelName + "_" + arg.getName)
+//                        if (arg.isArray && arg.isPrimitive) {
+//                            write("[task * " +
+//                              batch_task_num_str + " * " +
+//                              arg.asInstanceOf[PrimitiveJParameter].getItemLength() + "]")
+//                        }
+//                    }
+//                })
+//            }
+//            else {
+//                // Outputs of other kernels are inputs of the next kernel
+//                val nextKernel = kernelList(idx + 1)
+//                asScalaBuffer(nextKernel.getArgs).foreach(arg => {
+//                    if (arg.getDir == JParameter.DIRECTION.IN) {
+//                        write(", " + nextKernel.getKernelName + "_" + arg.getName)
+//                        if (arg.isArray && arg.isPrimitive) {
+//                            write("[task * " +
+//                              batch_task_num_str + " * " +
+//                              arg.asInstanceOf[PrimitiveJParameter].getItemLength() + "]")
+//                        }
+//                    }
+//                })                
+//            }
+//
+//            // Reference
+//            asScalaBuffer(kernel.getRefArgs).foreach(arg => {
+//                write(", " + arg.getName)
+//            })
+//
+//            writeln(");")
+//        })
+//
+//        out()
+//        writeln("}")
+//        out()        
+//        writeln("}")
         commitToString
     }
 
