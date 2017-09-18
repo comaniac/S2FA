@@ -1,0 +1,11 @@
+port : 1027
+verbose : 3
+platform : {
+  type: CPU 
+  cache_limit: 16384
+  scratch_limit: 4096
+	acc : {
+		id : "KMeans"
+		path : "/curr/cody/Spark_ACC/acc_runtime/examples/kmeans/acc_task/lib/KMeans.so"
+	}
+}

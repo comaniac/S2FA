@@ -89,6 +89,11 @@
       <version>1.5.1</version>
     </dependency>
 		<dependency>
+			<groupId>org.apache.spark</groupId>
+			<artifactId>blaze</artifactId>
+			<version>1.0</version>
+		</dependency>
+		<dependency>
 		  <groupId>org.apache.j2fa</groupId>
 		  <artifactId>j2fa_core</artifactId>
 		  <version>0.0.0</version>
