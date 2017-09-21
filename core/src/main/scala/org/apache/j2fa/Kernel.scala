@@ -105,6 +105,14 @@ class Kernel(kernelSig: String, ioInfo: ((String, Int), (String, Int))) {
         // Fetch type info from config
         ioInfo._1._1
       })
+
+      // FIXME: Since we cannot get the variable name of the
+      // input, we fix it as "in". This won't be a problem for
+      // primitive types but objects with type paramters (e.g. Tuple2),
+      // because the code generator will try to use the local variable
+      // table to find the type hint. Mismatched variable name would cause
+      // type hint missing. Thus, the input must be named "in" if it is
+      // a class with type parameters.
       val param = JParameter.createParameter(
         inType, "in", JParameter.DIRECTION.IN)
       param.setItemLength(ioInfo._1._2)
