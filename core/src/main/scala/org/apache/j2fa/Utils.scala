@@ -17,30 +17,13 @@
 
 package org.apache.j2fa
 import java.lang.reflect.Method
+import com.amd.aparapi.internal.util.{Utils => AparapiUtils}
 
 object Utils {
 
-  def asBytecodeType(name: String): String = 
-      name.toLowerCase.replace(" ", "") match {
-    case "int" => "I"
-    case "float" => "F"
-    case "double" => "D"
-    case "long" => "J"
-    case "void" => "V"
-    case "tuple2" => "Lscala/Tuple2;"
-    case "iterator" => "Lscala/collection/Iterator;"
-    case _ => 
-      if (name.contains("[]"))
-        "[" + asBytecodeType(name.replace("[]", ""))
-      else if (!name.startsWith("["))
-        "L" + name.replace(".", "/") + ";"
-      else
-        name.replace(".", "/")
-  }
-
   def getMethodSignature(m: Method): String = {
-    val params = m.getParameterTypes.map(e => asBytecodeType(e.getName))
-    val ret = asBytecodeType(m.getReturnType.getName)
+    val params = m.getParameterTypes.map(e => AparapiUtils.convertToBytecodeType(e.getName, true))
+    val ret = AparapiUtils.convertToBytecodeType(m.getReturnType.getName, true)
     var sig = "(";
     params.foreach(e => sig += e)
     sig + ")" + ret

@@ -60,24 +60,41 @@ object SparkKMeans {
     while(tempDist > convergeDist) {
       val flatKPoints = kPoints.flatMap(e => e)
       val closestIdx = data.map(p => {
-        var bestIndex = 0
-        var closest = 1e10
+        // Final goal:
+        // * We use "grouped" because we support 1-D array only.
+        //   This can be ignored if we support 2-D array or objects.
+        // centers.grouped(DIM)
+        //    .map(c => c.zip(a)
+        //               .map({case(x, y) => (x - y) * (x - y)})
+        //               .reduce(_ + _))
+        //    .zipWithIndex.min._2
 
+        val dist = new Array[Double](3)
         var i: Int = 0
-        while (i < 3) {
-          var dist = 0.0
+        while (i < 3) { // map(c => ...)
+          dist(i) = 0.0
           var j: Int = 0
-          while (j < 12) {
-            dist += (p(j) - flatKPoints(i * 12 + j)) * (p(j) - flatKPoints(i * 12 + j))
+          while (j < 12) { // map({case(x, y) => ...}).reduce(...)
+            dist(i) += (p(j) - flatKPoints(i * 12 + j)) * (p(j) - flatKPoints(i * 12 + j))
             j += 1
-          }
-          if (dist < closest) {
-            closest = dist
-            bestIndex = i
           }
           i += 1
         }
-        bestIndex
+
+        // zipWithIndex.min
+        var minIdx = 0
+        var minVal = dist(0)
+        var k: Int = 1
+        while (k < 3) {
+          if (dist(k) < minVal) {
+            minVal = dist(k)
+            minIdx = k
+          }
+          k += 1
+        }
+
+        // ._2
+        minIdx
       })
 
       val closest = closestIdx.zip(data).map{case (i, p) => (i, (p, 1))}

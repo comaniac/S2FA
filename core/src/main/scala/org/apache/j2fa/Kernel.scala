@@ -45,9 +45,9 @@ import com.amd.aparapi.internal.util.{Utils => AparapiUtils}
 
 import org.apache.j2fa.AST._
 
-class Kernel(kernelSig: String, ioItemLength: (Int, Int)) {
+class Kernel(kernelSig: String, ioInfo: ((String, Int), (String, Int))) {
 
-  def this(sig: String) = this(sig, (1, 1))
+  def this(sig: String) = this(sig, (("", 1), ("", 1)))
 
   val logger = Logger.getLogger(Config.getLoggerName)
 
@@ -96,25 +96,36 @@ class Kernel(kernelSig: String, ioItemLength: (Int, Int)) {
       // NOTE: Currently we assume only one input argument 
       // (but we can have multiple reference arguments, of course)
       var sig = "("
-      applyMethod.getParameterTypes.zipWithIndex.foreach(arg => {
-        val argClazz = arg._1
-        val idx = arg._2
-        val param = JParameter.createParameter(
-            argClazz.getName, "s2fa_in_" + idx, JParameter.DIRECTION.IN)
-        if (param.isInstanceOf[PrimitiveJParameter])
-          param.asInstanceOf[PrimitiveJParameter].setItemLength(ioItemLength._1)
-        params.add(param)
-        sig += Utils.asBytecodeType(argClazz.getName)
+      require(applyMethod.getParameterTypes.length == 1)
+      val inType = AparapiUtils.convertToBytecodeType(if ("" == ioInfo._1._1) {
+        // Infer type info from bytecode
+        applyMethod.getParameterTypes()(0).getName
+      }
+      else {
+        // Fetch type info from config
+        ioInfo._1._1
       })
-      val returnType = applyMethod.getReturnType.getName
-      if (!returnType.equals("void")) {
+      val param = JParameter.createParameter(
+        inType, "in", JParameter.DIRECTION.IN)
+      param.setItemLength(ioInfo._1._2)
+      params.add(param)
+      sig += (if (inType.contains("<")) inType.substring(0, inType.indexOf("<")) + ";"
+              else inType)
+
+      val retType = AparapiUtils.convertToBytecodeType(if ("" == ioInfo._2._1) {
+        applyMethod.getReturnType.getName
+      }
+      else {
+        ioInfo._2._1
+      })
+      if (!retType.equals("void")) {
         val param = JParameter.createParameter(
-            returnType, "s2fa_out", JParameter.DIRECTION.OUT)
-        if (param.isInstanceOf[PrimitiveJParameter])
-          param.asInstanceOf[PrimitiveJParameter].setItemLength(ioItemLength._2)            
+            retType, "s2fa_out", JParameter.DIRECTION.OUT)
+        param.setItemLength(ioInfo._2._2)
         params.add(param)
       }
-      sig += ")" + Utils.asBytecodeType(returnType)
+      sig += ")" + (if (retType.contains("<")) retType.substring(0, retType.indexOf("<")) + ";"
+                    else retType)
       logger.info("Kernel signature: " + sig)
 
       // Create Entrypoint and generate the kernel

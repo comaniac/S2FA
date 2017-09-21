@@ -3,6 +3,7 @@ package org.apache.j2fa.AST
 import scala.reflect.runtime.universe._
 
 import org.apache.j2fa._
+import com.amd.aparapi.internal.util.{Utils => AparapiUtils}
 
 class TypeInfo(var typeName: String) {
   var gTypes: List[TypeInfo] = List[TypeInfo]()
@@ -25,7 +26,7 @@ class TypeInfo(var typeName: String) {
       "[" + gTypes(0).getShortName
 
     case _ =>
-      Utils.asBytecodeType(typeName.replace("scala.", ""))
+      AparapiUtils.convertToBytecodeType(typeName.replace("scala.", ""))
     }
   }
 

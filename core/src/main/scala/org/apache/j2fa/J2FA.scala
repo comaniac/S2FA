@@ -105,12 +105,14 @@ object J2FA {
           // Build IO info table
           val ioInfos = (config \ "kernel").map(e => {
             val fun = (e \ "function").text
-            val in = (e \ "input_item_length").text.toInt
-            val out = (e \ "output_item_length").text.toInt
-            (fun, in, out)
+            val inItemLength = (e \ "input_item_length").text.toInt
+            val inType = (e \ "input_type").text
+            val outItemLength = (e \ "output_item_length").text.toInt
+            val outType = (e \ "output_type").text
+            (fun, (inType, inItemLength), (outType, outItemLength))
           })
 
-          // Setup output format (currently only use Merlin C)
+          // Setup output format (currently only use MerlinC)
           System.setProperty("com.amd.aparapi.enable.MERLIN", "true")
 
           // Create Aparapi class model
@@ -128,7 +130,8 @@ object J2FA {
             val ioInfo = ioInfos.find(e => e._1 == call.toString)
             
             val kernel = if (ioInfo.isDefined) {
-              logger.info("Compiling kernel " + call + ", IO={" + ioInfo.get._2 + ", " + ioInfo.get._3 + "}")
+              logger.info("Compiling kernel " + call + ", IO={" +
+                ioInfo.get._2 + ", " + ioInfo.get._3 + "}")
               Some(new Kernel(call, (ioInfo.get._2, ioInfo.get._3)))
             } else {
               None
@@ -148,9 +151,12 @@ object J2FA {
       // Generate the top function
       kernelList = kernelList.reverse
       val topKernelWriter = new TopKernelWriter(kernelList)      
-      val pw = new PrintWriter(new File(outPath + "/kernel_top.cpp"))
-      pw.write(topKernelWriter.writeToString)
-      pw.close
+      val pwKernel = new PrintWriter(new File(outPath + "/kernel_top.cpp"))
+      pwKernel.write(topKernelWriter.writeToString)
+      pwKernel.close
+      val pwHeader = new PrintWriter(new File(outPath + "/kernel_header.h"))
+      pwHeader.write(topKernelWriter.writeHeaderToString)
+      pwHeader.close
     } catch {
       case e: java.lang.ClassNotFoundException =>
         logger.severe("Cannot load class " + args(0) + ", make sure " + 

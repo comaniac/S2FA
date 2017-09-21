@@ -22,32 +22,45 @@ public abstract class JParameter {
 	protected boolean referenceOrNot;
 	protected boolean arrayOrNot;
 	protected String type;
+    protected int itemLength;
+    protected int typeLength;
 	protected final String name;
 	protected final DIRECTION dir;
 	protected final List<JParameter> typeParameters;
 
 	public JParameter(String fullSig, String name, DIRECTION dir) {
+        // All signatures are represented in bytecode format.
+        // Primitive types: I, F, D, etc.
+        // Array types: [I, 128[I, etc.
+        // Generic types: Tuple2<I, [D>, Tuple2<Tuple2<128[I, D>, F>, etc.
+
 		this.name = name;
+        this.itemLength = 1;
 		this.clazzModel = null;
 		this.dir = dir;
 		this.referenceOrNot = false;
 		this.typeParameters = new LinkedList<JParameter>();
+        this.typeLength = -1;
 
-		String eleSig = fullSig;
-		if (eleSig.startsWith("[")) {
-			eleSig = eleSig.substring(1);
-			arrayOrNot = true;
-		}
+        String eleSig = fullSig;
+        if (Character.isDigit(eleSig.charAt(0))) { // Extract array length
+            String lengthStr = eleSig.substring(0, eleSig.lastIndexOf('['));
+            if (!lengthStr.equals(""))
+                this.typeLength = Integer.parseInt(lengthStr);
+            eleSig = eleSig.substring(eleSig.lastIndexOf('['));
+        }
+        if (eleSig.startsWith("[")) { // Identify array type
+            eleSig = eleSig.substring(1);
+            arrayOrNot = true;
+        }
 		else
 			arrayOrNot = false;
-		String tmpType = eleSig;
 
 		if (eleSig.indexOf('<') != -1) { // Has generic types
-			String topLevelType = eleSig.substring(0, eleSig.indexOf('<'));
+			this.type = eleSig.substring(0, eleSig.indexOf('<')).replace("/", ".");
 
 			// Set base class
-			tmpType = topLevelType;
-			logger.finest("JParameter: " + eleSig + " extracts base " + topLevelType);
+			logger.finest("JParameter: " + eleSig + " extracts base " + this.type);
 
 			// Extract generic types
 			String params = eleSig.substring(eleSig.indexOf('<') + 1, eleSig.lastIndexOf('>'));
@@ -60,16 +73,17 @@ public abstract class JParameter {
 					nestLevel -= 1;
 				else if (params.charAt(i) == ',' && nestLevel == 0) {
 					logger.finest("Add a new generic type " + params.substring(curPos, i));
-					JParameter newType = createParameter(params.substring(curPos, i), null, dir);
+					JParameter newType = createParameter(params.substring(curPos, i), null, dir, false);
 					this.typeParameters.add(newType);
 					curPos = i + 1;
 				}
 			}
 			logger.finest("Add a new generic type " + params.substring(curPos));
-			JParameter newType = createParameter(params.substring(curPos), null, dir);
+			JParameter newType = createParameter(params.substring(curPos), null, dir, false);
 			this.typeParameters.add(newType);
 		}
-		this.type = tmpType.replace("/", ".");
+        else
+            this.type = eleSig;
 	}
 
 	public List<JParameter> getTypeParameters() {
@@ -80,8 +94,13 @@ public abstract class JParameter {
 		String[] arr = new String[typeParameters.size()];
 		int index = 0;
 		for (JParameter param : typeParameters) {
-			if (param.isArray())
-				arr[index] = "[";
+			if (param.isArray()) {
+                if (param.getTypeLength() != -1)
+                    arr[index] = "" + param.getTypeLength();
+                else
+                    arr[index] = "";
+				arr[index] += "[";
+            }
 			else
 				arr[index] = "";
 			arr[index] += param.getTypeName();
@@ -110,18 +129,11 @@ public abstract class JParameter {
 	}
 
 	public String getCType() {
-		String s = "";
-		
-		s += Utils.convertToCType(type);
-		s = s.replace("*", "");
-
-		for (JParameter param : typeParameters)
-			s += "_" + param.getCType();
+		String s = Utils.convertToCType(type);
+        for (String gType : getDescArray())
+			s += "_" + Utils.convertToCType(gType);
 		s = s.replace("*", "Ary");
-
-		if (isArray())
-			s += "*";
-
+        s = s.replace("[", "_").replace("]", "");
 		return s;
 	}
 
@@ -172,9 +184,36 @@ public abstract class JParameter {
 		return dir; 
 	}
 
-	public static JParameter createParameter(String signature, String name, DIRECTION dir) {
+    public void setTypeLength(int length) {
+        typeLength = length;
+    }
+
+    public int getTypeLength() {
+        return typeLength;
+    }
+
+ 	public void setItemLength(int length) {
+		itemLength = length;
+	}
+
+	public int getItemLength() {
+		return itemLength;
+	}
+
+	public static JParameter createParameter(String signature, String name,
+            DIRECTION dir) {
+        return createParameter(signature, name, dir, false);
+    }
+   
+	public static JParameter createParameter(String _signature, String name,
+            DIRECTION dir, boolean isBytecodeType) {
 		JParameter param = null;
 
+        String signature = _signature;
+        if (!isBytecodeType)
+            signature = Utils.convertToBytecodeType(signature);
+
+        logger.fine("Create parameter " + name + " by signature " + signature);
 		if (Utils.isPrimitive(signature))
 			param = new PrimitiveJParameter(signature, name, dir);	
 		else

@@ -39,7 +39,7 @@ class TopKernelWriter(kernelList : List[Kernel]) {
     }
 
     // Create a string builder for writing the kernel
-    val sb = new StringBuilder
+    var sb: StringBuilder = null
 
     // Indent level for code formatting
     val indent_pat = "  "
@@ -47,10 +47,12 @@ class TopKernelWriter(kernelList : List[Kernel]) {
     var write_indent = true
 
     def writeToString(): String = {
+        sb = new StringBuilder
         // Write headers
         // FIXME: Now disable due to the ROSE bug
         // "error: cannot find stddef.h"
         // writeln("#include <string.h>")
+        writeln("#include \"kernel_header.h\"")
 
         // Write subkernels
         kernelList.foreach(k => {
@@ -182,6 +184,14 @@ class TopKernelWriter(kernelList : List[Kernel]) {
 //        writeln("}")
 //        out()        
 //        writeln("}")
+        commitToString
+    }
+
+    def writeHeaderToString() = {
+        sb = new StringBuilder
+        kernelList.foreach(k => {
+            write(k.getHeader)
+        })
         commitToString
     }
 

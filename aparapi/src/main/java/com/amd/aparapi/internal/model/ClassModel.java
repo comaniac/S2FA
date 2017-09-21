@@ -2942,8 +2942,12 @@ public abstract class ClassModel {
 	}
 
 	private ClassModelMethod getMethodOrNull(String _name, String _descriptor) {
+        logger.finest("Searching " + _name + " " + _descriptor);
 		for (final ClassModelMethod entry : methods) {
-			if (entry.getName().equals(_name) && entry.getDescriptor().equals(_descriptor)) {
+            String entryName = entry.getName();
+            String entryDesc = entry.getDescriptor();
+            logger.finest("Candidate: " + entryName + " " + entryDesc);
+			if (entryName.equals(_name) && entryDesc.equals(_descriptor)) {
 				if (logger.isLoggable(Level.FINE)) {
 					logger.fine("Found " + clazz.getName() + "." + entry.getName() + " " + entry.getDescriptor() +
 					            " for "

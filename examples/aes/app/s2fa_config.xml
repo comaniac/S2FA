@@ -7,7 +7,7 @@
 	</main>
     <kernel>
         <function>map(AES$$anonfun$3)</function>
-		<input_item_length>16</input_item_length>
-		<output_item_length>16</output_item_length>
+        <input_item_length>16</input_item_length>
+        <output_item_length>16</output_item_length>
 	</kernel>
 </data>

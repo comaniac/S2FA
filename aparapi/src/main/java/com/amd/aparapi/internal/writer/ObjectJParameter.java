@@ -52,7 +52,7 @@ public class ObjectJParameter extends JParameter {
 							.newInstance();
 				}
 			} catch (Exception e) {
-				throw new RuntimeException("Cannot construct customized class model");
+				throw new RuntimeException("Fail to construct customized class model", e);
 			}
 		}
 	}

@@ -5,4 +5,4 @@ opt:
 	${S2FA_OPT_HOME}/bin/exec-opt.sh kernel_top.cpp
 
 clean:
-	rm -f *.cpp *.o *.log
+	rm -f *.h *.cpp *.o *.log

@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<data>
+	<main>
+		<class>NW$</class>
+		<method>main</method>
+		<variable>rdd</variable>
+	</main>
+    <kernel>
+        <function>map(NW$$anonfun$2)</function>
+        <input_item_length>1</input_item_length>
+        <input_type>scala.Tuple2&lt;int[128],int[128]&gt;</input_type>
+        <output_item_length>1</output_item_length>
+        <output_type>scala.Tuple2&lt;int[256],int[256]&gt;</output_type>
+	</kernel>
+</data>

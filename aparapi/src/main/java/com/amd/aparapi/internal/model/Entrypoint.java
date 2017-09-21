@@ -77,9 +77,9 @@ public class Entrypoint implements Cloneable {
 
 	private final List<Field> referencedFields = new ArrayList<Field>();
 
-	private final Map<String, String> typeEnv;
+	private final Map<String, JParameter> typeEnv;
 
-	public String getEnvTypeHint(String varName) {
+	public JParameter getEnvTypeHint(String varName) {
 		if (typeEnv.containsKey(varName))
 			return typeEnv.get(varName);
 		return null;
@@ -88,6 +88,8 @@ public class Entrypoint implements Cloneable {
 	private ClassModel classModel;
 
 	private final CustomizedClassModels customizedClassModels;
+
+    private final Object [] predefinedClasses;
 
 	public CustomizedClassModels getCustomizedClassModels() {
 		return customizedClassModels;
@@ -379,7 +381,7 @@ public class Entrypoint implements Cloneable {
 			try {
 				memberClass = Class.forName(className);
 			} catch (final Exception e) {
-				logger.info("Cannot load: " + className);
+				logger.severe("Cannot load: " + className);
 				throw new AparapiException(e);
 			}
 
@@ -631,9 +633,6 @@ public class Entrypoint implements Cloneable {
 		kernelInstance = _k;
 		argumentList = params;
 
-		// FIXME: Maybe useful again in the future
-		typeEnv = new HashMap<String, String>();
-
 		config = new Config();
 
 		customizedClassModels = new CustomizedClassModels();
@@ -643,44 +642,45 @@ public class Entrypoint implements Cloneable {
 
 		boolean discovered = true;
 
-		// // Load com.amd.aparapi.classlibrary
-		// try {
-		// 	ClassLoader cl = CustomizedClassModel.class.getClassLoader();
-		// 	URL pkgURL = Thread.currentThread().getContextClassLoader()
-		// 		.getResource("com/amd/aparapi");
-		// 	String jarFileName = URLDecoder.decode(pkgURL.getFile(), "UTF-8");
-		// 	jarFileName = jarFileName.substring(5, jarFileName.indexOf("!"));
-		// 	JarFile jarFile = new JarFile(jarFileName);
+		// Load com.amd.aparapi.classlibrary
+		try {
+			ClassLoader cl = CustomizedClassModel.class.getClassLoader();
+			URL pkgURL = Thread.currentThread().getContextClassLoader()
+				.getResource("com/amd/aparapi");
+			String jarFileName = URLDecoder.decode(pkgURL.getFile(), "UTF-8");
+			jarFileName = jarFileName.substring(5, jarFileName.indexOf("!"));
+			JarFile jarFile = new JarFile(jarFileName);
 
-		// 	Enumeration<JarEntry> jarEntries = jarFile.entries();
-		// 	while (jarEntries.hasMoreElements()) {
-		// 		String entryName = jarEntries.nextElement().getName();
-		// 		if (entryName.startsWith("com/amd/aparapi/classlibrary") && 
-		// 				entryName.endsWith(".class") && 
-		// 				!entryName.contains("$")) {
-		// 			cl.loadClass(entryName.replace("/", ".").substring(0, entryName.length() - 6));
-		// 		}
-		// 	}
-		// } catch (Exception e) {
-		// 	throw new RuntimeException("Fail to load com.amd.aparapi.classlibaray");
-		// }
+			Enumeration<JarEntry> jarEntries = jarFile.entries();
+			while (jarEntries.hasMoreElements()) {
+				String entryName = jarEntries.nextElement().getName();
+				if (entryName.startsWith("com/amd/aparapi/classlibrary") && 
+						entryName.endsWith(".class") && 
+						!entryName.contains("$")) {
+					cl.loadClass(entryName.replace("/", ".").substring(0, entryName.length() - 6));
+				}
+			}
+		} catch (Exception e) {
+			throw new RuntimeException("Fail to load com.amd.aparapi.classlibaray");
+		}
 
-		// // Build a loaded class list
-		// Class<?> loaderClazz = appClassLoader.getClass();
-		// while (loaderClazz != java.lang.ClassLoader.class)
-		// 	loaderClazz = loaderClazz.getSuperclass();
-		// try {
-		// 	Field fieldClazz = loaderClazz.getDeclaredField("classes");
-		// 	fieldClazz.setAccessible(true);
+		// Build a loaded class list
+		Class<?> loaderClazz = CustomizedClassModel.class.getClassLoader().getClass();
+		//Class<?> loaderClazz = appClassLoader.getClass();
+		while (loaderClazz != java.lang.ClassLoader.class)
+			loaderClazz = loaderClazz.getSuperclass();
+		try {
+			Field fieldClazz = loaderClazz.getDeclaredField("classes");
+			fieldClazz.setAccessible(true);
 
-		// 	// Load classes from user input classpath
-		// 	loadedClasses = ((Vector) fieldClazz.get(appClassLoader)).toArray();
+			// Load classes from user input classpath
+			//loadedClasses = ((Vector) fieldClazz.get(appClassLoader)).toArray();
 
-		// 	// Load com.amd.aparapi.classlibrary
-		// 	systemClasses = ((Vector) fieldClazz.get(CustomizedClassModel.class.getClassLoader())).toArray();
-		// } catch (Exception e) {
-		// 	throw new RuntimeException("Fail to load class list");
-		// }
+			// Load com.amd.aparapi.classlibrary
+			predefinedClasses = ((Vector) fieldClazz.get(CustomizedClassModel.class.getClassLoader())).toArray();
+		} catch (Exception e) {
+			throw new RuntimeException("Fail to load class list");
+		}
 
 		// // Traverse customized class models from user
 		// ArrayList<String> customizedClassFileList = findDerivedClasses("CustomizedClassModel");
@@ -697,26 +697,26 @@ public class Entrypoint implements Cloneable {
 		// 	}
 		// }
 
-		// // Traverse customized class models from system
-		// ArrayList<String> systemCustomizedClassFileList = findDefaultCustomizedClassModels();
-		// for (String name : systemCustomizedClassFileList) {
-		// 	try {
-		// 		Class<?> clazz = Class.forName(name);
-		// 		@SuppressWarnings("unchecked")
-		// 		Class<CustomizedClassModel> customizedClass = (Class<CustomizedClassModel>) clazz;
-		// 		Constructor<?> cstr = customizedClass.getConstructor();
-		// 		addCustomizedClass((CustomizedClassModel) cstr.newInstance());
-		// 	} catch (Exception e) {
-		// 		throw new RuntimeException("Cannot load customized class model from system " + 
-		// 			name + ": " + e);
-		// 	}
-		// }
+		// Traverse customized class models from library
+		ArrayList<String> predefCustomizedClassFileList = findDefaultCustomizedClassModels();
+		for (String name : predefCustomizedClassFileList) {
+			try {
+				Class<?> clazz = Class.forName(name);
+				@SuppressWarnings("unchecked")
+				Class<CustomizedClassModel> customizedClass = (Class<CustomizedClassModel>) clazz;
+				Constructor<?> cstr = customizedClass.getConstructor();
+				addCustomizedClass((CustomizedClassModel) cstr.newInstance());
+			} catch (Exception e) {
+				throw new RuntimeException("Cannot load customized class model from system " + 
+					name + ": " + e);
+			}
+		}
 
-		// if (logger.isLoggable(Level.FINEST)) {
-		// 	logger.finest("Loaded CustomizedClassModels:");
-		// 	for (String s : customizedClassModels.getClassList())
-		// 		System.err.println(s);
-		// }
+		if (logger.isLoggable(Level.FINE)) {
+			logger.fine("Loaded CustomizedClassModels:");
+			for (String s : customizedClassModels.getClassList())
+				System.err.println(s);
+		}
 
 		// Record which pragmas we need to enable
 		if (methodModel.requiresDoublePragma()) {
@@ -732,9 +732,15 @@ public class Entrypoint implements Cloneable {
 				logger.fine("Enabling byte addressable on " + methodModel.getName());
 		}
 
-		// Initialize and add customized classes if necessary
-		for (final JParameter param : params)
+		typeEnv = new HashMap<String, JParameter>();
+
+        // 1. Create type environment table for I/O
+		// 2. Initialize and add customized classes if necessary
+		for (final JParameter param : params) {
+            typeEnv.put(param.getName(), param);
 			addParameterClass(param);
+        }
+
 
 		// Add local variable used classes FIXME: Class w. type parameter matching
 		// for (final String varName : typeEnv.keySet()) {
@@ -1267,17 +1273,17 @@ public class Entrypoint implements Cloneable {
 	// 	return clzList;	
 	// }
 
-	// public ArrayList<String> findDefaultCustomizedClassModels() {
-	// 	ArrayList<String> clzList = new ArrayList<String>();
-	// 	for (final Object clazz : systemClasses) {
-	// 		Class<?> superClazz = ((Class) clazz).getSuperclass();
-	// 		if (superClazz == null)
-	// 			continue ;
-	// 		if (superClazz.getName().contains("CustomizedClassModel"))
-	// 			clzList.add(((Class<?>) clazz).getName());
-	// 	}
-	// 	return clzList;	
-	// }
+	public ArrayList<String> findDefaultCustomizedClassModels() {
+		ArrayList<String> clzList = new ArrayList<String>();
+		for (final Object clazz : predefinedClasses) {
+			Class<?> superClazz = ((Class) clazz).getSuperclass();
+			if (superClazz == null)
+				continue ;
+			if (superClazz.getName().contains("CustomizedClassModel"))
+				clzList.add(((Class<?>) clazz).getName());
+		}
+		return clzList;	
+	}
 
 	public int getSizeOf(String desc) {
 		if (desc.equals("Z")) desc = "B";
@@ -1600,13 +1606,13 @@ public class Entrypoint implements Cloneable {
 				else
 					throw new RuntimeException("cannot find the first argument for " + methodName + " from: " + refInst);
 
-				String typeHint = getEnvTypeHint(varName);
-				if (typeHint == null)
+				JParameter typeHint = getEnvTypeHint(varName);
+				if (typeHint == null || !(typeHint instanceof ObjectJParameter))
 					throw new RuntimeException("Variable " + varName + " must have explicity type hint");
-				else if (!typeHint.contains("<"))
+				else if (!((ObjectJParameter) typeHint).hasTypeParameters())
 					throw new RuntimeException("Variable " + varName + " should have generic types");
 
-				String [] gTypes = typeHint.substring(typeHint.indexOf("<") + 1, typeHint.indexOf(">")).split(",");
+				String [] gTypes = typeHint.getDescArray();
 				for (int j = 0; j < gTypes.length; j += 1) {
 					gTypes[j] = gTypes[j].replace("/", ".");
 					if (gTypes[j].startsWith("L"))
@@ -1617,7 +1623,7 @@ public class Entrypoint implements Cloneable {
 				for (CustomizedClassModel c : cms) {
 					boolean match = true;
 					for (int j = 0; j < gTypes.length; j += 1) {
-						if (!c.getTypeParam(j).equals(gTypes[j])) {
+						if (!c.getTypeParam(j, false).equals(gTypes[j])) {
 							match = false;
 							break;
 						}

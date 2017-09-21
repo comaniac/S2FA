@@ -6,6 +6,7 @@ import com.amd.aparapi.internal.instruction.InstructionSet.TypeSpec;
 import com.amd.aparapi.internal.exception.AparapiException;
 import com.amd.aparapi.internal.util.Utils;
 import com.amd.aparapi.internal.writer.BlockWriter;
+import com.amd.aparapi.internal.util.Utils;
 
 public abstract class CustomizedClassModel extends ClassModel {
 	private final String className;
@@ -83,10 +84,11 @@ public abstract class CustomizedClassModel extends ClassModel {
 
 	@Override
 	public String getMangledClassName() {
-		String name = className.replace('.', '_');
+		String name = Utils.convertToCType(className);
 		for (String s : typeParams.list())
 			name += "_" + Utils.convertToCType(s);
 		name = name.replace("*", "Ary");
+        name = name.replace("[", "_").replace("]", "");
 		return name;
 	}
 
@@ -208,8 +210,15 @@ public abstract class CustomizedClassModel extends ClassModel {
 		return typeParams;
 	}
 
-	public String getTypeParam(int idx) {
-		return typeParams.get(idx);
+    public String getTypeParam(int idx) {
+        return getTypeParam(idx, true);
+    }
+
+	public String getTypeParam(int idx, boolean transform) {
+        String type = typeParams.get(idx);
+        if (!transform)
+            return type;
+		return Utils.convertToCType(type);
 	}
 
 	public boolean hasTypeParams() {
