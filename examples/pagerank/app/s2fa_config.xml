@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<data>
+	<main>
+		<class>PageRank$</class>
+		<method>main</method>
+		<variable>links</variable>
+	</main>
+    <kernel>
+        <function>map(PageRank$$anonfun$1)</function>
+        <input_item_length>1</input_item_length>
+        <input_type>scala.Tuple2&lt;int,int&gt;</input_type>
+        <output_item_length>1</output_item_length>
+        <output_type>scala.Tuple2&lt;int,float&gt;</output_type>
+	</kernel>
+</data>

@@ -37,10 +37,28 @@ public class Tuple2ClassModel extends CustomizedClassModel {
 
             @Override
             public String getBody(Tuple2ClassModel clazzModel) {
-                return (
-                    getFieldModel("v1").genMemcpy("n1") + ";\n  " + 
-                    getFieldModel("v2").genMemcpy("n2") + ";"
-                );
+                String stmt = "";
+                if (getFieldModel("v1").isArray()) {
+                    if (getFieldModel("v1").knowArrLength())
+                        stmt += getFieldModel("v1").genMemcpy("n1");
+                    else
+                        throw new RuntimeException("Error: v1 array has to have specific length.");
+                }
+                else
+                    stmt += getFieldModel("v1").genAssign("n1");
+                stmt += ";\n  ";
+
+                if (getFieldModel("v2").isArray()) {
+                    if (getFieldModel("v2").knowArrLength())
+                        stmt += getFieldModel("v2").genMemcpy("n2");
+                    else
+                        throw new RuntimeException("Error: v2 array has to have specific length.");
+                }
+                else
+                    stmt += getFieldModel("v2").genAssign("n2");
+                stmt += ";";
+
+                return stmt;
             }
 
         };

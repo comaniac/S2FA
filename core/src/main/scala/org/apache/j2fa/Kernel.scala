@@ -156,8 +156,8 @@ class Kernel(kernelSig: String, ioInfo: ((String, Int), (String, Int))) {
         val fullMsg = sw.toString
         logger.severe("Kernel generated failed: " + fullMsg)
         false
-    }    
-  }  
+    }
+  }
 
   def generate: Boolean = {
     if (lambdaClassName.length == 0) {

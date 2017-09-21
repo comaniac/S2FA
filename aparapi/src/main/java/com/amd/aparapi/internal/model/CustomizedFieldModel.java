@@ -81,6 +81,10 @@ public class CustomizedFieldModel {
         return offset;
     }
 
+    public boolean knowArrLength() {
+        return this.arrLength != -1;
+    }
+
     public boolean isArray() {
         return ary;
     }

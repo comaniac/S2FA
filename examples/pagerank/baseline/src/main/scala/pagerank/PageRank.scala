@@ -8,7 +8,6 @@ import org.apache.spark.HashPartitioner
 import org.apache.spark.Partitioner
 import org.apache.spark.rdd._
 import org.apache.spark.blaze._
-import org.apache.j2fa.Annotation._
 
 import scala.math._
 import Array._
@@ -151,7 +150,6 @@ class ComputeWeight(
     case _ => None
   }
 
-  @J2FA_Kernel
   override def call (in: Tuple2[Int, Int]): Tuple2[Int, Float] = {
     val destNode = in._1
     val srcNode = in._2
