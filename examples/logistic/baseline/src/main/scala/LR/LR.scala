@@ -27,7 +27,7 @@ import java.util._
 // comaniac: Import extended package
 import org.apache.spark.blaze._
 
-class LogisticRegression(b_w: BlazeBroadcast[Array[Float]]) 
+class LR(b_w: BlazeBroadcast[Array[Float]]) 
   extends Accelerator[Array[Float], Array[Float]] {
 
   val id: String = "Logistic_cpu"
@@ -47,9 +47,9 @@ class LogisticRegression(b_w: BlazeBroadcast[Array[Float]])
 
     val grad = new Array[Float](_L * _D)
     val dot = new Array[Float](1)
-    val w = b_w.data
+    val w = b_w.value
 
-    for (i <- 0 until _L) {
+    for (i <- 0 until _L) { // Each label
       dot(0) = 0.0f
       for (j <- 0 until _D)
         dot(0) = dot(0) + w(i * _D + j) * data(j + _L)
@@ -63,16 +63,16 @@ class LogisticRegression(b_w: BlazeBroadcast[Array[Float]])
   }
 }
 
-object LogisticRegression {
+object LR {
     val L = 10
     val D = 784
 
     def main(args : Array[String]) {
-      val sc = get_spark_context("LogisticRegression")
+      val sc = get_spark_context("LR")
       val acc = new BlazeRuntime(sc)
 
       if (args.length < 3) {
-        System.err.println("Usage: LogisticRegression <file> <reps> <iter>")
+        System.err.println("Usage: LR <file> <reps> <iter>")
         System.exit(1)
       }
       val rand = new Random(42)
@@ -103,7 +103,7 @@ object LogisticRegression {
         var start_time = System.nanoTime
         val b_w = acc.wrap(sc.broadcast(w))
         val gradient = dataPoints
-          .map_acc(new LogisticRegression(b_w))
+          .map_acc(new LR(b_w))
           .reduce((a, b) => {
             for (i <- 0 until L) {
               for (j <- 0 until D)
@@ -121,10 +121,10 @@ object LogisticRegression {
 
         // Verification 
         
-        //val errNum = dataPoints
-        //  .map(points => predictor(w, points))
-        //  .reduce((a, b) => (a + b))
-        //println("Error rate: " + ((errNum.toFloat / pointNum.toFloat) * 100) + "%")
+        val errNum = dataPoints
+          .map(points => predictor(w, points))
+          .reduce((a, b) => (a + b))
+        println("Error rate: " + ((errNum.toFloat / pointNum.toFloat) * 100) + "%")
         
       }
 

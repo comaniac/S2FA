@@ -325,7 +325,7 @@ public abstract class KernelWriter extends BlockWriter {
         MethodModel m = entryPoint.getCallTarget(_methodEntry, isSpecial);
 
         // Look for customized class models
-        if (m == null) {
+        if (m == null && (_methodCall instanceof VirtualMethodCall)) {
             Instruction i = ((VirtualMethodCall) _methodCall).getInstanceReference();
             m = entryPoint.getCustomizedCallTarget(methodClass, methodName, i);
         }
@@ -436,11 +436,13 @@ public abstract class KernelWriter extends BlockWriter {
         boolean isFirst = true;
 
         // write arguement for referenced fields
-        for (final Map.Entry<String, String> entry : m.getReferencedFieldNames().entrySet()) {
-            if (!isFirst)
-                write(", ");
-            isFirst = false;
-            write(entry.getKey());
+        if (m != null) {
+            for (final Map.Entry<String, String> entry : m.getReferencedFieldNames().entrySet()) {
+                if (!isFirst)
+                    write(", ");
+                isFirst = false;
+                write(entry.getKey());
+            }
         }
 
         // write arguments of real method call
