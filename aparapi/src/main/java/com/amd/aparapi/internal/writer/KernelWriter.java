@@ -969,7 +969,7 @@ public abstract class KernelWriter extends BlockWriter {
                 outParam = p;
             }
             String arg = p.getParameterCode();
-            if (!arg.contains("*")) { 
+            if (!arg.contains("*")) {
                 // Hack the kernel entry data I/O to enforce it to be an arry
                 String type = arg.substring(0, arg.indexOf(" "));
                 String name = arg.substring(arg.indexOf(" ") + 1, arg.length());
@@ -997,6 +997,9 @@ public abstract class KernelWriter extends BlockWriter {
         out();
         newLine();
         assert(outParam != null);
+
+        // Write internal pragma as a hint
+        writeln("#pragma S2FA internal return=" + outParam.getName());
 
         write("for (int idx = 0; idx < N; idx++) {");
         in();
