@@ -3,6 +3,7 @@ compile:
 
 opt:
 	${S2FA_OPT_HOME}/bin/exec-opt.sh kernel_top.cpp
+	python ${S2FA_OPT_HOME}/bin/header_remover.py rose_kernel_top.cpp
 
 test:
 	@if g++ -c rose_kernel_top.cpp ; then echo Success! ; else echo Failure! ; fi

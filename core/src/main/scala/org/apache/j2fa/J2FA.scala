@@ -34,18 +34,18 @@ import org.apache.j2fa.Annotation._
 import org.apache.j2fa.AST._
 import com.amd.aparapi.Config
 import com.amd.aparapi.internal.model.ClassModel
-import com.amd.aparapi.internal.model.CustomizedClassModels.CustomizedClassModelMatcher
+import com.amd.aparapi.internal.model.CustomizedClassModels._
 
 object J2FA {
   val logger = Logger.getLogger(Config.getLoggerName)
- 
+
   def main(args : Array[String]) {
     if (args.length < 2) {
       System.err.print("Usage: J2FA <Config file> <Output kernel path>")
       System.exit(1)
     }
     logger.info("J2FA -- Java to FPGA Accelerator Framework")
-    
+
     // Create customized class loader
     // val jarPaths = args(0).split(":")
     // var jars = List[URL]()
@@ -54,7 +54,7 @@ object J2FA {
     //   jars = jars :+ file
     // })
     // val loader = new URLClassLoader(jars.toArray)
-    
+
     // var lastPos = 0
     // for (i <- 0 until loadLevel) {
     //   if (args(3).indexOf(".", lastPos + 1) != -1)
@@ -68,14 +68,17 @@ object J2FA {
     //   var entity = jarFile.entries
     //   while (entity.hasMoreElements) {
     //     val je = entity.nextElement
-    //     if (!je.isDirectory && je.getName.endsWith(".class") && je.getName.startsWith(pkgPrefix)) {
-    //       val clazzName = je.getName.substring(0, je.getName.length - 6).replace('/', '.')
+    //     if (!je.isDirectory && je.getName.endsWith(".class") &&
+    //          je.getName.startsWith(pkgPrefix)) {
+    //       val clazzName = je.getName.substring(0, je.getName.length - 6)
+    //         .replace('/', '.')
     //       logger.finest("Load class " + clazzName)
     //       try {
     //         loader.loadClass(clazzName)
     //       } catch {
     //         case _ : Throwable =>
-    //           logger.finest("Cannot find class " + clazzName + " in provided packages")
+    //           logger.finest("Cannot find class " + clazzName +
+    //             " in provided packages")
     //       }
     //     }
     //   }
@@ -89,14 +92,14 @@ object J2FA {
       val targetMethod = (config \ "main" \ "method").text
       val targetVar = (config \ "main" \ "variable").text
 
-      logger.info("Loading target class: " + targetClazz)      
-      
+      logger.info("Loading target class: " + targetClazz)
+
       var kernelList = List[Kernel]()
       val outPath = args(1).substring(0, args(1).lastIndexOf("/") + 1)
 
       // Load the target class
       val clazz = getClass().getClassLoader().loadClass(targetClazz)
-      
+
       // Compile each kernel method to accelerator design
       clazz.getDeclaredMethods.foreach({m =>
         if (m.getName.equals(targetMethod)) {
@@ -116,10 +119,11 @@ object J2FA {
           System.setProperty("com.amd.aparapi.enable.MERLIN", "true")
 
           // Create Aparapi class model
-          val classModel : ClassModel = ClassModel.createClassModel(clazz, null, 
+          val classModel : ClassModel = ClassModel.createClassModel(clazz, null,
             new CustomizedClassModelMatcher(null))
-          
-          val methodCallsJava = classModel.getAllMethodCallsByVar(m.getName(), Utils.getMethodSignature(m), targetVar)
+
+          val methodCallsJava = classModel.getAllMethodCallsByVar(m.getName(),
+            Utils.getMethodSignature(m), targetVar)
           val methodCalls = asScalaBuffer(methodCallsJava)
 
           logger.fine("Kernel flow:")
@@ -128,7 +132,7 @@ object J2FA {
           // Compile each kernel method to accelerator kernel
           methodCalls.foreach(call => {
             val ioInfo = ioInfos.find(e => e._1 == call.toString)
-            
+
             val kernel = if (ioInfo.isDefined) {
               logger.info("Compiling kernel " + call + ", IO={" +
                 ioInfo.get._2 + ", " + ioInfo.get._3 + "}")
@@ -142,7 +146,7 @@ object J2FA {
               if (kernel.get.generate == true)
                 logger.info("Successfully generated the kernel " + call)
               else
-                throw new RuntimeException("Fail to generate the kernel " + call)
+                throw new RuntimeException("Fail to generate kernel " + call)
             }
           })
         }
@@ -150,7 +154,7 @@ object J2FA {
 
       // Generate the top function
       kernelList = kernelList.reverse
-      val topKernelWriter = new TopKernelWriter(kernelList)      
+      val topKernelWriter = new TopKernelWriter(kernelList)
       val pwKernel = new PrintWriter(new File(outPath + "/kernel_top.cpp"))
       pwKernel.write(topKernelWriter.writeToString)
       pwKernel.close
@@ -159,7 +163,7 @@ object J2FA {
       pwHeader.close
     } catch {
       case e: java.lang.ClassNotFoundException =>
-        logger.severe("Cannot load class " + args(0) + ", make sure " + 
+        logger.severe("Cannot load class " + args(0) + ", make sure " +
           "the -classpath covers all necessary files.")
         System.exit(1)
       case e: Throwable =>

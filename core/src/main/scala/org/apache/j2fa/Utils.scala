@@ -22,7 +22,8 @@ import com.amd.aparapi.internal.util.{Utils => AparapiUtils}
 object Utils {
 
   def getMethodSignature(m: Method): String = {
-    val params = m.getParameterTypes.map(e => AparapiUtils.convertToBytecodeType(e.getName, true))
+    val params = m.getParameterTypes.map(e =>
+        AparapiUtils.convertToBytecodeType(e.getName, true))
     val ret = AparapiUtils.convertToBytecodeType(m.getReturnType.getName, true)
     var sig = "(";
     params.foreach(e => sig += e)
@@ -30,6 +31,6 @@ object Utils {
   }
 
   def getLegalKernelName(str : String): String = {
-    str.replace("(", "_").replace(")", "").replace("$", "")    
+    str.replace("(", "_").replace(")", "").replace("$", "")
   }
 }

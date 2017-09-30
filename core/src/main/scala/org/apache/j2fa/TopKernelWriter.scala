@@ -62,7 +62,7 @@ class TopKernelWriter(kernelList : List[Kernel]) {
             write(k.getKernel) // FIXME: Subfunction name conflict
             writeln("// ============")
             writeln("// Kernel " + k.getKernelName + " End")
-            writeln("// ============")        
+            writeln("// ============")
         })
 
 // FIXME: Enable multiple kernels.
@@ -74,8 +74,9 @@ class TopKernelWriter(kernelList : List[Kernel]) {
 //        val firstKernelArgs = asScalaBuffer(kernelList.head.getArgs)
 //        firstKernelArgs.foreach(arg => {
 //            if (arg.getDir == JParameter.DIRECTION.IN) {
-//                val ctype = if (arg.getCType.contains("*")) arg.getCType else arg.getCType + "*"
-//                write(",\n" + indent_pat + ctype + " " + 
+//                val ctype = if (arg.getCType.contains("*")) arg.getCType
+//                            else arg.getCType + "*"
+//                write(",\n" + indent_pat + ctype + " " +
 //                    kernelList.head.getKernelName + "_" + arg.getName)
 //            }
 //        })
@@ -84,7 +85,8 @@ class TopKernelWriter(kernelList : List[Kernel]) {
 //        val lastKernelArgs = asScalaBuffer(kernelList.last.getArgs)
 //        lastKernelArgs.foreach(arg => {
 //            if (arg.getDir == JParameter.DIRECTION.OUT) {
-//                val ctype = if (arg.getCType.contains("*")) arg.getCType else arg.getCType + "*"
+//                val ctype = if (arg.getCType.contains("*")) arg.getCType
+//                            else arg.getCType + "*"
 //                write(",\n" + indent_pat + ctype + " " +
 //                    kernelList.last.getKernelName + "_" + arg.getName)
 //            }
@@ -105,13 +107,13 @@ class TopKernelWriter(kernelList : List[Kernel]) {
 //
 //        // Function body
 //
-//        // Inter-kernel buffer declaration 
+//        // Inter-kernel buffer declaration
 //        // Argunment format for kernels: (taskNum, input, output, reference)
-//        kernelList.view.zipWithIndex.foreach({case(k, idx) => 
-//            if (idx != 0) { // The first kernel inputs are top kernel arguments
+//        kernelList.view.zipWithIndex.foreach({case(k, idx) =>
+//            if (idx != 0) { // First kernel inputs are top kernel arguments
 //                asScalaBuffer(k.getArgs).foreach(arg => {
 //                    if (arg.getDir == JParameter.DIRECTION.IN) {
-//                        writeln(arg.getCType + " " + k.getKernelName + 
+//                        writeln(arg.getCType + " " + k.getKernelName +
 //                            "_" + arg.getName + "[];")
 //                        // FIXME: Array size
 //                    }
@@ -123,13 +125,15 @@ class TopKernelWriter(kernelList : List[Kernel]) {
 //        // FIXME: Determine the batch size if we have multiple kernels.
 //
 //        // Outermost loop for tasks
-//        writeln("for (int task = 0; task < " + total_task_num_str + "; task += " + batch_task_num_str + ") {")
+//        writeln("for (int task = 0; task < " + total_task_num_str +
+//          "; task += " + batch_task_num_str + ") {")
 //        in()
 //
 //        // Kernel function calls
-//        kernelList.view.zipWithIndex.foreach({case(kernel, idx) => 
+//        kernelList.view.zipWithIndex.foreach({case(kernel, idx) =>
 //            write(kernel.getKernelName + "(")
-//            write(batch_task_num_str) // Batch size (total task number for one kernel case)
+//            // Batch size (total task number for one kernel case)
+//            write(batch_task_num_str)
 //
 //            // Input
 //            asScalaBuffer(kernel.getArgs).foreach(arg => {
@@ -138,7 +142,8 @@ class TopKernelWriter(kernelList : List[Kernel]) {
 //                    if (arg.isArray && arg.isPrimitive) {
 //                        write("[task * " +
 //                          batch_task_num_str + " * " +
-//                          arg.asInstanceOf[PrimitiveJParameter].getItemLength() + "]")
+//                          arg.asInstanceOf[PrimitiveJParameter]
+//                            .getItemLength() + "]")
 //                    }
 //                }
 //            })
@@ -152,7 +157,8 @@ class TopKernelWriter(kernelList : List[Kernel]) {
 //                        if (arg.isArray && arg.isPrimitive) {
 //                            write("[task * " +
 //                              batch_task_num_str + " * " +
-//                              arg.asInstanceOf[PrimitiveJParameter].getItemLength() + "]")
+//                              arg.asInstanceOf[PrimitiveJParameter]
+//                                .getItemLength() + "]")
 //                        }
 //                    }
 //                })
@@ -162,14 +168,16 @@ class TopKernelWriter(kernelList : List[Kernel]) {
 //                val nextKernel = kernelList(idx + 1)
 //                asScalaBuffer(nextKernel.getArgs).foreach(arg => {
 //                    if (arg.getDir == JParameter.DIRECTION.IN) {
-//                        write(", " + nextKernel.getKernelName + "_" + arg.getName)
+//                        write(", " + nextKernel.getKernelName + "_" +
+//                          arg.getName)
 //                        if (arg.isArray && arg.isPrimitive) {
 //                            write("[task * " +
 //                              batch_task_num_str + " * " +
-//                              arg.asInstanceOf[PrimitiveJParameter].getItemLength() + "]")
+//                              arg.asInstanceOf[PrimitiveJParameter]
+//                                .getItemLength() + "]")
 //                        }
 //                    }
-//                })                
+//                })
 //            }
 //
 //            // Reference
@@ -182,7 +190,7 @@ class TopKernelWriter(kernelList : List[Kernel]) {
 //
 //        out()
 //        writeln("}")
-//        out()        
+//        out()
 //        writeln("}")
         commitToString
     }

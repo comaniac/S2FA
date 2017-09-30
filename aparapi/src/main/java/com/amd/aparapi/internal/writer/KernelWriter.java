@@ -835,6 +835,8 @@ public abstract class KernelWriter extends BlockWriter {
         // FIXME: This is a workaround due to the ROSE bug
         write("void memcpy(void *x, void *y, int size) { return ; }");
         newLine();
+        write("float exp(float x) { return x; }");
+        newLine();
         //write("#include <math.h>");
         //newLine();
         //write("#include <string.h>");

@@ -38,7 +38,7 @@ import com.amd.aparapi.internal.writer.BlockWriter._
 import com.amd.aparapi.internal.writer._
 import com.amd.aparapi.internal.writer.JParameter
 import com.amd.aparapi.internal.writer.JParameter.DIRECTION
-import com.amd.aparapi.internal.model.CustomizedClassModels.CustomizedClassModelMatcher
+import com.amd.aparapi.internal.model.CustomizedClassModels._
 import com.amd.aparapi.internal.writer.KernelWriter
 import com.amd.aparapi.internal.writer.KernelWriter.WriterAndKernel
 import com.amd.aparapi.internal.util.{Utils => AparapiUtils}
@@ -64,7 +64,8 @@ class Kernel(kernelSig: String, ioInfo: ((String, Int), (String, Int))) {
 
   val kernelName = Utils.getLegalKernelName(kernelSig)
   val kernelType = kernelSig.substring(0, kernelSig.indexOf('('))
-  val lambdaClassName = kernelSig.substring(kernelSig.indexOf('(') + 1, kernelSig.indexOf(')'))
+  val lambdaClassName = kernelSig.substring(kernelSig.indexOf('(') + 1,
+    kernelSig.indexOf(')'))
   def getKernelName = kernelName
   def getKernelType = kernelType
 
@@ -73,16 +74,18 @@ class Kernel(kernelSig: String, ioInfo: ((String, Int), (String, Int))) {
 
     try {
       val clazz = getClass.getClassLoader.loadClass(lambdaClassName)
-      val classModel : ClassModel = ClassModel.createClassModel(clazz, null, 
+      val classModel : ClassModel = ClassModel.createClassModel(clazz, null,
         new CustomizedClassModelMatcher(null))
-      
+
       // Identify the apply method in the lambda class
       val methods = clazz.getMethods
       var applyMethod: Method = null
       methods.foreach(m => {
         if (!m.isBridge() && m.getName.equals("apply")) {
-          if (applyMethod != null)
-            logger.warning("Found multiple apply methods and only take the first one")
+          if (applyMethod != null) {
+            logger.warning("Found multiple apply methods" +
+              "and only take the first one")
+          }
           else
             applyMethod = m
         }
@@ -93,7 +96,7 @@ class Kernel(kernelSig: String, ioInfo: ((String, Int), (String, Int))) {
       }
 
       // Setup arguments and return values
-      // NOTE: Currently we assume only one input argument 
+      // NOTE: Currently we assume only one input argument
       // (but we can have multiple reference arguments, of course)
       var sig = "("
       require(applyMethod.getParameterTypes.length == 1)
@@ -117,7 +120,8 @@ class Kernel(kernelSig: String, ioInfo: ((String, Int), (String, Int))) {
         inType, "in", JParameter.DIRECTION.IN)
       param.setItemLength(ioInfo._1._2)
       params.add(param)
-      sig += (if (inType.contains("<")) inType.substring(0, inType.indexOf("<")) + ";"
+      sig += (if (inType.contains("<"))
+                inType.substring(0, inType.indexOf("<")) + ";"
               else inType)
 
       val retType = AparapiUtils.convertToBytecodeType(if ("" == ioInfo._2._1) {
@@ -132,22 +136,27 @@ class Kernel(kernelSig: String, ioInfo: ((String, Int), (String, Int))) {
         param.setItemLength(ioInfo._2._2)
         params.add(param)
       }
-      sig += ")" + (if (retType.contains("<")) retType.substring(0, retType.indexOf("<")) + ";"
+      sig += ")" + (if (retType.contains("<"))
+                      retType.substring(0, retType.indexOf("<")) + ";"
                     else retType)
       logger.info("Kernel signature: " + sig)
 
       // Create Entrypoint and generate the kernel
-      val entryPoint = classModel.getEntrypoint("apply", sig, applyMethod, params)
-      val writerAndKernel = KernelWriter.writeToString(kernelName, entryPoint, params)
+      val entryPoint = classModel.getEntrypoint("apply",
+        sig, applyMethod, params)
+      val writerAndKernel = KernelWriter.writeToString(kernelName,
+        entryPoint, params)
       refParams = KernelWriter.getRefArgs(entryPoint)
       var genString = writerAndKernel.kernel
       genString = KernelWriter.postProcforHLS(genString)
-      headerString = genString.substring(0, genString.indexOf("// Kernel source code starts here\n"))
-      kernelString = genString.substring(genString.indexOf("// Kernel source code starts here\n") + 34)
+      headerString = genString.substring(0,
+        genString.indexOf("// Kernel source code starts here\n"))
+      kernelString = genString.substring(
+        genString.indexOf("// Kernel source code starts here\n") + 34)
       true
     } catch {
       case e: java.lang.ClassNotFoundException =>
-        logger.severe("Cannot load class " + lambdaClassName + ", make sure " + 
+        logger.severe("Cannot load class " + lambdaClassName + ", make sure " +
           "the -classpath covers all necessary files.")
         false
       case e: Throwable =>
@@ -169,9 +178,12 @@ class Kernel(kernelSig: String, ioInfo: ((String, Int), (String, Int))) {
   }
 
   def getArgString: String = {
-    require(kernelString != "", "Cannot invoke this method before generating kernel!")
-    val argStart = kernelString.indexOf(kernelName + "(") + kernelName.length + 1
-    val argEnd = kernelString.indexOf(")", kernelString.indexOf(kernelName + "(") + kernelName.length + 1)
+    require(kernelString != "", "Cannot invoke this method before" +
+      "generating kernel!")
+    val argStart = kernelString.indexOf(kernelName + "(") +
+      kernelName.length + 1
+    val argEnd = kernelString.indexOf(")",
+      kernelString.indexOf(kernelName + "(") + kernelName.length + 1)
     kernelString.substring(argStart, argEnd)
   }
 }
