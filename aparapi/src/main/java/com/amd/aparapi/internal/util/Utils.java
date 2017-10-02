@@ -26,8 +26,8 @@ public class Utils {
 
         String type = _type.replace("[]", "").replace("[", "").trim();
 
-        if (type.startsWith("I") || type.startsWith("F") || 
-                type.startsWith("D") || type.startsWith("J") || 
+        if (type.startsWith("I") || type.startsWith("F") ||
+                type.startsWith("D") || type.startsWith("J") ||
                 type.startsWith("B") || type.startsWith("C") ||
                 type.startsWith("S") || type.startsWith("Z"))
             return true;
@@ -86,7 +86,7 @@ public class Utils {
             else
                 newType += type;
             newType = newType.replace(".", "")
-                .replace("/", "_").replace(";", "");
+                      .replace("/", "_").replace(";", "");
         }
 
         if (isArray) {
@@ -99,10 +99,10 @@ public class Utils {
         return newType + varName;
     }
 
-     public static String convertToBytecodeType(String type) {
+    public static String convertToBytecodeType(String type) {
         return convertToBytecodeType(type, false);
     }
-   
+
     public static String convertToBytecodeType(String type, boolean eraseGeneric) {
         if (Character.isDigit(type.charAt(0)))
             return type;
@@ -110,8 +110,7 @@ public class Utils {
             String arrLength = type.substring(type.indexOf("[") + 1, type.indexOf("]"));
             String baseType = type.trim().substring(0, type.indexOf("["));
             return arrLength + "[" + convertToBytecodeType(baseType, eraseGeneric);
-        }
-        else if (type.startsWith("["))
+        } else if (type.startsWith("["))
             return "[" + convertToBytecodeType(type.substring(1));
         else if (type.equals("int"))     return "I";
         else if (type.equals("float"))     return "F";
@@ -133,7 +132,7 @@ public class Utils {
             else {
                 String fullType = baseType.replace(";", "") + "<";
                 String genericTypes = type.substring(
-                        type.indexOf("<") + 1, type.lastIndexOf(">")).trim();
+                                          type.indexOf("<") + 1, type.lastIndexOf(">")).trim();
                 boolean isFirst = true;
                 for (String gType : genericTypes.split(",")) {
                     if (!isFirst)
@@ -143,8 +142,7 @@ public class Utils {
                 }
                 return fullType + ">;";
             }
-        }
-        else if (!type.startsWith("L"))
+        } else if (!type.startsWith("L"))
             return "L" + type.replace(".", "/") + ";";
         return type.replace(".", "/");
     }

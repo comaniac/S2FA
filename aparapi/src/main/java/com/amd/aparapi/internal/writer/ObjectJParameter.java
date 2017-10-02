@@ -14,52 +14,52 @@ import com.amd.aparapi.internal.model.CustomizedFieldModel;
 
 public class ObjectJParameter extends JParameter {
 
-	public ObjectJParameter(String fullSig, String name, DIRECTION dir) {
-		super(fullSig, name, dir);
-	}
+    public ObjectJParameter(String fullSig, String name, DIRECTION dir) {
+        super(fullSig, name, dir);
+    }
 
-	public boolean hasTypeParameters() {
-		if (typeParameters.size() != 0)
-			return true;
-		return false;
-	}
+    public boolean hasTypeParameters() {
+        if (typeParameters.size() != 0)
+            return true;
+        return false;
+    }
 
-	@Override
-	public String getParameterCode() {
-		String param = getCType() + " ";
+    @Override
+    public String getParameterCode() {
+        String param = getCType() + " ";
 
-		// Objects must pass by address
-		param += "*" + name;
-		return param;
-	}
+        // Objects must pass by address
+        param += "*" + name;
+        return param;
+    }
 
-	@Override
-	public void init(Entrypoint ep) {
-		CustomizedClassModels models = ep.getCustomizedClassModels();
-		if (models.hasClass(getTypeName())) {
-			TypeParameters typeParams = new TypeParameters(Arrays.asList(getDescArray()));
-			Class<?> clazz = models.getSample(getTypeName()).getClass();
-			logger.fine("Initializing parameter " + this.toString() + " using " + clazz.toString());
-			try {
-				if (hasTypeParameters() == true) {
-					clazzModel = (CustomizedClassModel) clazz
-							.getConstructor(TypeParameters.class)
-							.newInstance(typeParams);
-				}
-				else {
-					clazzModel = (CustomizedClassModel) clazz
-							.getConstructor()
-							.newInstance();
-				}
-			} catch (Exception e) {
-				throw new RuntimeException("Fail to construct customized class model", e);
-			}
-		}
-	}
+    @Override
+    public void init(Entrypoint ep) {
+        CustomizedClassModels models = ep.getCustomizedClassModels();
+        if (models.hasClass(getTypeName())) {
+            TypeParameters typeParams = new TypeParameters(Arrays.asList(getDescArray()));
+            Class<?> clazz = models.getSample(getTypeName()).getClass();
+            logger.fine("Initializing parameter " + this.toString() + " using " +
+                        clazz.toString());
+            try {
+                if (hasTypeParameters() == true) {
+                    clazzModel = (CustomizedClassModel) clazz
+                                 .getConstructor(TypeParameters.class)
+                                 .newInstance(typeParams);
+                } else {
+                    clazzModel = (CustomizedClassModel) clazz
+                                 .getConstructor()
+                                 .newInstance();
+                }
+            } catch (Exception e) {
+                throw new RuntimeException("Fail to construct customized class model", e);
+            }
+        }
+    }
 
-	@Override
-	public boolean isPrimitive() {
-		return false;
-	}
+    @Override
+    public boolean isPrimitive() {
+        return false;
+    }
 }
 

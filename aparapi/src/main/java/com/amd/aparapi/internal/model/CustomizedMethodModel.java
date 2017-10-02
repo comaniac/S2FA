@@ -4,8 +4,8 @@ import java.util.*;
 import com.amd.aparapi.internal.util.Utils;
 import com.amd.aparapi.internal.writer.KernelWriter;
 
-public abstract class CustomizedMethodModel<T extends CustomizedClassModel> 
-        extends MethodModel {
+public abstract class CustomizedMethodModel<T extends CustomizedClassModel>
+    extends MethodModel {
 
     protected final T clazzModel;
     protected final String name;
@@ -42,7 +42,7 @@ public abstract class CustomizedMethodModel<T extends CustomizedClassModel>
         return name;
     }
 
-    @Override 
+    @Override
     public String getOwnerClassMangledName() {
         return clazzModel.getMangledClassName();
     }
@@ -73,9 +73,8 @@ public abstract class CustomizedMethodModel<T extends CustomizedClassModel>
             String arrLength = "";
             if (retCType.contains("[")) {
                 sb.append(retCType.substring(
-                            0, retCType.indexOf("[")).trim() + "* ");
-            }
-            else if (!Utils.isPrimitive(retCType))
+                              0, retCType.indexOf("[")).trim() + "* ");
+            } else if (!Utils.isPrimitive(retCType))
                 sb.append(retCType + "* ");
             else
                 sb.append(retCType + " ");

@@ -57,143 +57,156 @@ import com.amd.aparapi.internal.tool.InstructionViewer;
  */
 public class Config {
 
-	/**
-	 * Value defaults to com.amd.aparapi.config if not overridden by extending classes
-	 */
-	protected static final String propPkgName = Config.class.getPackage().getName();
+    /**
+     * Value defaults to com.amd.aparapi.config if not overridden by extending classes
+     */
+    protected static final String propPkgName = Config.class.getPackage().getName();
 
-	// Logging setup
-	private static final String logPropName = propPkgName + ".logLevel";
+    // Logging setup
+    private static final String logPropName = propPkgName + ".logLevel";
 
-	public static final Logger logger = Logger.getLogger(Config.getLoggerName());
+    public static final Logger logger = Logger.getLogger(Config.getLoggerName());
 
-	/**
-	 * Disable Unsafe
-	 */
-	public static final boolean disableUnsafe = Boolean.getBoolean(propPkgName + ".disableUnsafe");
+    /**
+     * Disable Unsafe
+     */
+    public static final boolean disableUnsafe = Boolean.getBoolean(
+                propPkgName + ".disableUnsafe");
 
-	// Pragma/OpenCL codegen related flags
-	public static final boolean enableAtomic32 = Boolean.getBoolean(propPkgName + ".enableAtomic32");
+    // Pragma/OpenCL codegen related flags
+    public static final boolean enableAtomic32 = Boolean.getBoolean(
+                propPkgName + ".enableAtomic32");
 
-	public static final boolean enableAtomic64 = Boolean.getBoolean(propPkgName + ".enableAtomic64");
+    public static final boolean enableAtomic64 = Boolean.getBoolean(
+                propPkgName + ".enableAtomic64");
 
-	// Debugging related flags
-	public static final boolean verboseComparitor = Boolean.getBoolean(propPkgName +
-	    ".verboseComparitor");
+    // Debugging related flags
+    public static final boolean verboseComparitor = Boolean.getBoolean(propPkgName +
+            ".verboseComparitor");
 
-	// Individual bytecode support related flags
-	public static final boolean enablePUTFIELD = Boolean.getBoolean(propPkgName + ".enable.PUTFIELD");
+    // Individual bytecode support related flags
+    public static final boolean enablePUTFIELD = Boolean.getBoolean(
+                propPkgName + ".enable.PUTFIELD");
 
-	public static final boolean enableARETURN = !Boolean.getBoolean(propPkgName + ".disable.ARETURN");
+    public static final boolean enableARETURN = !Boolean.getBoolean(
+                propPkgName + ".disable.ARETURN");
 
-	public static final boolean enablePUTSTATIC = Boolean.getBoolean(propPkgName + ".enable.PUTSTATIC");
+    public static final boolean enablePUTSTATIC = Boolean.getBoolean(
+                propPkgName + ".enable.PUTSTATIC");
 
-	// Allow static array accesses
-	public static final boolean enableGETSTATIC =
-	  true; //Boolean.getBoolean(propPkgName + ".enable.GETSTATIC");
+    // Allow static array accesses
+    public static final boolean enableGETSTATIC =
+        true; //Boolean.getBoolean(propPkgName + ".enable.GETSTATIC");
 
-	public static final boolean enableMONITOR = Boolean.getBoolean(propPkgName + ".enable.MONITOR");
+    public static final boolean enableMONITOR = Boolean.getBoolean(
+                propPkgName + ".enable.MONITOR");
 
-	public static final boolean enableATHROW = Boolean.getBoolean(propPkgName + ".enable.ATHROW");
+    public static final boolean enableATHROW = Boolean.getBoolean(
+                propPkgName + ".enable.ATHROW");
 
-	public static final boolean enableMETHODARRAYPASSING = !Boolean.getBoolean(
-	      propPkgName + ".disable.METHODARRAYPASSING");
+    public static final boolean enableMETHODARRAYPASSING = !Boolean.getBoolean(
+                propPkgName + ".disable.METHODARRAYPASSING");
 
-	public static final boolean enableARRAYLENGTH = Boolean.getBoolean(propPkgName +
-	    ".enable.ARRAYLENGTH");
+    public static final boolean enableARRAYLENGTH = Boolean.getBoolean(propPkgName +
+            ".enable.ARRAYLENGTH");
 
-	public static final boolean enableSWITCH = Boolean.getBoolean(propPkgName + ".enable.SWITCH");
+    public static final boolean enableSWITCH = Boolean.getBoolean(
+                propPkgName + ".enable.SWITCH");
 
-	public static boolean enableShowFakeLocalVariableTable = Boolean.getBoolean(
-	      propPkgName + ".enableShowFakeLocalVariableTable");
+    public static boolean enableShowFakeLocalVariableTable = Boolean.getBoolean(
+                propPkgName + ".enableShowFakeLocalVariableTable");
 
-	public static final boolean enableInstructionDecodeViewer = Boolean.getBoolean(
-	      propPkgName + ".enableInstructionDecodeViewer");
+    public static final boolean enableInstructionDecodeViewer = Boolean.getBoolean(
+                propPkgName + ".enableInstructionDecodeViewer");
 
-	public static String instructionListenerClassName = System.getProperty(
-	      propPkgName + ".instructionListenerClass");
+    public static String instructionListenerClassName = System.getProperty(
+                propPkgName + ".instructionListenerClass");
 
-	public static InstructionListener instructionListener = null;
+    public static InstructionListener instructionListener = null;
 
-	public interface InstructionListener {
-		void showAndTell(String message, Instruction _start, Instruction _instruction);
-	}
+    public interface InstructionListener {
+        void showAndTell(String message, Instruction _start, Instruction _instruction);
+    }
 
-	// Kernel specified parameters
-	/**
-	 * User specified kernel type
-	 *
-	 *  Usage -Dcom.amd.aparapi.kernelType={General|Map|MapPartitions}
-	 *
-	 */
-	public final String kernelType;
+    // Kernel specified parameters
+    /**
+     * User specified kernel type
+     *
+     *  Usage -Dcom.amd.aparapi.kernelType={General|Map|MapPartitions}
+     *
+     */
+    public final String kernelType;
 
-	public final boolean enableMerlinKernel;
+    public final boolean enableMerlinKernel;
 
-	static {
-		try {
-			final Level level = Level.parse(System.getProperty(getLoggerName(), "INFO"));
+    static {
+        try {
+            final Level level = Level.parse(System.getProperty(getLoggerName(), "INFO"));
 
-			logger.setLevel(level);
-			logger.setUseParentHandlers(false);
-			LogFormatter formatter = new LogFormatter();
-			ConsoleHandler handler = new ConsoleHandler();
-			handler.setLevel(level);
-			handler.setFormatter(formatter);
-      logger.addHandler(handler);
-		} catch (final Exception e) {
-			System.err.println("Exception " + e + " in Aparapi logging setup");
-			e.printStackTrace();
-		}
-	};
+            logger.setLevel(level);
+            logger.setUseParentHandlers(false);
+            LogFormatter formatter = new LogFormatter();
+            ConsoleHandler handler = new ConsoleHandler();
+            handler.setLevel(level);
+            handler.setFormatter(formatter);
+            logger.addHandler(handler);
+        } catch (final Exception e) {
+            System.err.println("Exception " + e + " in Aparapi logging setup");
+            e.printStackTrace();
+        }
+    };
 
-	static {
-		if (enableInstructionDecodeViewer && ((instructionListenerClassName == null) ||
-		                                      instructionListenerClassName.equals("")))
-			instructionListenerClassName = InstructionViewer.class.getName();
+    static {
+        if (enableInstructionDecodeViewer && ((instructionListenerClassName == null) ||
+                                              instructionListenerClassName.equals("")))
+            instructionListenerClassName = InstructionViewer.class.getName();
 
-		if ((instructionListenerClassName != null) && !instructionListenerClassName.equals("")) {
-			try {
-				final Class<?> instructionListenerClass = Class.forName(instructionListenerClassName);
-				instructionListener = (InstructionListener) instructionListenerClass.newInstance();
-			} catch (final ClassNotFoundException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			} catch (final InstantiationException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			} catch (final IllegalAccessException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
-		}
-	}
+        if ((instructionListenerClassName != null) &&
+                !instructionListenerClassName.equals("")) {
+            try {
+                final Class<?> instructionListenerClass = Class.forName(
+                            instructionListenerClassName);
+                instructionListener = (InstructionListener)
+                                      instructionListenerClass.newInstance();
+            } catch (final ClassNotFoundException e) {
+                // TODO Auto-generated catch block
+                e.printStackTrace();
+            } catch (final InstantiationException e) {
+                // TODO Auto-generated catch block
+                e.printStackTrace();
+            } catch (final IllegalAccessException e) {
+                // TODO Auto-generated catch block
+                e.printStackTrace();
+            }
+        }
+    }
 
-	public Config() {
-		kernelType = System.getProperty(propPkgName + ".kernelType");
-		enableMerlinKernel = Boolean.getBoolean(propPkgName + ".enable.MERLIN");
-	}
+    public Config() {
+        kernelType = System.getProperty(propPkgName + ".kernelType");
+        enableMerlinKernel = Boolean.getBoolean(propPkgName + ".enable.MERLIN");
+    }
 
-	public static String getLoggerName() {
-		return logPropName;
-	}
+    public static String getLoggerName() {
+        return logPropName;
+    }
 }
 
 class LogFormatter extends Formatter {
-	private static final DateFormat df = new SimpleDateFormat("dd/MM/yy HH:mm:ss.SSS");
+    private static final DateFormat df = new
+    SimpleDateFormat("dd/MM/yy HH:mm:ss.SSS");
 
-	public String format(LogRecord record) {
-		StringBuilder builder = new StringBuilder(1024);
-    builder.append(df.format(new Date(record.getMillis()))).append(" ");
-    builder.append("[").append(record.getLevel()).append("]");
-		String className = record.getSourceClassName();
-		if (className.lastIndexOf(".") != -1)
-			className = className.substring(className.lastIndexOf(".") + 1);
-    builder.append("[").append(className).append(".");
-    builder.append(record.getSourceMethodName()).append("] ");
-    builder.append(formatMessage(record));
-    builder.append("\n");
-  	return builder.toString();
-	}
+    public String format(LogRecord record) {
+        StringBuilder builder = new StringBuilder(1024);
+        builder.append(df.format(new Date(record.getMillis()))).append(" ");
+        builder.append("[").append(record.getLevel()).append("]");
+        String className = record.getSourceClassName();
+        if (className.lastIndexOf(".") != -1)
+            className = className.substring(className.lastIndexOf(".") + 1);
+        builder.append("[").append(className).append(".");
+        builder.append(record.getSourceMethodName()).append("] ");
+        builder.append(formatMessage(record));
+        builder.append("\n");
+        return builder.toString();
+    }
 }
 

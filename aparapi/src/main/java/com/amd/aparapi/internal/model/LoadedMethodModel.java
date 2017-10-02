@@ -41,37 +41,40 @@ import com.amd.aparapi.internal.model.ClassModel.ClassModelMethod;
 import com.amd.aparapi.internal.exception.AparapiException;
 
 public class LoadedMethodModel extends MethodModel {
-	LoadedMethodModel(ClassModelMethod _method, Entrypoint _entrypoint) throws AparapiException {
-		entrypoint = _entrypoint;
-		init(_method);
-	}
+    LoadedMethodModel(ClassModelMethod _method,
+                      Entrypoint _entrypoint) throws AparapiException {
+        entrypoint = _entrypoint;
+        init(_method);
+    }
 
-	LoadedMethodModel(ClassModelMethod _method) throws AparapiException {
-		init(_method);
-	}
+    LoadedMethodModel(ClassModelMethod _method) throws AparapiException {
+        init(_method);
+    }
 
-	LoadedMethodModel(ClassModelMethod _method, boolean doAnalysis) throws AparapiException {
-		if (!doAnalysis)
-			initWithoutAnalysis(_method);
-		else
-			init(_method);
-	}
+    LoadedMethodModel(ClassModelMethod _method,
+                      boolean doAnalysis) throws AparapiException {
+        if (!doAnalysis)
+            initWithoutAnalysis(_method);
+        else
+            init(_method);
+    }
 
-	@Override
-	public String getGetterField() {
-		if (accessorVariableFieldEntry == null)
-			return null;
-		else
-			return accessorVariableFieldEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
-	}
+    @Override
+    public String getGetterField() {
+        if (accessorVariableFieldEntry == null)
+            return null;
+        else
+            return accessorVariableFieldEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+    }
 
-	@Override
-	public String getDescriptor() {
-		return method.getDescriptor();
-	}
+    @Override
+    public String getDescriptor() {
+        return method.getDescriptor();
+    }
 
-	@Override
-	public String getOwnerClassMangledName() {
-		return getMethod().getOwnerClassModel().getClassWeAreModelling().getName().replace('.', '_');
-	}
+    @Override
+    public String getOwnerClassMangledName() {
+        return getMethod().getOwnerClassModel().getClassWeAreModelling().getName().replace('.',
+                '_');
+    }
 }

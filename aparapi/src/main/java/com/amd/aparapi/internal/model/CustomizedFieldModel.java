@@ -27,20 +27,17 @@ public class CustomizedFieldModel {
                 this.arrLength = Integer.parseInt(lengthStr);
             else
                 this.arrLength = -1;
-        }
-        else if (type.contains("[")) {
+        } else if (type.contains("[")) {
             String baseType = type;
             if (Character.isDigit(type.charAt(0))) {
                 baseType = type.substring(type.indexOf("[")).trim();
                 this.arrLength = Integer.parseInt(type.substring(0, type.indexOf("[")));
-            }
-            else
+            } else
                 this.arrLength = -1;
             this.type = Utils.convertToCType(baseType);
             this.shortType = Utils.convertToBytecodeType(baseType);
             this.ary = true;
-        }
-        else {
+        } else {
             this.type = Utils.convertToCType(type);
             this.shortType = Utils.convertToBytecodeType(type);
             this.ary = false;
@@ -104,17 +101,18 @@ public class CustomizedFieldModel {
 
     public String genArrayElementAccess(String idx) {
         if (this.ary == false) {
-            throw new RuntimeException("Access scalar field " + this.name + " with index, " + 
-                    "use genAccess() instead.");
+            throw new RuntimeException("Access scalar field " + this.name + " with index, "
+                                       +
+                                       "use genAccess() instead.");
         }
         return "this->" + this.name + "[" + idx + "]";
     }
 
     public String genMemcpy(String cpyFrom) {
         assert(this.arrLength != -1);
-        return "memcpy(this->" + this.name + ", " + 
-            cpyFrom + ", sizeof(" + this.type + ") * " +
-            this.arrLength + ")";
+        return "memcpy(this->" + this.name + ", " +
+               cpyFrom + ", sizeof(" + this.type + ") * " +
+               this.arrLength + ")";
     }
 
     public String genAssign(String assignFrom) {

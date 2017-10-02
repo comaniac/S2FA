@@ -8,33 +8,35 @@ import com.amd.aparapi.internal.model.CustomizedFieldModel;
 
 public class BlazeBroadcastClassModel extends CustomizedClassModel {
 
-	public BlazeBroadcastClassModel() {
-		this(new TypeParameters(Arrays.asList("void")));
-	}
+    public BlazeBroadcastClassModel() {
+        this(new TypeParameters(Arrays.asList("void")));
+    }
 
-	public BlazeBroadcastClassModel(TypeParameters params) {
-		super("org.apache.spark.blaze.BlazeBroadcast", params);
+    public BlazeBroadcastClassModel(TypeParameters params) {
+        super("org.apache.spark.blaze.BlazeBroadcast", params);
 
-		addField(new CustomizedFieldModel("value", params.get(0), 0));
-		
-		CustomizedMethodModel<?> getValueMethod = new CustomizedMethodModel<BlazeBroadcastClassModel>(
-			this, "value", METHODTYPE.GETTER) {
-			@Override
-			public String getReturnType(BlazeBroadcastClassModel clazzModel) {
-				return clazzModel.getTypeParam(0);
-			}
+        addField(new CustomizedFieldModel("value", params.get(0), 0));
 
-			@Override
-			public Map<String, String> getArgs(BlazeBroadcastClassModel clazzModel) {
-				return null;
-			}
+        CustomizedMethodModel<?> getValueMethod =
+            new CustomizedMethodModel<BlazeBroadcastClassModel>(
+        this, "value", METHODTYPE.GETTER) {
+            @Override
+            public String getReturnType(BlazeBroadcastClassModel clazzModel) {
+                return clazzModel.getTypeParam(0);
+            }
 
-			@Override
-			public String getBody(BlazeBroadcastClassModel clazzModel) {
-				return ("return " + getFieldModel("value").genAccess() + ";");
-			}
-		};
-		addMethod(getValueMethod, getFieldModel("value"));
-//		addMethod(getValueMethod);
-	}
+            @Override
+            public Map<String, String> getArgs(
+                BlazeBroadcastClassModel clazzModel) {
+                return null;
+            }
+
+            @Override
+            public String getBody(BlazeBroadcastClassModel clazzModel) {
+                return ("return " + getFieldModel("value").genAccess() + ";");
+            }
+        };
+        addMethod(getValueMethod, getFieldModel("value"));
+//        addMethod(getValueMethod);
+    }
 }

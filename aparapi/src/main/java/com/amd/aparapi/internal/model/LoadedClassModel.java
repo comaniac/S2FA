@@ -69,74 +69,80 @@ import java.util.logging.*;
  */
 public class LoadedClassModel extends ClassModel {
 
-	/**
-	 * Create a MethodModel for a given method name and signature.
-	 *
-	 * @param _name
-	 * @param _signature
-	 * @return
-	 * @throws AparapiException
-	 */
-	@Override
-	public MethodModel getMethodModel(String _name, String _signature) throws AparapiException {
-		if (CacheEnabler.areCachesEnabled())
-			return methodModelCache.computeIfAbsent(MethodKey.of(_name, _signature));
-		else {
-			final ClassModelMethod method = getMethod(_name, _signature);
-			return new LoadedMethodModel(method);
-		}
-	}
+    /**
+     * Create a MethodModel for a given method name and signature.
+     *
+     * @param _name
+     * @param _signature
+     * @return
+     * @throws AparapiException
+     */
+    @Override
+    public MethodModel getMethodModel(String _name,
+                                      String _signature) throws AparapiException {
+        if (CacheEnabler.areCachesEnabled())
+            return methodModelCache.computeIfAbsent(MethodKey.of(_name, _signature));
+        else {
+            final ClassModelMethod method = getMethod(_name, _signature);
+            return new LoadedMethodModel(method);
+        }
+    }
 
-	@Override
-	public MethodModel checkForCustomizedMethods(String name, String desc) throws AparapiException {
-		return null;
-	}
+    @Override
+    public MethodModel checkForCustomizedMethods(String name,
+            String desc) throws AparapiException {
+        return null;
+    }
 
-	@Override
-	public String getMangledClassName() {
-		return getClassWeAreModelling().getName().replace('.', '_');
-	}
+    @Override
+    public String getMangledClassName() {
+        return getClassWeAreModelling().getName().replace('.', '_');
+    }
 
-	//   private ValueCache<MethodKey, MethodModel, AparapiException> methodModelCache = ValueCache.on(this::computeMethodModel);
-	private ValueCache<MethodKey, MethodModel, AparapiException> methodModelCache = ValueCache
-	.on(new ThrowingValueComputer<MethodKey, MethodModel, AparapiException>() {
-		@Override public MethodModel compute(MethodKey key) throws AparapiException {
-			return computeMethodModel(key);
-		}
-	});
+    //   private ValueCache<MethodKey, MethodModel, AparapiException> methodModelCache = ValueCache.on(this::computeMethodModel);
+    private ValueCache<MethodKey, MethodModel, AparapiException> methodModelCache =
+        ValueCache
+    .on(new ThrowingValueComputer<MethodKey, MethodModel, AparapiException>() {
+        @Override public MethodModel compute(MethodKey key) throws AparapiException {
+            return computeMethodModel(key);
+        }
+    });
 
-	private MethodModel computeMethodModel(MethodKey methodKey) throws AparapiException {
-		final ClassModelMethod method = getMethod(methodKey.getName(), methodKey.getSignature());
-		return new LoadedMethodModel(method);
-	}
+    private MethodModel computeMethodModel(MethodKey methodKey) throws
+        AparapiException {
+        final ClassModelMethod method = getMethod(methodKey.getName(),
+                                        methodKey.getSignature());
+        return new LoadedMethodModel(method);
+    }
 
-	LoadedClassModel(Class<?> _class) throws ClassParseException {
+    LoadedClassModel(Class<?> _class) throws ClassParseException {
 
-		parse(_class);
+        parse(_class);
 
-		final Class<?> mySuper = _class.getSuperclass();
-		// Find better way to do this check
-		// The java.lang.Object test is for unit test framework to succeed - should
-		// not occur in normal use
-		if ((mySuper != null) && (!mySuper.getName().equals(Kernel.class.getName()))
-		    && (!mySuper.getName().equals("java.lang.Object")) 
-			&& (!mySuper.getName().contains("scala.runtime.AbstractFunction")))
-			superClazz = ClassModel.createClassModel(mySuper, null, new CustomizedClassModelMatcher(null));
-	}
+        final Class<?> mySuper = _class.getSuperclass();
+        // Find better way to do this check
+        // The java.lang.Object test is for unit test framework to succeed - should
+        // not occur in normal use
+        if ((mySuper != null) && (!mySuper.getName().equals(Kernel.class.getName()))
+                && (!mySuper.getName().equals("java.lang.Object"))
+                && (!mySuper.getName().contains("scala.runtime.AbstractFunction")))
+            superClazz = ClassModel.createClassModel(mySuper, null,
+                         new CustomizedClassModelMatcher(null));
+    }
 
-	LoadedClassModel(InputStream _inputStream) throws ClassParseException {
+    LoadedClassModel(InputStream _inputStream) throws ClassParseException {
 
-		parse(_inputStream);
+        parse(_inputStream);
 
-	}
+    }
 
-	LoadedClassModel(Class<?> _clazz, byte[] _bytes) throws ClassParseException {
-		clazz = _clazz;
-		parse(new ByteArrayInputStream(_bytes));
-	}
+    LoadedClassModel(Class<?> _clazz, byte[] _bytes) throws ClassParseException {
+        clazz = _clazz;
+        parse(new ByteArrayInputStream(_bytes));
+    }
 
-	@Override
-	public boolean classNameMatches(String className) {
-		return getClassWeAreModelling().getName().equals(className);
-	}
+    @Override
+    public boolean classNameMatches(String className) {
+        return getClassWeAreModelling().getName().equals(className);
+    }
 }

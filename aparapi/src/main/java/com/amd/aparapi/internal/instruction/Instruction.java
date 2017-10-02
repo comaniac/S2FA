@@ -59,326 +59,334 @@ import com.amd.aparapi.internal.reader.ByteReader;
  */
 public abstract class Instruction {
 
-	protected MethodModel method;
+    protected MethodModel method;
 
-	private ByteCode byteCode;
+    private ByteCode byteCode;
 
-	private int length;
+    private int length;
 
-	protected int pc;
+    protected int pc;
 
-	public abstract String getDescription();
+    public abstract String getDescription();
 
-	private Instruction nextPC = null;
+    private Instruction nextPC = null;
 
-	private Instruction prevPC = null;
+    private Instruction prevPC = null;
 
-	private Instruction nextExpr = null;
+    private Instruction nextExpr = null;
 
-	private Instruction prevExpr = null;
+    private Instruction prevExpr = null;
 
-	private Instruction parentExpr = null;
+    private Instruction parentExpr = null;
 
-	private LinkedList<ConditionalBranch> forwardConditionalBranchTargets;
+    private LinkedList<ConditionalBranch> forwardConditionalBranchTargets;
 
-	private LinkedList<ConditionalBranch> reverseConditionalBranchTargets;
+    private LinkedList<ConditionalBranch> reverseConditionalBranchTargets;
 
-	private LinkedList<Branch> forwardUnconditionalBranchTargets;
+    private LinkedList<Branch> forwardUnconditionalBranchTargets;
 
-	private LinkedList<Branch> reverseUnconditionalBranchTargets;
+    private LinkedList<Branch> reverseUnconditionalBranchTargets;
 
-	private Instruction firstChild = null;
+    private Instruction firstChild = null;
 
-	private Instruction lastChild = null;
+    private Instruction lastChild = null;
 
-	public void setChildren(Instruction _firstChild, Instruction _lastChild) {
+    public void setChildren(Instruction _firstChild, Instruction _lastChild) {
 
-		if ((_firstChild == null) || (_lastChild == null))
-			throw new IllegalStateException("null children added");
-		firstChild = _firstChild;
-		lastChild = _lastChild;
+        if ((_firstChild == null) || (_lastChild == null))
+            throw new IllegalStateException("null children added");
+        firstChild = _firstChild;
+        lastChild = _lastChild;
 
-		for (Instruction i = firstChild; i != lastChild; i = i.getNextExpr()) {
-			if (i == null)
-				throw new IllegalStateException("child list broken ");
-			i.setParentExpr(this);
-		}
-		lastChild.setParentExpr(this);
-	}
+        for (Instruction i = firstChild; i != lastChild; i = i.getNextExpr()) {
+            if (i == null)
+                throw new IllegalStateException("child list broken ");
+            i.setParentExpr(this);
+        }
+        lastChild.setParentExpr(this);
+    }
 
-	public Instruction getPrevExpr() {
-		return (prevExpr);
+    public Instruction getPrevExpr() {
+        return (prevExpr);
 
-	}
+    }
 
-	public Instruction getNextExpr() {
-		return (nextExpr);
-	}
+    public Instruction getNextExpr() {
+        return (nextExpr);
+    }
 
-	public void setNextPC(Instruction _nextByPC) {
-		nextPC = _nextByPC;
-	}
+    public void setNextPC(Instruction _nextByPC) {
+        nextPC = _nextByPC;
+    }
 
-	public void setPrevPC(Instruction _prevByPC) {
-		prevPC = _prevByPC;
-	}
+    public void setPrevPC(Instruction _prevByPC) {
+        prevPC = _prevByPC;
+    }
 
-	public void setPrevExpr(Instruction _prevExpr) {
-		prevExpr = _prevExpr;
-	}
+    public void setPrevExpr(Instruction _prevExpr) {
+        prevExpr = _prevExpr;
+    }
 
-	public void setNextExpr(Instruction _nextExpr) {
-		nextExpr = _nextExpr;
-	}
+    public void setNextExpr(Instruction _nextExpr) {
+        nextExpr = _nextExpr;
+    }
 
-	public Instruction toInstruction() {
-		return (this);
-	}
+    public Instruction toInstruction() {
+        return (this);
+    }
 
-	public int getLength() {
-		return (length);
-	}
+    public int getLength() {
+        return (length);
+    }
 
-	public void setLength(int _length) {
-		length = _length;
-	}
+    public void setLength(int _length) {
+        length = _length;
+    }
 
-	public void setByteCode(ByteCode _byteCode) {
-		byteCode = _byteCode;
-	}
+    public void setByteCode(ByteCode _byteCode) {
+        byteCode = _byteCode;
+    }
 
-	public final ByteCode getByteCode() {
-		return (byteCode);
-	}
+    public final ByteCode getByteCode() {
+        return (byteCode);
+    }
 
-	public int getThisPC() {
-		return (pc);
-	}
+    public int getThisPC() {
+        return (pc);
+    }
 
-	public int getStartPC() {
-		return (getFirstChild() == null ? pc : getFirstChild().getStartPC());
-	}
+    public int getStartPC() {
+        return (getFirstChild() == null ? pc : getFirstChild().getStartPC());
+    }
 
-	protected Instruction(MethodModel _method, ByteCode _byteCode, int _pc) {
-		method = _method;
-		pc = _pc;
-		byteCode = _byteCode;
-	}
-
-	protected Instruction(MethodModel _method, ByteCode _byteCode, ByteReader _byteReader,
-	                      boolean _wide) {
-		this(_method, _byteCode, _wide ? _byteReader.getOffset() - 2 : _byteReader.getOffset() - 1);
-	}
-
-	// This works for most cases (except calls whose operand count depends upon the signature) so all call instructions therefore override this method
-	public int getStackConsumeCount() {
-		return (byteCode.getPop().getStackAdjust());
-	}
-
-	public int getStackProduceCount() {
-		return (byteCode.getPush().getStackAdjust());
-	}
-
-	public int getStackDelta() {
-		return (getStackProduceCount() - getStackConsumeCount());
-	}
-
-	@Override public String toString() {
-		return pc + " " + byteCode.getName();
-	}
-
-	public boolean isBranch() {
-		return (this instanceof Branch);
-	}
-
-	public int compareTo(Instruction _other) {
-		return (pc - _other.pc);
-	}
-
-	public boolean isAfter(Instruction _other) {
-		return (compareTo(_other) > 0);
-	}
-
-	public boolean isAfterOrEqual(Instruction _other) {
-		return (compareTo(_other) >= 0);
-	}
-
-	public boolean isBefore(Instruction _other) {
-		return (compareTo(_other) < 0);
-	}
-
-	public boolean isBeforeOrEqual(Instruction _other) {
-		return (compareTo(_other) <= 0);
-	}
-
-	public Instruction getFirstChild() {
-		return (firstChild);
-	}
-
-	public Instruction getLastChild() {
-		return (lastChild);
-	}
-
-	public Instruction getStartInstruction() {
-		return (getFirstChild() == null ? this : getFirstChild().getStartInstruction());
-	}
-
-	public MethodModel getMethod() {
-		return (method);
-	}
-
-	public Instruction getNextPC() {
-		return (nextPC);
-	}
-
-	public Instruction getPrevPC() {
-		return (prevPC);
-	}
-
-	public void setParentExpr(Instruction _parentExpr) {
-		parentExpr = _parentExpr;
-	}
-
-	public Instruction getParentExpr() {
-		return (parentExpr);
-	}
-
-	public Instruction getRootExpr() {
-		return (parentExpr == null ? this : parentExpr.getRootExpr());
-	}
-
-	public boolean isReverseConditionalBranchTarget() {
-		return ((reverseConditionalBranchTargets != null) && (reverseConditionalBranchTargets.size() > 0));
-	}
-
-	public boolean isForwardConditionalBranchTarget() {
-		return ((forwardConditionalBranchTargets != null) && (forwardConditionalBranchTargets.size() > 0));
-	}
-
-	public boolean isReverseUnconditionalBranchTarget() {
-		return ((reverseUnconditionalBranchTargets != null) &&
-		        (reverseUnconditionalBranchTargets.size() > 0));
-	}
-
-	public boolean isForwardUnconditionalBranchTarget() {
-		return ((forwardUnconditionalBranchTargets != null) &&
-		        (forwardUnconditionalBranchTargets.size() > 0));
-	}
-
-	public boolean isReverseBranchTarget() {
-		return (isReverseConditionalBranchTarget() || isReverseUnconditionalBranchTarget());
-	}
-
-	public boolean isConditionalBranchTarget() {
-		return (isReverseConditionalBranchTarget() || isForwardConditionalBranchTarget());
-	}
-
-	public boolean isUnconditionalBranchTarget() {
-		return (isReverseUnconditionalBranchTarget() || isForwardUnconditionalBranchTarget());
-	}
-
-	public boolean isForwardBranchTarget() {
-		return (isForwardConditionalBranchTarget() || isForwardUnconditionalBranchTarget());
-	}
-
-	public boolean isBranchTarget() {
-		return (isForwardBranchTarget() || isReverseBranchTarget());
-	}
-
-	public boolean producesStack() {
-		return ((this instanceof CompositeInstruction) || (getStackProduceCount() > 0));
-	}
-
-	public Instruction getReal() {
-		return (this);
-	}
-
-	public Branch asBranch() {
-		return ((Branch) this);
-	}
-
-	public boolean consumesStack() {
-		return (getStackConsumeCount() > 0);
-	}
-
-	public void addBranchTarget(Branch _branch) {
-
-		if (_branch.isReverse()) {
-			if (_branch.isConditional()) {
-				if (reverseConditionalBranchTargets == null)
-					reverseConditionalBranchTargets = new LinkedList<ConditionalBranch>();
-				reverseConditionalBranchTargets.add((ConditionalBranch) _branch);
-			} else {
-				if (reverseUnconditionalBranchTargets == null)
-					reverseUnconditionalBranchTargets = new LinkedList<Branch>();
-				reverseUnconditionalBranchTargets.add(_branch);
-			}
-		} else {
-			if (_branch.isConditional()) {
-				if (forwardConditionalBranchTargets == null)
-					forwardConditionalBranchTargets = new LinkedList<ConditionalBranch>();
-				forwardConditionalBranchTargets.add((ConditionalBranch) _branch);
-			} else {
-				if (forwardUnconditionalBranchTargets == null)
-					forwardUnconditionalBranchTargets = new LinkedList<Branch>();
-				forwardUnconditionalBranchTargets.add(_branch);
-			}
-		}
-	}
-
-	public void removeBranchTarget(Branch _branch) {
-		if (_branch.isReverse()) {
-			if (_branch.isConditional()) {
-				if (reverseConditionalBranchTargets != null) {
-					reverseConditionalBranchTargets.remove(_branch);
-					if (reverseConditionalBranchTargets.size() == 0)
-						reverseConditionalBranchTargets = null;
-				}
-			} else {
-				if (reverseUnconditionalBranchTargets != null) {
-					reverseUnconditionalBranchTargets.remove(_branch);
-					if (reverseUnconditionalBranchTargets.size() == 0)
-						reverseUnconditionalBranchTargets = null;
-				}
-			}
-		} else {
-			if (_branch.isConditional()) {
-				if (forwardConditionalBranchTargets != null) {
-					forwardConditionalBranchTargets.remove(_branch);
-					if (forwardConditionalBranchTargets.size() == 0)
-						forwardConditionalBranchTargets = null;
-				}
-			} else {
-				if (forwardUnconditionalBranchTargets != null) {
-					forwardUnconditionalBranchTargets.remove(_branch);
-					if (forwardUnconditionalBranchTargets.size() == 0)
-						forwardUnconditionalBranchTargets = null;
-				}
-			}
-		}
-	}
-
-	public LinkedList<Branch> getForwardUnconditionalBranches() {
-		return (forwardUnconditionalBranchTargets);
-	}
-
-	public LinkedList<ConditionalBranch> getForwardConditionalBranches() {
-		return (forwardConditionalBranchTargets);
-	}
-
-	public LinkedList<Branch> getReverseUnconditionalBranches() {
-		return (reverseUnconditionalBranchTargets);
-	}
-
-	public LinkedList<ConditionalBranch> getReverseConditionalBranches() {
-		return (reverseConditionalBranchTargets);
-	}
-
-	public boolean isForwardBranch() {
-		return (isBranch() && asBranch().isForward());
-	}
-
-	public boolean sameAs(Instruction _other) {
-		return (equals(_other));
-	}
+    protected Instruction(MethodModel _method, ByteCode _byteCode, int _pc) {
+        method = _method;
+        pc = _pc;
+        byteCode = _byteCode;
+    }
+
+    protected Instruction(MethodModel _method, ByteCode _byteCode,
+                          ByteReader _byteReader,
+                          boolean _wide) {
+        this(_method, _byteCode,
+             _wide ? _byteReader.getOffset() - 2 : _byteReader.getOffset() - 1);
+    }
+
+    // This works for most cases (except calls whose operand count depends upon the signature) so all call instructions therefore override this method
+    public int getStackConsumeCount() {
+        return (byteCode.getPop().getStackAdjust());
+    }
+
+    public int getStackProduceCount() {
+        return (byteCode.getPush().getStackAdjust());
+    }
+
+    public int getStackDelta() {
+        return (getStackProduceCount() - getStackConsumeCount());
+    }
+
+    @Override public String toString() {
+        return pc + " " + byteCode.getName();
+    }
+
+    public boolean isBranch() {
+        return (this instanceof Branch);
+    }
+
+    public int compareTo(Instruction _other) {
+        return (pc - _other.pc);
+    }
+
+    public boolean isAfter(Instruction _other) {
+        return (compareTo(_other) > 0);
+    }
+
+    public boolean isAfterOrEqual(Instruction _other) {
+        return (compareTo(_other) >= 0);
+    }
+
+    public boolean isBefore(Instruction _other) {
+        return (compareTo(_other) < 0);
+    }
+
+    public boolean isBeforeOrEqual(Instruction _other) {
+        return (compareTo(_other) <= 0);
+    }
+
+    public Instruction getFirstChild() {
+        return (firstChild);
+    }
+
+    public Instruction getLastChild() {
+        return (lastChild);
+    }
+
+    public Instruction getStartInstruction() {
+        return (getFirstChild() == null ? this : getFirstChild().getStartInstruction());
+    }
+
+    public MethodModel getMethod() {
+        return (method);
+    }
+
+    public Instruction getNextPC() {
+        return (nextPC);
+    }
+
+    public Instruction getPrevPC() {
+        return (prevPC);
+    }
+
+    public void setParentExpr(Instruction _parentExpr) {
+        parentExpr = _parentExpr;
+    }
+
+    public Instruction getParentExpr() {
+        return (parentExpr);
+    }
+
+    public Instruction getRootExpr() {
+        return (parentExpr == null ? this : parentExpr.getRootExpr());
+    }
+
+    public boolean isReverseConditionalBranchTarget() {
+        return ((reverseConditionalBranchTargets != null) &&
+                (reverseConditionalBranchTargets.size() > 0));
+    }
+
+    public boolean isForwardConditionalBranchTarget() {
+        return ((forwardConditionalBranchTargets != null) &&
+                (forwardConditionalBranchTargets.size() > 0));
+    }
+
+    public boolean isReverseUnconditionalBranchTarget() {
+        return ((reverseUnconditionalBranchTargets != null) &&
+                (reverseUnconditionalBranchTargets.size() > 0));
+    }
+
+    public boolean isForwardUnconditionalBranchTarget() {
+        return ((forwardUnconditionalBranchTargets != null) &&
+                (forwardUnconditionalBranchTargets.size() > 0));
+    }
+
+    public boolean isReverseBranchTarget() {
+        return (isReverseConditionalBranchTarget() ||
+                isReverseUnconditionalBranchTarget());
+    }
+
+    public boolean isConditionalBranchTarget() {
+        return (isReverseConditionalBranchTarget() ||
+                isForwardConditionalBranchTarget());
+    }
+
+    public boolean isUnconditionalBranchTarget() {
+        return (isReverseUnconditionalBranchTarget() ||
+                isForwardUnconditionalBranchTarget());
+    }
+
+    public boolean isForwardBranchTarget() {
+        return (isForwardConditionalBranchTarget() ||
+                isForwardUnconditionalBranchTarget());
+    }
+
+    public boolean isBranchTarget() {
+        return (isForwardBranchTarget() || isReverseBranchTarget());
+    }
+
+    public boolean producesStack() {
+        return ((this instanceof CompositeInstruction) || (getStackProduceCount() > 0));
+    }
+
+    public Instruction getReal() {
+        return (this);
+    }
+
+    public Branch asBranch() {
+        return ((Branch) this);
+    }
+
+    public boolean consumesStack() {
+        return (getStackConsumeCount() > 0);
+    }
+
+    public void addBranchTarget(Branch _branch) {
+
+        if (_branch.isReverse()) {
+            if (_branch.isConditional()) {
+                if (reverseConditionalBranchTargets == null)
+                    reverseConditionalBranchTargets = new LinkedList<ConditionalBranch>();
+                reverseConditionalBranchTargets.add((ConditionalBranch) _branch);
+            } else {
+                if (reverseUnconditionalBranchTargets == null)
+                    reverseUnconditionalBranchTargets = new LinkedList<Branch>();
+                reverseUnconditionalBranchTargets.add(_branch);
+            }
+        } else {
+            if (_branch.isConditional()) {
+                if (forwardConditionalBranchTargets == null)
+                    forwardConditionalBranchTargets = new LinkedList<ConditionalBranch>();
+                forwardConditionalBranchTargets.add((ConditionalBranch) _branch);
+            } else {
+                if (forwardUnconditionalBranchTargets == null)
+                    forwardUnconditionalBranchTargets = new LinkedList<Branch>();
+                forwardUnconditionalBranchTargets.add(_branch);
+            }
+        }
+    }
+
+    public void removeBranchTarget(Branch _branch) {
+        if (_branch.isReverse()) {
+            if (_branch.isConditional()) {
+                if (reverseConditionalBranchTargets != null) {
+                    reverseConditionalBranchTargets.remove(_branch);
+                    if (reverseConditionalBranchTargets.size() == 0)
+                        reverseConditionalBranchTargets = null;
+                }
+            } else {
+                if (reverseUnconditionalBranchTargets != null) {
+                    reverseUnconditionalBranchTargets.remove(_branch);
+                    if (reverseUnconditionalBranchTargets.size() == 0)
+                        reverseUnconditionalBranchTargets = null;
+                }
+            }
+        } else {
+            if (_branch.isConditional()) {
+                if (forwardConditionalBranchTargets != null) {
+                    forwardConditionalBranchTargets.remove(_branch);
+                    if (forwardConditionalBranchTargets.size() == 0)
+                        forwardConditionalBranchTargets = null;
+                }
+            } else {
+                if (forwardUnconditionalBranchTargets != null) {
+                    forwardUnconditionalBranchTargets.remove(_branch);
+                    if (forwardUnconditionalBranchTargets.size() == 0)
+                        forwardUnconditionalBranchTargets = null;
+                }
+            }
+        }
+    }
+
+    public LinkedList<Branch> getForwardUnconditionalBranches() {
+        return (forwardUnconditionalBranchTargets);
+    }
+
+    public LinkedList<ConditionalBranch> getForwardConditionalBranches() {
+        return (forwardConditionalBranchTargets);
+    }
+
+    public LinkedList<Branch> getReverseUnconditionalBranches() {
+        return (reverseUnconditionalBranchTargets);
+    }
+
+    public LinkedList<ConditionalBranch> getReverseConditionalBranches() {
+        return (reverseConditionalBranchTargets);
+    }
+
+    public boolean isForwardBranch() {
+        return (isBranch() && asBranch().isForward());
+    }
+
+    public boolean sameAs(Instruction _other) {
+        return (equals(_other));
+    }
 }

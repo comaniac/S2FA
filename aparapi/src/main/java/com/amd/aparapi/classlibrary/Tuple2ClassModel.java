@@ -18,8 +18,9 @@ public class Tuple2ClassModel extends CustomizedClassModel {
         addField(new CustomizedFieldModel("v1", this.getTypeParam(0), 0));
         addField(new CustomizedFieldModel("v2", this.getTypeParam(1), 1));
 
-        CustomizedMethodModel<?> get_initMethod = new CustomizedMethodModel<Tuple2ClassModel>(
-            this, "<init>", METHODTYPE.CONSTRUCTOR) {
+        CustomizedMethodModel<?> get_initMethod =
+            new CustomizedMethodModel<Tuple2ClassModel>(
+        this, "<init>", METHODTYPE.CONSTRUCTOR) {
 
             @Override
             public String getReturnType(Tuple2ClassModel clazzModel) {
@@ -42,9 +43,9 @@ public class Tuple2ClassModel extends CustomizedClassModel {
                     if (getFieldModel("v1").knowArrLength())
                         stmt += getFieldModel("v1").genMemcpy("n1");
                     else
-                        throw new RuntimeException("Error: v1 array has to have specific length.");
-                }
-                else
+                        throw new RuntimeException("Error: v1 array has to " +
+                                                   "have specific length.");
+                } else
                     stmt += getFieldModel("v1").genAssign("n1");
                 stmt += ";\n  ";
 
@@ -52,9 +53,9 @@ public class Tuple2ClassModel extends CustomizedClassModel {
                     if (getFieldModel("v2").knowArrLength())
                         stmt += getFieldModel("v2").genMemcpy("n2");
                     else
-                        throw new RuntimeException("Error: v2 array has to have specific length.");
-                }
-                else
+                        throw new RuntimeException("Error: v2 array has to " +
+                                                   "have specific length.");
+                } else
                     stmt += getFieldModel("v2").genAssign("n2");
                 stmt += ";";
 
@@ -63,9 +64,10 @@ public class Tuple2ClassModel extends CustomizedClassModel {
 
         };
         addMethod(get_initMethod);
-    
-        CustomizedMethodModel<?> get_1Method = new CustomizedMethodModel<Tuple2ClassModel>(
-            this, "_1", METHODTYPE.GETTER) {
+
+        CustomizedMethodModel<?> get_1Method =
+            new CustomizedMethodModel<Tuple2ClassModel>(
+        this, "_1", METHODTYPE.GETTER) {
 
             @Override
             public String getReturnType(Tuple2ClassModel clazzModel) {
@@ -84,8 +86,9 @@ public class Tuple2ClassModel extends CustomizedClassModel {
         };
         addMethod(get_1Method, getFieldModel("v1"));
 
-        CustomizedMethodModel<?> get_2Method = new CustomizedMethodModel<Tuple2ClassModel>(
-            this, "_2", METHODTYPE.GETTER) {
+        CustomizedMethodModel<?> get_2Method =
+            new CustomizedMethodModel<Tuple2ClassModel>(
+        this, "_2", METHODTYPE.GETTER) {
 
             @Override
             public String getReturnType(Tuple2ClassModel clazzModel) {

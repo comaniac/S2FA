@@ -8,26 +8,26 @@ import com.amd.aparapi.internal.model.ClassModel;
 import com.amd.aparapi.internal.model.Entrypoint;
 
 public class PrimitiveJParameter extends JParameter {
-	public PrimitiveJParameter(String fullSig, String name, DIRECTION dir) {
-		super(fullSig, name, dir);
-	}
+    public PrimitiveJParameter(String fullSig, String name, DIRECTION dir) {
+        super(fullSig, name, dir);
+    }
 
-	@Override
-	public String getParameterCode() {
-		// FIXME: Use 2-D array as long as Merlin compiler has supported it.
-		if (isArray()) 
-			return getCType() + " *" + name;
-		else
-			return getCType() + " " + name;
-	}
+    @Override
+    public String getParameterCode() {
+        // FIXME: Use 2-D array as long as Merlin compiler has supported it.
+        if (isArray())
+            return getCType() + " *" + name;
+        else
+            return getCType() + " " + name;
+    }
 
-	@Override
-	public void init(Entrypoint ep) {
-		;
-	}
+    @Override
+    public void init(Entrypoint ep) {
+        ;
+    }
 
-	@Override
-	public boolean isPrimitive() {
-		return true;
-	}
+    @Override
+    public boolean isPrimitive() {
+        return true;
+    }
 }

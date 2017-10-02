@@ -39,15 +39,16 @@ package com.amd.aparapi.internal.instruction;
 
 public abstract class InstructionTransformer {
 
-	private final String description;
+    private final String description;
 
-	public abstract Instruction transform(final ExpressionList _expressionList, final Instruction i);
+    public abstract Instruction transform(final ExpressionList _expressionList,
+                                          final Instruction i);
 
-	public InstructionTransformer(String _description) {
-		description = _description;
-	}
+    public InstructionTransformer(String _description) {
+        description = _description;
+    }
 
-	public String getDescription() {
-		return (description);
-	}
+    public String getDescription() {
+        return (description);
+    }
 }
